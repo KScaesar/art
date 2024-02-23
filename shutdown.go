@@ -21,6 +21,8 @@ func Shutdown(ctx1 context.Context, stopActions ...func() (serviceName string)) 
 	logger := DefaultLogger().WithMessageId(GenerateRandomCode(4))
 
 	go func() {
+		defer close(done)
+
 		select {
 		case sig := <-notify:
 			logger.Info("receive signal: %v", sig)
@@ -49,7 +51,6 @@ func Shutdown(ctx1 context.Context, stopActions ...func() (serviceName string)) 
 		}
 		wg.Wait()
 		logger.Info("shutdown finish")
-		close(done)
 	}()
 
 	invokeStop = func(cause error, wait bool) {
