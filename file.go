@@ -9,8 +9,6 @@ import (
 	"path/filepath"
 )
 
-type Unmarshal[T any] func(data []byte, v *T) error
-
 func LoadJsonFileByLocal[T any](path, defaultEnv, defaultName string) (T, error) {
 	decode := func(data []byte, v *T) error {
 		return json.Unmarshal(data, v)
