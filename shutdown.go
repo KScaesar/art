@@ -29,11 +29,7 @@ func Shutdown(ctx1 context.Context, stopActions ...func() (serviceName string)) 
 
 		case <-ctx2.Done():
 			err := context.Cause(ctx2)
-			if err != nil {
-				logger.Error("receive context channel: %v", err)
-			} else {
-				logger.Info("receive context channel")
-			}
+			logger.Error("receive context channel: %v", err)
 		}
 
 		total := len(stopActions)
