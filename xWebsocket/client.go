@@ -5,47 +5,53 @@ import (
 	"sync/atomic"
 
 	"github.com/gorilla/websocket"
+	"golang.org/x/exp/constraints"
 
 	"github.com/KScaesar/Artifex"
 )
 
-func NewClient(conn *websocket.Conn, mux *WebsocketMux, cryptoKey []byte, pongWaitSecond int) *Client {
-	client := &Client{
+func NewClient[S constraints.Ordered, M any](
+	conn *websocket.Conn,
+	mux *Artifex.MessageMux[S, M],
+	cryptoKey []byte,
+	messageFactory func(bMessage []byte, mKind int) M,
+	marshal Artifex.Marshal,
+) *Client[S, M] {
+
+	return &Client[S, M]{
 		conn:           conn,
-		Mux:            mux,
+		mux:            mux,
 		cryptoKey:      cryptoKey,
 		Logger:         Artifex.DefaultLogger(),
-		pongHandler:    func(*Message) error { return nil },
-		pongWaitSecond: pongWaitSecond,
+		messageFactory: messageFactory,
+		marshal:        marshal,
 	}
-	return client
 }
 
-type Client struct {
+type Client[S constraints.Ordered, M any] struct {
 	mu             sync.Mutex
 	conn           *websocket.Conn
-	Mux            *WebsocketMux
+	mux            *Artifex.MessageMux[S, M]
 	isStop         atomic.Bool
 	cryptoKey      []byte
 	Logger         Artifex.Logger
-	pongHandler    WebsocketHandler
-	pongWaitSecond int
-
-	Marshal Artifex.Marshal
+	pingpong       func() error
+	messageFactory func(bMessage []byte, mKind int) M
+	marshal        Artifex.Marshal
 }
 
-func (client *Client) Listen(crypto bool) error {
+func (client *Client[S, M]) Listen(crypto bool) error {
 	result := make(chan error, 2)
 	go func() {
 		result <- client.listen(crypto)
 	}()
 	go func() {
-		result <- client.pingpong(client.pongWaitSecond)
+		result <- client.pingpong()
 	}()
 	return <-result
 }
 
-func (client *Client) listen(crypto bool) (err error) {
+func (client *Client[S, M]) listen(crypto bool) (err error) {
 	for !client.IsStop() {
 		err = client.HandleResponse(crypto)
 		if err != nil {
@@ -55,7 +61,7 @@ func (client *Client) listen(crypto bool) (err error) {
 	return nil
 }
 
-func (client *Client) HandleResponse(crypto bool) error {
+func (client *Client[S, M]) HandleResponse(crypto bool) error {
 	logger := client.Logger
 
 	messageKind, bMessage, err := client.conn.ReadMessage()
@@ -74,31 +80,18 @@ func (client *Client) HandleResponse(crypto bool) error {
 		}
 	}
 
-	message := NewMessage(bMessage, messageKind)
-	logger.Info("receive websocket subject=%v", message.Subject)
+	message := client.messageFactory(bMessage, messageKind)
 
-	err = client.Mux.HandleMessageWithoutMutex(message)
-	if err != nil {
-		Err := Artifex.ErrorWrapWithMessage(err, "hande websocket subject=%v fail", message.Subject)
-		logger.Error("%v", Err)
-		return Err
-	}
-	logger.Debug("hande websocket subject=%v success", message.Subject)
-
-	if message.ErrResponseResult != nil {
-		return message.ErrResponseResult
-	}
-
-	return nil
+	return client.mux.HandleMessage(message)
 }
 
-func (client *Client) Invoke(message any, crypto bool) error {
+func (client *Client[S, M]) Invoke(message any, crypto bool) error {
 	client.mu.Lock()
 	defer client.mu.Unlock()
 
 	logger := client.Logger.WithCallDepth(1)
 
-	bMessage, err := client.Marshal(message)
+	bMessage, err := client.marshal(message)
 	if err != nil {
 		logger.Error("%v", err)
 		return err
@@ -123,7 +116,7 @@ func (client *Client) Invoke(message any, crypto bool) error {
 	return nil
 }
 
-func (client *Client) Disconnect() error {
+func (client *Client[S, M]) Disconnect() error {
 	if client.IsStop() {
 		return nil
 	}
@@ -131,27 +124,44 @@ func (client *Client) Disconnect() error {
 	return client.conn.Close()
 }
 
-func (client *Client) IsStop() bool {
+func (client *Client[S, M]) IsStop() bool {
 	return client.isStop.Load()
 }
 
-func (client *Client) SetPongHandler(handler WebsocketHandler) {
-	client.pongHandler = handler
-}
-
-func (client *Client) pingpong(pongWaitSecond int) error {
+func (client *Client[S, M]) EnableSendPingWaitPong(ping func() error, pongSubject S, handler Artifex.MessageHandler[M], pongWaitSecond int) {
 	sendPing := func() error {
 		client.mu.Lock()
 		defer client.mu.Unlock()
-		return client.conn.WriteMessage(websocket.PingMessage, nil)
+		return ping()
 	}
 
 	waitPong := make(chan error, 1)
 
-	client.Mux.RegisterHandler("pong", func(dto *Message) error {
-		waitPong <- client.pongHandler(dto)
+	client.mux.RegisterHandler(pongSubject, func(dto M) error {
+		waitPong <- handler(dto)
 		return nil
 	})
 
-	return Artifex.SendPingWaitPong(sendPing, waitPong, client.IsStop, pongWaitSecond)
+	client.pingpong = func() error {
+		return Artifex.SendPingWaitPong(sendPing, waitPong, client.IsStop, pongWaitSecond)
+	}
+}
+
+func (client *Client[S, M]) EnableWaitPingSendPong(pong func() error, pingSubject S, handler Artifex.MessageHandler[M], pingWaitSecond int) {
+	waitPing := make(chan error, 1)
+
+	sendPong := func() error {
+		client.mu.Lock()
+		defer client.mu.Unlock()
+		return pong()
+	}
+
+	client.mux.RegisterHandler(pingSubject, func(dto M) error {
+		waitPing <- handler(dto)
+		return nil
+	})
+
+	client.pingpong = func() error {
+		return Artifex.WaitPingSendPong(waitPing, sendPong, client.IsStop, pingWaitSecond)
+	}
 }

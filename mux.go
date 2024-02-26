@@ -22,8 +22,11 @@ func LinkMiddlewares[Message any](handler MessageHandler[Message], middlewares .
 
 //
 
-func NewMessageMux[Subject constraints.Ordered, Message any](getSubject func(Message) (Subject, error)) *MessageMux[Subject, Message] {
+type SubjectFactory[Subject constraints.Ordered, Message any] func(Message) (Subject, error)
+
+func NewMessageMux[Subject constraints.Ordered, Message any](getSubject SubjectFactory[Subject, Message], logger Logger) *MessageMux[Subject, Message] {
 	return &MessageMux[Subject, Message]{
+		logger:      logger,
 		getSubject:  getSubject,
 		handlers:    make(map[Subject]MessageHandler[Message]),
 		middlewares: make([]MessageDecorator[Message], 0),
@@ -35,7 +38,8 @@ func NewMessageMux[Subject constraints.Ordered, Message any](getSubject func(Mes
 //
 // Message represents a high-level abstraction data structure containing metadata (e.g. header) + body
 type MessageMux[Subject constraints.Ordered, Message any] struct {
-	mu sync.RWMutex
+	mu     sync.RWMutex
+	logger Logger
 
 	// getSubject 是為了避免 generic type 呼叫 method 所造成的效能降低
 	// 同時可以因應不同情境, 改變取得 subject 的規則
@@ -43,18 +47,31 @@ type MessageMux[Subject constraints.Ordered, Message any] struct {
 	// https://www.youtube.com/watch?v=D1hI55EcBB4&t=20260s
 	//
 	// https://hackmd.io/@fieliapm/BkHvJjYq3#/5/2
-	getSubject  func(Message) (Subject, error)
+	getSubject  SubjectFactory[Subject, Message]
 	handlers    map[Subject]MessageHandler[Message]
 	middlewares []MessageDecorator[Message]
 
 	notFoundHandler MessageHandler[Message]
 }
 
-func (mux *MessageMux[Subject, Message]) handle(dto Message) error {
+func (mux *MessageMux[Subject, Message]) handle(dto Message) (err error) {
+	logger := mux.logger
+
 	subject, err := mux.getSubject(dto)
 	if err != nil {
-		return err
+		Err := ErrorWrapWithMessage(err, "Failed to parse subject from the message")
+		logger.Error("%v", Err)
+		return Err
 	}
+	logger.Info("receive subject=%v", subject)
+
+	defer func() {
+		if err != nil {
+			logger.Error("hande subject=%v fail", subject)
+			return
+		}
+		logger.Debug("hande subject=%v success", subject)
+	}()
 
 	fn, ok := mux.handlers[subject]
 	if !ok {
