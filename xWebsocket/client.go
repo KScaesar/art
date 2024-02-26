@@ -128,11 +128,11 @@ func (client *Client[S, M]) IsStop() bool {
 	return client.isStop.Load()
 }
 
-func (client *Client[S, M]) EnableSendPingWaitPong(ping func() error, pongSubject S, handler Artifex.MessageHandler[M], pongWaitSecond int) {
+func (client *Client[S, M]) EnableSendPingWaitPong(pongSubject S, handler Artifex.MessageHandler[M], pongWaitSecond int, ping func(*Client[S, M]) error) {
 	sendPing := func() error {
 		client.mu.Lock()
 		defer client.mu.Unlock()
-		return ping()
+		return ping(client)
 	}
 
 	waitPong := make(chan error, 1)
@@ -147,13 +147,13 @@ func (client *Client[S, M]) EnableSendPingWaitPong(ping func() error, pongSubjec
 	}
 }
 
-func (client *Client[S, M]) EnableWaitPingSendPong(pong func() error, pingSubject S, handler Artifex.MessageHandler[M], pingWaitSecond int) {
+func (client *Client[S, M]) EnableWaitPingSendPong(pingSubject S, handler Artifex.MessageHandler[M], pingWaitSecond int, pong func(client *Client[S, M]) error) {
 	waitPing := make(chan error, 1)
 
 	sendPong := func() error {
 		client.mu.Lock()
 		defer client.mu.Unlock()
-		return pong()
+		return pong(client)
 	}
 
 	client.mux.RegisterHandler(pingSubject, func(dto M) error {
