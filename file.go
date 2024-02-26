@@ -80,6 +80,7 @@ func loadFileByLocal[T any](decode Unmarshal[T], path, defaultEnv, defaultFileNa
 	if err != nil {
 		return empty, err
 	}
+	defer file.Close()
 
 	data, err := io.ReadAll(file)
 	if err != nil {
