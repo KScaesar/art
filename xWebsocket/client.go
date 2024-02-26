@@ -14,7 +14,7 @@ func NewClient[S constraints.Ordered, M any](
 	conn *websocket.Conn,
 	mux *Artifex.MessageMux[S, M],
 	cryptoKey []byte,
-	messageFactory func(bMessage []byte, mKind int) M,
+	messageFactory func(bMessage []byte, mKind int, parent *Client[S, M]) M,
 	marshal Artifex.Marshal,
 ) *Client[S, M] {
 
@@ -36,7 +36,7 @@ type Client[S constraints.Ordered, M any] struct {
 	cryptoKey      []byte
 	Logger         Artifex.Logger
 	pingpong       func() error
-	messageFactory func(bMessage []byte, mKind int) M
+	messageFactory func(bMessage []byte, mKind int, parent *Client[S, M]) M
 	marshal        Artifex.Marshal
 }
 
@@ -80,7 +80,7 @@ func (client *Client[S, M]) HandleResponse(crypto bool) error {
 		}
 	}
 
-	message := client.messageFactory(bMessage, messageKind)
+	message := client.messageFactory(bMessage, messageKind, client)
 
 	return client.mux.HandleMessage(message)
 }
@@ -130,8 +130,6 @@ func (client *Client[S, M]) IsStop() bool {
 
 func (client *Client[S, M]) EnableSendPingWaitPong(pongSubject S, handler Artifex.MessageHandler[M], pongWaitSecond int, ping func(*Client[S, M]) error) {
 	sendPing := func() error {
-		client.mu.Lock()
-		defer client.mu.Unlock()
 		return ping(client)
 	}
 
@@ -151,8 +149,6 @@ func (client *Client[S, M]) EnableWaitPingSendPong(pingSubject S, handler Artife
 	waitPing := make(chan error, 1)
 
 	sendPong := func() error {
-		client.mu.Lock()
-		defer client.mu.Unlock()
 		return pong(client)
 	}
 

@@ -20,7 +20,7 @@ func TestMessageMux_handle(t *testing.T) {
 		return message.channel, nil
 	}
 
-	mux := NewMessageMux(getSubject).
+	mux := NewMessageMux(getSubject, DefaultLogger()).
 		RegisterHandler("hello", func(dto *redisMessage) error {
 			fmt.Fprintf(recorder, "topic=%v, payload=%v", dto.channel, string(dto.body))
 			return nil
