@@ -12,53 +12,57 @@ func NewWebsocketSession[S constraints.Ordered, M any](
 	conn *websocket.Conn,
 	mux *MessageMux[S, M],
 	cryptoKey []byte,
-	messageFactory func(bMessage []byte, mKind int, parent *WebsocketSession[S, M]) M,
+	messageConverter func(bMessage []byte, mKind int, parent *WebsocketSession[S, M]) M,
 	marshal Marshal,
 ) *WebsocketSession[S, M] {
 	return &WebsocketSession[S, M]{
-		conn:           conn,
-		mux:            mux,
-		cryptoKey:      cryptoKey,
-		logger:         DefaultLogger(),
-		messageFactory: messageFactory,
-		marshal:        marshal,
+		conn:             conn,
+		mux:              mux,
+		cryptoKey:        cryptoKey,
+		logger:           DefaultLogger(),
+		messageConverter: messageConverter,
+		marshal:          marshal,
 	}
 }
 
 type WebsocketSession[S constraints.Ordered, M any] struct {
-	mu             sync.Mutex
-	conn           *websocket.Conn
-	mux            *MessageMux[S, M]
-	isStop         atomic.Bool
-	cryptoKey      []byte
-	logger         Logger
-	pingpong       func() error
-	messageFactory func(bMessage []byte, mKind int, parent *WebsocketSession[S, M]) M
-	marshal        Marshal
+	Mutex            sync.Mutex
+	conn             *websocket.Conn
+	mux              *MessageMux[S, M]
+	isStop           atomic.Bool
+	cryptoKey        []byte
+	logger           Logger
+	pingpong         func() error
+	messageConverter func(bMessage []byte, mKind int, parent *WebsocketSession[S, M]) M
+	marshal          Marshal
 }
 
-func (session *WebsocketSession[S, M]) SetLogger(logger Logger) {
-	session.logger = logger
+func (sess *WebsocketSession[S, M]) Logger() Logger {
+	return sess.logger
 }
 
-func (session *WebsocketSession[S, M]) Connection() *websocket.Conn {
-	return session.conn
+func (sess *WebsocketSession[S, M]) SetLogger(logger Logger) {
+	sess.logger = logger
 }
 
-func (session *WebsocketSession[S, M]) Listen(crypto bool) error {
+func (sess *WebsocketSession[S, M]) Connection() *websocket.Conn {
+	return sess.conn
+}
+
+func (sess *WebsocketSession[S, M]) Listen(crypto bool) error {
 	result := make(chan error, 2)
 	go func() {
-		result <- session.listen(crypto)
+		result <- sess.listen(crypto)
 	}()
 	go func() {
-		result <- session.pingpong()
+		result <- sess.pingpong()
 	}()
 	return <-result
 }
 
-func (session *WebsocketSession[S, M]) listen(crypto bool) (err error) {
-	for !session.IsStop() {
-		err = session.HandleResponse(crypto)
+func (sess *WebsocketSession[S, M]) listen(crypto bool) (err error) {
+	for !sess.IsStop() {
+		err = sess.Receive(crypto)
 		if err != nil {
 			return err
 		}
@@ -66,10 +70,10 @@ func (session *WebsocketSession[S, M]) listen(crypto bool) (err error) {
 	return nil
 }
 
-func (session *WebsocketSession[S, M]) HandleResponse(crypto bool) error {
-	logger := session.logger
+func (sess *WebsocketSession[S, M]) Receive(crypto bool) error {
+	logger := sess.logger
 
-	messageKind, bMessage, err := session.conn.ReadMessage()
+	messageKind, bMessage, err := sess.conn.ReadMessage()
 	if err != nil {
 		Err := ConvertErrNetwork(err)
 		logger.Error("read websocket: %v", Err)
@@ -77,7 +81,7 @@ func (session *WebsocketSession[S, M]) HandleResponse(crypto bool) error {
 	}
 
 	if crypto {
-		bMessage, err = DecryptECB(session.cryptoKey, bMessage)
+		bMessage, err = DecryptECB(sess.cryptoKey, bMessage)
 		if err != nil {
 			Err := ErrorWrapWithMessage(err, "decrypt websocket message")
 			logger.Error("%v", Err)
@@ -85,25 +89,25 @@ func (session *WebsocketSession[S, M]) HandleResponse(crypto bool) error {
 		}
 	}
 
-	message := session.messageFactory(bMessage, messageKind, session)
+	message := sess.messageConverter(bMessage, messageKind, sess)
 
-	return session.mux.HandleMessage(message)
+	return sess.mux.HandleMessage(message)
 }
 
-func (session *WebsocketSession[S, M]) Invoke(message any, crypto bool) error {
-	session.mu.Lock()
-	defer session.mu.Unlock()
+func (sess *WebsocketSession[S, M]) Send(message any, crypto bool) error {
+	sess.Mutex.Lock()
+	defer sess.Mutex.Unlock()
 
-	logger := session.logger.WithCallDepth(1)
+	logger := sess.logger.WithCallDepth(1)
 
-	bMessage, err := session.marshal(message)
+	bMessage, err := sess.marshal(message)
 	if err != nil {
 		logger.Error("%v", err)
 		return err
 	}
 
 	if crypto {
-		bMessage, err = EncryptECB(session.cryptoKey, bMessage)
+		bMessage, err = EncryptECB(sess.cryptoKey, bMessage)
 		if err != nil {
 			Err := ErrorWrapWithMessage(err, "encrypt websocket message")
 			logger.Error("%v", Err)
@@ -111,7 +115,7 @@ func (session *WebsocketSession[S, M]) Invoke(message any, crypto bool) error {
 		}
 	}
 
-	err = session.conn.WriteMessage(websocket.BinaryMessage, bMessage)
+	err = sess.conn.WriteMessage(websocket.BinaryMessage, bMessage)
 	if err != nil {
 		Err := ConvertErrNetwork(err)
 		logger.Error("%v", Err)
@@ -121,48 +125,48 @@ func (session *WebsocketSession[S, M]) Invoke(message any, crypto bool) error {
 	return nil
 }
 
-func (session *WebsocketSession[S, M]) Disconnect() error {
-	if session.IsStop() {
+func (sess *WebsocketSession[S, M]) Disconnect() error {
+	if sess.IsStop() {
 		return nil
 	}
-	session.isStop.Store(true)
-	return session.conn.Close()
+	sess.isStop.Store(true)
+	return sess.conn.Close()
 }
 
-func (session *WebsocketSession[S, M]) IsStop() bool {
-	return session.isStop.Load()
+func (sess *WebsocketSession[S, M]) IsStop() bool {
+	return sess.isStop.Load()
 }
 
-func (session *WebsocketSession[S, M]) EnableSendPingWaitPong(pongSubject S, handler MessageHandler[M], pongWaitSecond int, ping func(*WebsocketSession[S, M]) error) {
+func (sess *WebsocketSession[S, M]) EnableSendPingWaitPong(pongSubject S, handler MessageHandler[M], pongWaitSecond int, ping func(*WebsocketSession[S, M]) error) {
 	sendPing := func() error {
-		return ping(session)
+		return ping(sess)
 	}
 
 	waitPong := make(chan error, 1)
 
-	session.mux.RegisterHandler(pongSubject, func(dto M) error {
+	sess.mux.RegisterHandler(pongSubject, func(dto M) error {
 		waitPong <- handler(dto)
 		return nil
 	})
 
-	session.pingpong = func() error {
-		return SendPingWaitPong(sendPing, waitPong, session.IsStop, pongWaitSecond)
+	sess.pingpong = func() error {
+		return SendPingWaitPong(sendPing, waitPong, sess.IsStop, pongWaitSecond)
 	}
 }
 
-func (session *WebsocketSession[S, M]) EnableWaitPingSendPong(pingSubject S, handler MessageHandler[M], pingWaitSecond int, pong func(client *WebsocketSession[S, M]) error) {
+func (sess *WebsocketSession[S, M]) EnableWaitPingSendPong(pingSubject S, handler MessageHandler[M], pingWaitSecond int, pong func(client *WebsocketSession[S, M]) error) {
 	waitPing := make(chan error, 1)
 
 	sendPong := func() error {
-		return pong(session)
+		return pong(sess)
 	}
 
-	session.mux.RegisterHandler(pingSubject, func(dto M) error {
+	sess.mux.RegisterHandler(pingSubject, func(dto M) error {
 		waitPing <- handler(dto)
 		return nil
 	})
 
-	session.pingpong = func() error {
-		return WaitPingSendPong(waitPing, sendPong, session.IsStop, pingWaitSecond)
+	sess.pingpong = func() error {
+		return WaitPingSendPong(waitPing, sendPong, sess.IsStop, pingWaitSecond)
 	}
 }
