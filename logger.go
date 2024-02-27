@@ -72,8 +72,8 @@ func NewLogger(printPath bool, level LogLevel) Logger {
 	}
 	return stdLogger{
 		debug:             log.New(os.Stdout, "[Debug] ", flag),
-		info:              log.New(os.Stdout, " [Info] ", flag),
-		warn:              log.New(os.Stdout, " [Warn] ", flag),
+		info:              log.New(os.Stdout, "[Info ] ", flag),
+		warn:              log.New(os.Stdout, "[Warn ] ", flag),
 		err:               log.New(os.Stdout, "[Error] ", flag),
 		fatal:             log.New(os.Stdout, "[Fatal] ", flag),
 		internalCallDepth: internalDepth,
