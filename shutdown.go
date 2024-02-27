@@ -6,9 +6,30 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 )
 
-func Shutdown(ctx1 context.Context, stopActions ...func() (serviceName string)) (invokeStop func(cause error, wait bool)) {
+type Shutdown struct {
+	done   chan struct{}
+	cancel context.CancelCauseFunc
+}
+
+func (s Shutdown) Stop(cause error) Shutdown {
+	s.cancel(cause)
+	return s
+}
+
+func (s Shutdown) Wait(waitSecond int) {
+	timer := time.NewTimer(time.Duration(waitSecond) * time.Second)
+	defer timer.Stop()
+
+	select {
+	case <-timer.C:
+	case <-s.done:
+	}
+}
+
+func SetupShutdown(ctx1 context.Context, stopActions ...func() (serviceName string)) Shutdown {
 	notify := make(chan os.Signal, 2)
 	signal.Notify(notify, syscall.SIGINT, syscall.SIGTERM)
 
@@ -49,11 +70,8 @@ func Shutdown(ctx1 context.Context, stopActions ...func() (serviceName string)) 
 		logger.Info("shutdown finish")
 	}()
 
-	invokeStop = func(cause error, wait bool) {
-		cancel(cause)
-		if wait {
-			<-done
-		}
+	return Shutdown{
+		done:   done,
+		cancel: cancel,
 	}
-	return invokeStop
 }
