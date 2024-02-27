@@ -57,12 +57,16 @@ func (sess *WebsocketSession[S, M]) Listen(crypto bool) error {
 	go func() {
 		result <- sess.pingpong()
 	}()
-	return <-result
+	err := <-result
+	if err != nil {
+		sess.Disconnect()
+	}
+	return err
 }
 
 func (sess *WebsocketSession[S, M]) listen(crypto bool) (err error) {
 	for !sess.IsStop() {
-		err = sess.Receive(crypto)
+		err = sess.ReceiveWithHandler(crypto, sess.mux.HandleMessage)
 		if err != nil {
 			return err
 		}
@@ -70,8 +74,12 @@ func (sess *WebsocketSession[S, M]) listen(crypto bool) (err error) {
 	return nil
 }
 
-func (sess *WebsocketSession[S, M]) Receive(crypto bool) error {
+func (sess *WebsocketSession[S, M]) ReceiveWithHandler(crypto bool, handler MessageHandler[M]) error {
 	logger := sess.logger
+
+	if handler == nil {
+		handler = sess.mux.HandleMessage
+	}
 
 	messageKind, bMessage, err := sess.conn.ReadMessage()
 	if err != nil {
@@ -91,7 +99,7 @@ func (sess *WebsocketSession[S, M]) Receive(crypto bool) error {
 
 	message := sess.messageConverter(bMessage, messageKind, sess)
 
-	return sess.mux.HandleMessage(message)
+	return handler(message)
 }
 
 func (sess *WebsocketSession[S, M]) Send(message any, crypto bool) error {

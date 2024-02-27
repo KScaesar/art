@@ -70,7 +70,7 @@ func (mux *MessageMux[Subject, Message]) handle(dto Message) (err error) {
 			logger.Error("hande subject=%v fail", subject)
 			return
 		}
-		logger.Debug("hande subject=%v success", subject)
+		logger.Info("hande subject=%v success", subject)
 	}()
 
 	fn, ok := mux.handlers[subject]
