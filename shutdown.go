@@ -2,6 +2,7 @@ package Artifex
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/signal"
 	"sync"
@@ -50,7 +51,11 @@ func SetupShutdown(ctx1 context.Context, stopActions ...func() (serviceName stri
 
 		case <-ctx2.Done():
 			err := context.Cause(ctx2)
-			logger.Error("receive context channel: %v", err)
+			if errors.Is(err, context.Canceled) {
+				logger.Info("receive context channel")
+			} else {
+				logger.Error("receive context channel: %v", err)
+			}
 		}
 
 		total := len(stopActions)
