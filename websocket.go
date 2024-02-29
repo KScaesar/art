@@ -26,7 +26,7 @@ func NewWebsocketSession[S constraints.Ordered, M any](
 }
 
 type WebsocketSession[S constraints.Ordered, M any] struct {
-	Mutex            sync.Mutex
+	mutex            sync.Mutex
 	conn             *websocket.Conn
 	mux              *MessageMux[S, M]
 	isStop           atomic.Bool
@@ -103,8 +103,8 @@ func (sess *WebsocketSession[S, M]) ReceiveWithHandler(crypto bool, handler Mess
 }
 
 func (sess *WebsocketSession[S, M]) Send(message any, crypto bool) error {
-	sess.Mutex.Lock()
-	defer sess.Mutex.Unlock()
+	sess.mutex.Lock()
+	defer sess.mutex.Unlock()
 
 	logger := sess.logger.WithCallDepth(1)
 
@@ -130,6 +130,19 @@ func (sess *WebsocketSession[S, M]) Send(message any, crypto bool) error {
 		return Err
 	}
 
+	return nil
+}
+
+func (sess *WebsocketSession[S, M]) WriteMessage(wsType int, bMessage []byte) error {
+	sess.mutex.Lock()
+	defer sess.mutex.Unlock()
+
+	err := sess.conn.WriteMessage(wsType, bMessage)
+	if err != nil {
+		Err := ConvertErrNetwork(err)
+		sess.logger.Error("%v", Err)
+		return Err
+	}
 	return nil
 }
 
