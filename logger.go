@@ -67,9 +67,6 @@ func NewLogger(printPath bool, level LogLevel) Logger {
 
 	internalDepth := 2
 
-	contextKey := []string{
-		"msg_id",
-	}
 	return stdLogger{
 		debug:             log.New(os.Stdout, "[Debug] ", flag),
 		info:              log.New(os.Stdout, "[Info ] ", flag),
@@ -79,7 +76,9 @@ func NewLogger(printPath bool, level LogLevel) Logger {
 		internalCallDepth: internalDepth,
 		logLevel:          &level,
 
-		contextKey:  contextKey,
+		contextKey: []string{
+			"msg_id",
+		},
 		contextInfo: newContextInfo(),
 	}
 }

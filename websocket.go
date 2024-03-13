@@ -8,14 +8,14 @@ import (
 	"golang.org/x/exp/constraints"
 )
 
-func NewWebsocketSession[S constraints.Ordered, M any](
+func NewGorillaSession[S constraints.Ordered, M any](
 	conn *websocket.Conn,
 	mux *MessageMux[S, M],
 	cryptoKey []byte,
-	messageConverter func(bMessage []byte, mKind int, parent *WebsocketSession[S, M]) M,
+	messageConverter func(bMessage []byte, mKind int, parent *GorillaSession[S, M]) M,
 	marshal Marshal,
-) *WebsocketSession[S, M] {
-	return &WebsocketSession[S, M]{
+) *GorillaSession[S, M] {
+	return &GorillaSession[S, M]{
 		conn:             conn,
 		mux:              mux,
 		cryptoKey:        cryptoKey,
@@ -25,7 +25,7 @@ func NewWebsocketSession[S constraints.Ordered, M any](
 	}
 }
 
-type WebsocketSession[S constraints.Ordered, M any] struct {
+type GorillaSession[S constraints.Ordered, M any] struct {
 	mutex            sync.Mutex
 	conn             *websocket.Conn
 	mux              *MessageMux[S, M]
@@ -33,23 +33,23 @@ type WebsocketSession[S constraints.Ordered, M any] struct {
 	cryptoKey        []byte
 	logger           Logger
 	pingpong         func() error
-	messageConverter func(bMessage []byte, mKind int, parent *WebsocketSession[S, M]) M
+	messageConverter func(bMessage []byte, mKind int, parent *GorillaSession[S, M]) M
 	marshal          Marshal
 }
 
-func (sess *WebsocketSession[S, M]) Logger() Logger {
+func (sess *GorillaSession[S, M]) Logger() Logger {
 	return sess.logger
 }
 
-func (sess *WebsocketSession[S, M]) SetLogger(logger Logger) {
+func (sess *GorillaSession[S, M]) SetLogger(logger Logger) {
 	sess.logger = logger
 }
 
-func (sess *WebsocketSession[S, M]) Connection() *websocket.Conn {
+func (sess *GorillaSession[S, M]) Connection() *websocket.Conn {
 	return sess.conn
 }
 
-func (sess *WebsocketSession[S, M]) Listen(crypto bool) error {
+func (sess *GorillaSession[S, M]) Listen(crypto bool) error {
 	result := make(chan error, 2)
 	go func() {
 		result <- sess.listen(crypto)
@@ -64,7 +64,7 @@ func (sess *WebsocketSession[S, M]) Listen(crypto bool) error {
 	return err
 }
 
-func (sess *WebsocketSession[S, M]) listen(crypto bool) (err error) {
+func (sess *GorillaSession[S, M]) listen(crypto bool) (err error) {
 	for !sess.IsStop() {
 		err = sess.ReceiveWithHandler(crypto, sess.mux.HandleMessage)
 		if err != nil {
@@ -74,7 +74,7 @@ func (sess *WebsocketSession[S, M]) listen(crypto bool) (err error) {
 	return nil
 }
 
-func (sess *WebsocketSession[S, M]) ReceiveWithHandler(crypto bool, handler MessageHandler[M]) error {
+func (sess *GorillaSession[S, M]) ReceiveWithHandler(crypto bool, handler MessageHandler[M]) error {
 	logger := sess.logger
 
 	if handler == nil {
@@ -102,7 +102,7 @@ func (sess *WebsocketSession[S, M]) ReceiveWithHandler(crypto bool, handler Mess
 	return handler(message)
 }
 
-func (sess *WebsocketSession[S, M]) Send(message any, crypto bool) error {
+func (sess *GorillaSession[S, M]) Send(message any, crypto bool) error {
 	sess.mutex.Lock()
 	defer sess.mutex.Unlock()
 
@@ -133,7 +133,7 @@ func (sess *WebsocketSession[S, M]) Send(message any, crypto bool) error {
 	return nil
 }
 
-func (sess *WebsocketSession[S, M]) WriteMessage(wsType int, bMessage []byte) error {
+func (sess *GorillaSession[S, M]) WriteMessage(wsType int, bMessage []byte) error {
 	sess.mutex.Lock()
 	defer sess.mutex.Unlock()
 
@@ -146,7 +146,7 @@ func (sess *WebsocketSession[S, M]) WriteMessage(wsType int, bMessage []byte) er
 	return nil
 }
 
-func (sess *WebsocketSession[S, M]) Disconnect() error {
+func (sess *GorillaSession[S, M]) Disconnect() error {
 	if sess.IsStop() {
 		return nil
 	}
@@ -154,11 +154,11 @@ func (sess *WebsocketSession[S, M]) Disconnect() error {
 	return sess.conn.Close()
 }
 
-func (sess *WebsocketSession[S, M]) IsStop() bool {
+func (sess *GorillaSession[S, M]) IsStop() bool {
 	return sess.isStop.Load()
 }
 
-func (sess *WebsocketSession[S, M]) EnableSendPingWaitPong(pongSubject S, handler MessageHandler[M], pongWaitSecond int, ping func(*WebsocketSession[S, M]) error) {
+func (sess *GorillaSession[S, M]) EnableSendPingWaitPong(pongSubject S, handler MessageHandler[M], pongWaitSecond int, ping func(*GorillaSession[S, M]) error) {
 	sendPing := func() error {
 		return ping(sess)
 	}
@@ -175,7 +175,7 @@ func (sess *WebsocketSession[S, M]) EnableSendPingWaitPong(pongSubject S, handle
 	}
 }
 
-func (sess *WebsocketSession[S, M]) EnableWaitPingSendPong(pingSubject S, handler MessageHandler[M], pingWaitSecond int, pong func(client *WebsocketSession[S, M]) error) {
+func (sess *GorillaSession[S, M]) EnableWaitPingSendPong(pingSubject S, handler MessageHandler[M], pingWaitSecond int, pong func(client *GorillaSession[S, M]) error) {
 	waitPing := make(chan error, 1)
 
 	sendPong := func() error {

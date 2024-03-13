@@ -11,6 +11,30 @@ type MessageHandler[Message any] func(dto Message) error
 
 type MessageDecorator[Message any] func(next MessageHandler[Message]) MessageHandler[Message]
 
+func PreMiddleware[Message any](handler MessageHandler[Message]) MessageDecorator[Message] {
+	return func(next MessageHandler[Message]) MessageHandler[Message] {
+		return func(dto Message) error {
+			err := handler(dto)
+			if err != nil {
+				return err
+			}
+			return next(dto)
+		}
+	}
+}
+
+func PostMiddleware[Message any](handler MessageHandler[Message]) MessageDecorator[Message] {
+	return func(next MessageHandler[Message]) MessageHandler[Message] {
+		return func(dto Message) error {
+			err := next(dto)
+			if err != nil {
+				return err
+			}
+			return handler(dto)
+		}
+	}
+}
+
 func LinkMiddlewares[Message any](handler MessageHandler[Message], middlewares ...MessageDecorator[Message]) MessageHandler[Message] {
 	n := len(middlewares)
 	for i := n - 1; 0 <= i; i-- {
