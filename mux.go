@@ -2,17 +2,27 @@ package Artifex
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 	"sync"
 
 	"golang.org/x/exp/constraints"
 )
 
-type MessageHandler[Message any] func(message Message) error
+type MessageHandler[Message any] interface {
+	HandleMessage(message Message) error
+}
 
-func (handler MessageHandler[Message]) PreMiddleware() MessageDecorator[Message] {
-	return func(next MessageHandler[Message]) MessageHandler[Message] {
+type MessageHandleFunc[Message any] func(message Message) error
+
+func (fn MessageHandleFunc[Message]) HandleMessage(message Message) error {
+	return fn(message)
+}
+
+func (fn MessageHandleFunc[Message]) PreMiddleware() MessageDecorator[Message] {
+	return func(next MessageHandleFunc[Message]) MessageHandleFunc[Message] {
 		return func(message Message) error {
-			err := handler(message)
+			err := fn(message)
 			if err != nil {
 				return err
 			}
@@ -21,25 +31,25 @@ func (handler MessageHandler[Message]) PreMiddleware() MessageDecorator[Message]
 	}
 }
 
-func (handler MessageHandler[Message]) PostMiddleware() MessageDecorator[Message] {
-	return func(next MessageHandler[Message]) MessageHandler[Message] {
+func (fn MessageHandleFunc[Message]) PostMiddleware() MessageDecorator[Message] {
+	return func(next MessageHandleFunc[Message]) MessageHandleFunc[Message] {
 		return func(message Message) error {
 			err := next(message)
 			if err != nil {
 				return err
 			}
-			return handler(message)
+			return fn(message)
 		}
 	}
 }
 
-func (handler MessageHandler[Message]) LinkMiddlewares(middlewares ...MessageDecorator[Message]) MessageHandler[Message] {
-	return LinkMiddlewares(handler, middlewares...)
+func (fn MessageHandleFunc[Message]) LinkMiddlewares(middlewares ...MessageDecorator[Message]) MessageHandleFunc[Message] {
+	return LinkMiddlewares(fn, middlewares...)
 }
 
-type MessageDecorator[Message any] func(next MessageHandler[Message]) MessageHandler[Message]
+type MessageDecorator[Message any] func(next MessageHandleFunc[Message]) MessageHandleFunc[Message]
 
-func LinkMiddlewares[Message any](handler MessageHandler[Message], middlewares ...MessageDecorator[Message]) MessageHandler[Message] {
+func LinkMiddlewares[Message any](handler MessageHandleFunc[Message], middlewares ...MessageDecorator[Message]) MessageHandleFunc[Message] {
 	n := len(middlewares)
 	for i := n - 1; 0 <= i; i-- {
 		decorator := middlewares[i]
@@ -50,14 +60,16 @@ func LinkMiddlewares[Message any](handler MessageHandler[Message], middlewares .
 
 //
 
-type SubjectFactory[Subject constraints.Ordered, Message any] func(Message) (Subject, error)
+type SubjectFactory[Message any] func(Message) (string, error)
 
-func NewMessageMux[Subject constraints.Ordered, Message any](getSubject SubjectFactory[Subject, Message], logger Logger) *MessageMux[Subject, Message] {
+func NewMessageMux[Subject constraints.Ordered, Message any](getSubject SubjectFactory[Message], logger Logger) *MessageMux[Subject, Message] {
 	return &MessageMux[Subject, Message]{
-		logger:      logger,
-		getSubject:  getSubject,
-		handlers:    make(map[Subject]MessageHandler[Message]),
-		middlewares: make([]MessageDecorator[Message], 0),
+		logger:         logger,
+		isRoot:         true,
+		groupDelimiter: "/",
+		getSubject:     getSubject,
+		handlers:       make(map[string]MessageHandler[Message]),
+		middlewares:    make([]MessageDecorator[Message], 0),
 	}
 }
 
@@ -69,18 +81,22 @@ type MessageMux[Subject constraints.Ordered, Message any] struct {
 	mu     sync.RWMutex
 	logger Logger
 
+	isRoot         bool
+	groupName      string
+	groupDelimiter string
+
 	// getSubject 是為了避免 generic type 呼叫 method 所造成的效能降低
 	// 同時可以因應不同情境, 改變取得 subject 的規則
 	//
 	// https://www.youtube.com/watch?v=D1hI55EcBB4&t=20260s
 	//
 	// https://hackmd.io/@fieliapm/BkHvJjYq3#/5/2
-	getSubject  SubjectFactory[Subject, Message]
-	handlers    map[Subject]MessageHandler[Message]
+	getSubject  SubjectFactory[Message]
+	handlers    map[string]MessageHandler[Message]
 	middlewares []MessageDecorator[Message]
 
-	notFoundHandler MessageHandler[Message]
-	defaultHandler  MessageHandler[Message]
+	notFoundHandler MessageHandleFunc[Message]
+	defaultHandler  MessageHandleFunc[Message]
 }
 
 func (mux *MessageMux[Subject, Message]) handle(message Message) (err error) {
@@ -89,38 +105,55 @@ func (mux *MessageMux[Subject, Message]) handle(message Message) (err error) {
 	subject, err := mux.getSubject(message)
 	if err != nil {
 		Err := ErrorWrapWithMessage(err, "Failed to parse subject from the message")
-		logger.Error("%v", Err)
+		if mux.isRoot {
+			logger.Error("%v", Err)
+		}
 		return Err
 	}
-	logger.Info("receive subject=%v", subject)
+	if mux.isRoot {
+		logger.Info("receive subject=%v", subject)
+	}
 
 	defer func() {
 		if err != nil {
-			logger.Error("hande subject=%v fail", subject)
+			if mux.isRoot {
+				logger.Error("hande subject=%v fail", subject)
+			}
 			return
 		}
-		logger.Info("hande subject=%v success", subject)
+		if mux.isRoot {
+			logger.Info("hande subject=%v success", subject)
+		}
 	}()
 
-	fn, ok := mux.handlers[subject]
-	if !ok {
-		if mux.defaultHandler != nil {
-			return mux.defaultHandler.LinkMiddlewares(mux.middlewares...)(message)
-		}
+	handler, ok := mux.handlers[subject]
+	if ok {
+		return LinkMiddlewares(handler.HandleMessage, mux.middlewares...)(message)
+	}
 
-		if mux.notFoundHandler == nil {
-			return ErrNotFound
-		}
+	if mux.defaultHandler != nil {
+		return LinkMiddlewares(mux.defaultHandler, mux.middlewares...)(message)
+	}
 
+	if mux.notFoundHandler != nil {
 		return mux.notFoundHandler(message)
 	}
-	return fn.LinkMiddlewares(mux.middlewares...)(message)
+
+	return ErrNotFound
 }
 
-func (mux *MessageMux[Subject, Message]) Subjects() (result []Subject) {
-	for subject := range mux.handlers {
-		result = append(result, subject)
+func (mux *MessageMux[Subject, Message]) Subjects() (result []string) {
+	for subject, handler := range mux.handlers {
+		m, ok := handler.(*MessageMux[Subject, Message])
+		if ok {
+			result = append(result, m.Subjects()...)
+			continue
+		}
+		result = append(result, mux.groupName+subject)
 	}
+	sort.SliceStable(result, func(i, j int) bool {
+		return result[i] < result[j]
+	})
 	return
 }
 
@@ -134,31 +167,18 @@ func (mux *MessageMux[Subject, Message]) HandleMessage(message Message) error {
 	return mux.handle(message)
 }
 
-func (mux *MessageMux[Subject, Message]) RegisterHandler(subject Subject, fn MessageHandler[Message]) *MessageMux[Subject, Message] {
+func (mux *MessageMux[Subject, Message]) RegisterHandler(s Subject, h MessageHandleFunc[Message]) *MessageMux[Subject, Message] {
 	mux.mu.Lock()
 	defer mux.mu.Unlock()
 
+	subject := CleanSubject(s) + mux.groupDelimiter
 	_, ok := mux.handlers[subject]
 	if ok {
 		panic(fmt.Sprintf("mux have duplicate subject=%v", subject))
 	}
 
-	mux.handlers[subject] = fn
+	mux.handlers[subject] = h
 	return mux
-}
-
-func (mux *MessageMux[Subject, Message]) ReRegisterHandler(subject Subject, fn MessageHandler[Message]) *MessageMux[Subject, Message] {
-	mux.mu.Lock()
-	defer mux.mu.Unlock()
-
-	mux.handlers[subject] = fn
-	return mux
-}
-
-func (mux *MessageMux[Subject, Message]) RemoveHandler(subject Subject) {
-	mux.mu.Lock()
-	defer mux.mu.Unlock()
-	delete(mux.handlers, subject)
 }
 
 func (mux *MessageMux[Subject, Message]) AddMiddleware(middlewares ...MessageDecorator[Message]) *MessageMux[Subject, Message] {
@@ -168,7 +188,7 @@ func (mux *MessageMux[Subject, Message]) AddMiddleware(middlewares ...MessageDec
 	return mux
 }
 
-func (mux *MessageMux[Subject, Message]) AddPreMiddleware(handlers ...MessageHandler[Message]) *MessageMux[Subject, Message] {
+func (mux *MessageMux[Subject, Message]) AddPreMiddleware(handlers ...MessageHandleFunc[Message]) *MessageMux[Subject, Message] {
 	mux.mu.Lock()
 	defer mux.mu.Unlock()
 	for _, handler := range handlers {
@@ -177,7 +197,7 @@ func (mux *MessageMux[Subject, Message]) AddPreMiddleware(handlers ...MessageHan
 	return mux
 }
 
-func (mux *MessageMux[Subject, Message]) AddPostMiddleware(handlers ...MessageHandler[Message]) *MessageMux[Subject, Message] {
+func (mux *MessageMux[Subject, Message]) AddPostMiddleware(handlers ...MessageHandleFunc[Message]) *MessageMux[Subject, Message] {
 	mux.mu.Lock()
 	defer mux.mu.Unlock()
 	for _, handler := range handlers {
@@ -186,16 +206,49 @@ func (mux *MessageMux[Subject, Message]) AddPostMiddleware(handlers ...MessageHa
 	return mux
 }
 
-func (mux *MessageMux[Subject, Message]) SetNotFoundHandler(fn MessageHandler[Message]) *MessageMux[Subject, Message] {
+func (mux *MessageMux[Subject, Message]) SetNotFoundHandler(h MessageHandleFunc[Message]) *MessageMux[Subject, Message] {
 	mux.mu.Lock()
 	defer mux.mu.Unlock()
-	mux.notFoundHandler = fn
+	mux.notFoundHandler = h
 	return mux
 }
 
-func (mux *MessageMux[Subject, Message]) SetDefaultHandler(fn MessageHandler[Message]) *MessageMux[Subject, Message] {
+func (mux *MessageMux[Subject, Message]) SetDefaultHandler(h MessageHandleFunc[Message]) *MessageMux[Subject, Message] {
 	mux.mu.Lock()
 	defer mux.mu.Unlock()
-	mux.defaultHandler = fn
+	mux.defaultHandler = h
 	return mux
+}
+
+func (mux *MessageMux[Subject, Message]) SetGroupDelimiter(delimiter string) {
+	mux.mu.Lock()
+	defer mux.mu.Unlock()
+	mux.groupDelimiter = delimiter
+}
+
+func (mux *MessageMux[Subject, Message]) Group(s Subject) *MessageMux[Subject, Message] {
+	mux.mu.Lock()
+	defer mux.mu.Unlock()
+
+	childName := CleanSubject(s) + mux.groupDelimiter
+	groupName := mux.groupName + childName
+
+	_, ok := mux.handlers[childName]
+	if ok {
+		panic(fmt.Sprintf("mux have duplicate group=%v", groupName))
+	}
+
+	groupMux := NewMessageMux[Subject, Message](mux.getSubject, mux.logger)
+	groupMux.isRoot = false
+	groupMux.groupName = groupName
+	groupMux.groupDelimiter = mux.groupDelimiter
+	// groupMux.defaultHandler = func(message Message) error { return nil }
+
+	mux.handlers[childName] = groupMux
+	return groupMux
+}
+
+func CleanSubject[Subject constraints.Ordered](s Subject) string {
+	subject := fmt.Sprintf("%v", s)
+	return strings.Trim(strings.TrimSpace(subject), `/.\`)
 }

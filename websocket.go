@@ -74,7 +74,7 @@ func (sess *GorillaSession[S, M]) listen(crypto bool) (err error) {
 	return nil
 }
 
-func (sess *GorillaSession[S, M]) ReceiveWithHandler(crypto bool, handler MessageHandler[M]) error {
+func (sess *GorillaSession[S, M]) ReceiveWithHandler(crypto bool, handler MessageHandleFunc[M]) error {
 	logger := sess.logger
 
 	if handler == nil {
@@ -158,7 +158,7 @@ func (sess *GorillaSession[S, M]) IsStop() bool {
 	return sess.isStop.Load()
 }
 
-func (sess *GorillaSession[S, M]) EnableSendPingWaitPong(pongSubject S, handler MessageHandler[M], pongWaitSecond int, ping func(*GorillaSession[S, M]) error) {
+func (sess *GorillaSession[S, M]) EnableSendPingWaitPong(pongSubject S, handler MessageHandleFunc[M], pongWaitSecond int, ping func(*GorillaSession[S, M]) error) {
 	sendPing := func() error {
 		return ping(sess)
 	}
@@ -175,7 +175,7 @@ func (sess *GorillaSession[S, M]) EnableSendPingWaitPong(pongSubject S, handler 
 	}
 }
 
-func (sess *GorillaSession[S, M]) EnableWaitPingSendPong(pingSubject S, handler MessageHandler[M], pingWaitSecond int, pong func(*GorillaSession[S, M]) error) {
+func (sess *GorillaSession[S, M]) EnableWaitPingSendPong(pingSubject S, handler MessageHandleFunc[M], pingWaitSecond int, pong func(*GorillaSession[S, M]) error) {
 	waitPing := make(chan error, 1)
 
 	sendPong := func() error {
