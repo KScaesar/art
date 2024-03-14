@@ -33,6 +33,10 @@ func (handler MessageHandler[Message]) PostMiddleware() MessageDecorator[Message
 	}
 }
 
+func (handler MessageHandler[Message]) LinkMiddlewares(middlewares ...MessageDecorator[Message]) MessageHandler[Message] {
+	return LinkMiddlewares(handler, middlewares...)
+}
+
 type MessageDecorator[Message any] func(next MessageHandler[Message]) MessageHandler[Message]
 
 func LinkMiddlewares[Message any](handler MessageHandler[Message], middlewares ...MessageDecorator[Message]) MessageHandler[Message] {
@@ -101,7 +105,7 @@ func (mux *MessageMux[Subject, Message]) handle(message Message) (err error) {
 	fn, ok := mux.handlers[subject]
 	if !ok {
 		if mux.defaultHandler != nil {
-			return LinkMiddlewares(mux.defaultHandler)(message)
+			return mux.defaultHandler.LinkMiddlewares(mux.middlewares...)(message)
 		}
 
 		if mux.notFoundHandler == nil {
@@ -110,7 +114,7 @@ func (mux *MessageMux[Subject, Message]) handle(message Message) (err error) {
 
 		return mux.notFoundHandler(message)
 	}
-	return LinkMiddlewares(fn)(message)
+	return fn.LinkMiddlewares(mux.middlewares...)(message)
 }
 
 func (mux *MessageMux[Subject, Message]) Subjects() (result []Subject) {
