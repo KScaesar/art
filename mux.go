@@ -7,33 +7,33 @@ import (
 	"golang.org/x/exp/constraints"
 )
 
-type MessageHandler[Message any] func(dto Message) error
+type MessageHandler[Message any] func(message Message) error
+
+func (handler MessageHandler[Message]) PreMiddleware() MessageDecorator[Message] {
+	return func(next MessageHandler[Message]) MessageHandler[Message] {
+		return func(message Message) error {
+			err := handler(message)
+			if err != nil {
+				return err
+			}
+			return next(message)
+		}
+	}
+}
+
+func (handler MessageHandler[Message]) PostMiddleware() MessageDecorator[Message] {
+	return func(next MessageHandler[Message]) MessageHandler[Message] {
+		return func(message Message) error {
+			err := next(message)
+			if err != nil {
+				return err
+			}
+			return handler(message)
+		}
+	}
+}
 
 type MessageDecorator[Message any] func(next MessageHandler[Message]) MessageHandler[Message]
-
-func PreMiddleware[Message any](handler MessageHandler[Message]) MessageDecorator[Message] {
-	return func(next MessageHandler[Message]) MessageHandler[Message] {
-		return func(dto Message) error {
-			err := handler(dto)
-			if err != nil {
-				return err
-			}
-			return next(dto)
-		}
-	}
-}
-
-func PostMiddleware[Message any](handler MessageHandler[Message]) MessageDecorator[Message] {
-	return func(next MessageHandler[Message]) MessageHandler[Message] {
-		return func(dto Message) error {
-			err := next(dto)
-			if err != nil {
-				return err
-			}
-			return handler(dto)
-		}
-	}
-}
 
 func LinkMiddlewares[Message any](handler MessageHandler[Message], middlewares ...MessageDecorator[Message]) MessageHandler[Message] {
 	n := len(middlewares)
@@ -76,12 +76,13 @@ type MessageMux[Subject constraints.Ordered, Message any] struct {
 	middlewares []MessageDecorator[Message]
 
 	notFoundHandler MessageHandler[Message]
+	defaultHandler  MessageHandler[Message]
 }
 
-func (mux *MessageMux[Subject, Message]) handle(dto Message) (err error) {
+func (mux *MessageMux[Subject, Message]) handle(message Message) (err error) {
 	logger := mux.logger
 
-	subject, err := mux.getSubject(dto)
+	subject, err := mux.getSubject(message)
 	if err != nil {
 		Err := ErrorWrapWithMessage(err, "Failed to parse subject from the message")
 		logger.Error("%v", Err)
@@ -99,12 +100,17 @@ func (mux *MessageMux[Subject, Message]) handle(dto Message) (err error) {
 
 	fn, ok := mux.handlers[subject]
 	if !ok {
+		if mux.defaultHandler != nil {
+			return LinkMiddlewares(mux.defaultHandler)(message)
+		}
+
 		if mux.notFoundHandler == nil {
 			return ErrNotFound
 		}
-		return mux.notFoundHandler(dto)
+
+		return mux.notFoundHandler(message)
 	}
-	return LinkMiddlewares(fn)(dto)
+	return LinkMiddlewares(fn)(message)
 }
 
 func (mux *MessageMux[Subject, Message]) Subjects() (result []Subject) {
@@ -114,14 +120,14 @@ func (mux *MessageMux[Subject, Message]) Subjects() (result []Subject) {
 	return
 }
 
-func (mux *MessageMux[Subject, Message]) HandleMessageWithoutMutex(dto Message) error {
-	return mux.handle(dto)
+func (mux *MessageMux[Subject, Message]) HandleMessageWithoutMutex(message Message) error {
+	return mux.handle(message)
 }
 
-func (mux *MessageMux[Subject, Message]) HandleMessage(dto Message) error {
+func (mux *MessageMux[Subject, Message]) HandleMessage(message Message) error {
 	mux.mu.RLock()
 	defer mux.mu.RUnlock()
-	return mux.handle(dto)
+	return mux.handle(message)
 }
 
 func (mux *MessageMux[Subject, Message]) RegisterHandler(subject Subject, fn MessageHandler[Message]) *MessageMux[Subject, Message] {
@@ -158,9 +164,34 @@ func (mux *MessageMux[Subject, Message]) AddMiddleware(middlewares ...MessageDec
 	return mux
 }
 
+func (mux *MessageMux[Subject, Message]) AddPreMiddleware(handlers ...MessageHandler[Message]) *MessageMux[Subject, Message] {
+	mux.mu.Lock()
+	defer mux.mu.Unlock()
+	for _, handler := range handlers {
+		mux.middlewares = append(mux.middlewares, handler.PreMiddleware())
+	}
+	return mux
+}
+
+func (mux *MessageMux[Subject, Message]) AddPostMiddleware(handlers ...MessageHandler[Message]) *MessageMux[Subject, Message] {
+	mux.mu.Lock()
+	defer mux.mu.Unlock()
+	for _, handler := range handlers {
+		mux.middlewares = append(mux.middlewares, handler.PostMiddleware())
+	}
+	return mux
+}
+
 func (mux *MessageMux[Subject, Message]) SetNotFoundHandler(fn MessageHandler[Message]) *MessageMux[Subject, Message] {
 	mux.mu.Lock()
 	defer mux.mu.Unlock()
 	mux.notFoundHandler = fn
+	return mux
+}
+
+func (mux *MessageMux[Subject, Message]) SetDefaultHandler(fn MessageHandler[Message]) *MessageMux[Subject, Message] {
+	mux.mu.Lock()
+	defer mux.mu.Unlock()
+	mux.defaultHandler = fn
 	return mux
 }

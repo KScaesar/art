@@ -165,8 +165,8 @@ func (sess *GorillaSession[S, M]) EnableSendPingWaitPong(pongSubject S, handler 
 
 	waitPong := make(chan error, 1)
 
-	sess.mux.RegisterHandler(pongSubject, func(dto M) error {
-		waitPong <- handler(dto)
+	sess.mux.RegisterHandler(pongSubject, func(message M) error {
+		waitPong <- handler(message)
 		return nil
 	})
 
@@ -175,15 +175,15 @@ func (sess *GorillaSession[S, M]) EnableSendPingWaitPong(pongSubject S, handler 
 	}
 }
 
-func (sess *GorillaSession[S, M]) EnableWaitPingSendPong(pingSubject S, handler MessageHandler[M], pingWaitSecond int, pong func(client *GorillaSession[S, M]) error) {
+func (sess *GorillaSession[S, M]) EnableWaitPingSendPong(pingSubject S, handler MessageHandler[M], pingWaitSecond int, pong func(*GorillaSession[S, M]) error) {
 	waitPing := make(chan error, 1)
 
 	sendPong := func() error {
 		return pong(sess)
 	}
 
-	sess.mux.RegisterHandler(pingSubject, func(dto M) error {
-		waitPing <- handler(dto)
+	sess.mux.RegisterHandler(pingSubject, func(message M) error {
+		waitPing <- handler(message)
 		return nil
 	})
 
