@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -21,7 +22,7 @@ func TestMessageMux_handle(t *testing.T) {
 	recorder := &bytes.Buffer{}
 
 	getSubject := func(message *redisMessage) (string, error) {
-		return message.channel, nil
+		return message.channel + "/", nil
 	}
 
 	mux := NewMessageMux[string, *redisMessage](getSubject, DefaultLogger()).
@@ -143,27 +144,32 @@ hello_world_decoratorA
 }
 
 func TestMessageMux_Transform(t *testing.T) {
+	recorder := &strings.Builder{}
+	recorder.WriteString("\n")
+	record := func(message *testcaseTransformMessage) error {
+		recorder.WriteString(message.body)
+		recorder.WriteString("\n")
+		return nil
+	}
+
 	newSubject := func(msg *testcaseTransformMessage) (string, error) {
 		return strconv.Itoa(msg.level0TypeId) + "/", nil
 	}
-	recorder := &strings.Builder{}
-	recorder.WriteString("\n")
-
 	mux := NewMessageMux[int, *testcaseTransformMessage](newSubject, NewLogger(true, LogLevelInfo))
 
-	mux.RegisterHandler(2, writeSubject(recorder))
+	mux.RegisterHandler(2, record)
 
 	mux.Group(3).Transform(testcaseTransformLevel1).
-		RegisterHandler(1, writeSubject(recorder)).
-		RegisterHandler(2, writeSubject(recorder)).
+		RegisterHandler(1, record).
+		RegisterHandler(2, record).
 		Group(5).Transform(testcaseTransformLevel2).
 		AddPreMiddleware(
 			func(message *testcaseTransformMessage) error {
 				message.body = "^" + message.body + "^"
 				return nil
 			}).
-		RegisterHandler(1, writeSubject(recorder)).
-		RegisterHandler(2, writeSubject(recorder))
+		RegisterHandler(1, record).
+		RegisterHandler(2, record)
 
 	mux.Group(4).Transform(testcaseTransformLevel1).
 		AddPreMiddleware(
@@ -171,9 +177,9 @@ func TestMessageMux_Transform(t *testing.T) {
 				message.body = "_" + message.body + "_"
 				return nil
 			}).
-		RegisterHandler(1, writeSubject(recorder)).
-		RegisterHandler(2, writeSubject(recorder)).
-		RegisterHandler(4, writeSubject(recorder))
+		RegisterHandler(1, record).
+		RegisterHandler(2, record).
+		RegisterHandler(4, record)
 
 	expectedSubjects := []string{
 		"2/",
@@ -243,10 +249,148 @@ type testcaseTransformMessage struct {
 	body         string
 }
 
-func writeSubject(w *strings.Builder) func(message *testcaseTransformMessage) error {
-	return func(message *testcaseTransformMessage) error {
-		w.WriteString(message.body)
-		w.WriteString("\n")
+func Test_parseGroupSubject(t *testing.T) {
+	groupDelimiter := "/"
+	tests := []struct {
+		name    string
+		subject string
+		want    [][]string
+	}{
+		{
+			subject: "1/2/3/",
+			want: [][]string{
+				{"1/2/3/", ""},
+				{"1/2/", "3/"},
+				{"1/", "2/3/"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := parseGroupSubject(tt.subject, groupDelimiter); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("parseGroupSubject() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMessageMux_Group(t *testing.T) {
+	type Subject string
+	type testcaseGroupMessage struct {
+		subject Subject
+		body    string
+	}
+
+	recorder := &strings.Builder{}
+	recorder.WriteString("\n")
+	record := func(message *testcaseGroupMessage) error {
+		recorder.WriteString(message.body)
+		recorder.WriteString("\n")
 		return nil
+	}
+
+	newSubject := func(msg *testcaseGroupMessage) (string, error) { return string(msg.subject), nil }
+	mux := NewMessageMux[Subject, *testcaseGroupMessage](newSubject, NewLogger(true, LogLevelInfo))
+	mux.SetGroupDelimiter("/")
+
+	mux.RegisterHandler("topic1", record)
+
+	mux.Group("/topic2").
+		RegisterHandler("/orders", record).
+		RegisterHandler("/users", record)
+
+	mux.Group("topic3/").
+		RegisterHandler("created/orders/", record).
+		RegisterHandler("login/users/", record).
+		RegisterHandler("upgraded.users/", record)
+
+	topic4 := mux.Group("/topic4/").
+		RegisterHandler("game1", record).
+		RegisterHandler("/game2/kindA/", record)
+	topic4_game3 := topic4.Group("game3").
+		RegisterHandler("kindX", record).
+		RegisterHandler("kindY", record)
+	topic4_game3.Group("v2").
+		RegisterHandler("kindX", record)
+	topic4_game3.Group("v3").
+		RegisterHandler("kindY", record)
+
+	mux.RegisterHandler("topic5/game1/", record)
+	mux.RegisterHandler("topic5/game2/kindA", record)
+	mux.RegisterHandler("//topic5/game3/kindX/", record)
+	mux.RegisterHandler("topic5/game3/kindY/", record)
+	mux.RegisterHandler("topic5/game3/v2/kindX//", record)
+	mux.RegisterHandler("topic5/game3/v3/kindY", record)
+
+	expectedSubjects := []string{
+		"topic1/",
+		"topic2/orders/", "topic2/users/",
+		"topic3/created/orders/", "topic3/login/users/", "topic3/upgraded.users/",
+		"topic4/game1/", "topic4/game2/kindA/", "topic4/game3/kindX/", "topic4/game3/kindY/", "topic4/game3/v2/kindX/", "topic4/game3/v3/kindY/",
+		"topic5/game1/", "topic5/game2/kindA/", "topic5/game3/kindX/", "topic5/game3/kindY/", "topic5/game3/v2/kindX/", "topic5/game3/v3/kindY/",
+	}
+
+	gotSubjects := mux.Subjects()
+	for i, gotSubject := range gotSubjects {
+		if gotSubject != expectedSubjects[i] {
+			t.Errorf("unexpected output: got %s, want %s", gotSubject, expectedSubjects[i])
+		}
+	}
+
+	subjects := []Subject{
+		"topic3/upgraded.users/",
+		"topic4/game3/kindX/",
+		"topic5/game3/kindY/",
+		"topic4/game3/kindY/",
+		"topic2/users/",
+		"topic3/created/orders/",
+		"topic5/game3/v2/kindX/",
+		"topic5/game2/kindA/",
+		"topic3/login/users/",
+		"topic1/",
+		"topic4/game3/v3/kindY/",
+		"topic5/game3/kindX/",
+		"topic5/game1/",
+		"topic4/game1/",
+		"topic4/game3/v2/kindX/",
+		"topic2/orders/",
+		"topic4/game2/kindA/",
+	}
+
+	for _, subject := range subjects {
+		message := &testcaseGroupMessage{
+			subject: subject,
+			body:    string(subject),
+		}
+		err := mux.HandleMessage(message)
+		if err != nil {
+			t.Errorf("unexpected error: got %v", err)
+			break
+		}
+	}
+
+	expectedRecord := `
+topic3/upgraded.users/
+topic4/game3/kindX/
+topic5/game3/kindY/
+topic4/game3/kindY/
+topic2/users/
+topic3/created/orders/
+topic5/game3/v2/kindX/
+topic5/game2/kindA/
+topic3/login/users/
+topic1/
+topic4/game3/v3/kindY/
+topic5/game3/kindX/
+topic5/game1/
+topic4/game1/
+topic4/game3/v2/kindX/
+topic2/orders/
+topic4/game2/kindA/
+`
+
+	gotRecord := recorder.String()
+	if gotRecord != expectedRecord {
+		t.Errorf("unexpected output: got %s, want %s", gotRecord, expectedRecord)
 	}
 }

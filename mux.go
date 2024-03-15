@@ -82,7 +82,8 @@ type MessageMux[Subject constraints.Ordered, Message any] struct {
 
 	parentGroupName string
 	groupDelimiter  string
-	transform       func(old Message) (fresh Message, err error)
+	// groups          []*MessageMux[Subject, Message]
+	transform func(old Message) (fresh Message, err error)
 
 	// getSubject 是為了避免 generic type 呼叫 method 所造成的效能降低
 	// 同時可以因應不同情境, 改變取得 subject 的規則
@@ -101,6 +102,9 @@ type MessageMux[Subject constraints.Ordered, Message any] struct {
 func (mux *MessageMux[Subject, Message]) Transform(transform func(old Message) (fresh Message, err error)) *MessageMux[Subject, Message] {
 	mux.mu.RLock()
 	defer mux.mu.RUnlock()
+	if mux.transform != nil {
+		panic("mux transform had set")
+	}
 	mux.transform = transform
 	return mux
 }
@@ -138,7 +142,7 @@ func (mux *MessageMux[Subject, Message]) handle(message Message) (err error) {
 		mux.logger.Debug("hande subject=%v success", subject)
 	}()
 
-	handler, ok := mux.handlers[subject]
+	handler, ok := searchHandler(mux, subject)
 	if ok {
 		return LinkMiddlewares(handler.HandleMessage, mux.middlewares...)(message)
 	}
@@ -152,6 +156,47 @@ func (mux *MessageMux[Subject, Message]) handle(message Message) (err error) {
 	}
 
 	return ErrorWrapWithMessage(ErrNotFound, "mux subject")
+}
+
+func searchHandler[Subject constraints.Ordered, Message any](mux *MessageMux[Subject, Message], subject string) (MessageHandler[Message], bool) {
+	groupSubjects := parseGroupSubject(subject, mux.groupDelimiter)
+	for _, groupSubject := range groupSubjects {
+		prefix := groupSubject[0]
+		postfix := groupSubject[1]
+		handler, ok := mux.handlers[prefix]
+		if !ok {
+			continue
+		}
+
+		m, ok := handler.(*MessageMux[Subject, Message])
+		if ok {
+			if m.transform == nil {
+				return searchHandler(m, postfix)
+			}
+			return searchHandler(m, prefix)
+		}
+		return handler, true
+	}
+	return nil, false
+}
+
+// parseGroupSubject 將給定的主題字串按照指定的分組分隔符進行解析，並返回所有可能的分組組合。
+// 例如， subject = "1/2/3/" 和 groupDelimiter = "/"，
+// 函數將返回以下所有可能的分組組合：
+// - ["1/2/3/", ""]
+// - ["1/2/", "3/"]
+// - ["1/", "2/3/"]
+func parseGroupSubject(subject string, groupDelimiter string) [][]string {
+	var result [][]string
+	cursor := len(subject) - 1
+	for {
+		result = append(result, []string{subject[:cursor+1], subject[cursor+1:]})
+		cursor = strings.LastIndexByte(subject[:cursor], groupDelimiter[0])
+		if cursor == -1 {
+			break
+		}
+	}
+	return result
 }
 
 func (mux *MessageMux[Subject, Message]) Subjects() (result []string) {
