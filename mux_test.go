@@ -142,54 +142,44 @@ hello_world_decoratorA
 	}
 }
 
-func TestMessageMux_Group(t *testing.T) {
-	newSubject := func(msg *testGroupMessage) (string, error) {
-		return strconv.Itoa(msg.typeId) + "/", nil
+func TestMessageMux_Transform(t *testing.T) {
+	newSubject := func(msg *testcaseTransformMessage) (string, error) {
+		return strconv.Itoa(msg.level0TypeId) + "/", nil
 	}
 	recorder := &strings.Builder{}
 	recorder.WriteString("\n")
 
-	mux := NewMessageMux[int, *testGroupMessage](newSubject, DefaultLogger())
-	mux.RegisterHandler(1, writeSubject(recorder))
+	mux := NewMessageMux[int, *testcaseTransformMessage](newSubject, NewLogger(true, LogLevelInfo))
+
 	mux.RegisterHandler(2, writeSubject(recorder))
 
-	group3 := mux.Group(3).
-		SetDefaultHandler(writeSubject(recorder)).
+	mux.Group(3).Transform(testcaseTransformLevel1).
+		RegisterHandler(1, writeSubject(recorder)).
+		RegisterHandler(2, writeSubject(recorder)).
+		Group(5).Transform(testcaseTransformLevel2).
 		AddPreMiddleware(
-			func(message *testGroupMessage) error {
-				subTypeId, _ := strconv.Atoi(message.body)
-				message.body = strconv.Itoa(message.typeId) + "-" + message.body
-				message.typeId = subTypeId
-				return nil
-			},
-			func(message *testGroupMessage) error {
+			func(message *testcaseTransformMessage) error {
 				message.body = "^" + message.body + "^"
 				return nil
-			})
-	group3.RegisterHandler(1, writeSubject(recorder))
-	group3.RegisterHandler(2, writeSubject(recorder))
+			}).
+		RegisterHandler(1, writeSubject(recorder)).
+		RegisterHandler(2, writeSubject(recorder))
 
-	group4 := mux.Group(4).
-		SetDefaultHandler(writeSubject(recorder)).
+	mux.Group(4).Transform(testcaseTransformLevel1).
 		AddPreMiddleware(
-			func(message *testGroupMessage) error {
-				message.body = "*" + message.body + "*"
+			func(message *testcaseTransformMessage) error {
+				message.body = "_" + message.body + "_"
 				return nil
-			})
-	group4.RegisterHandler(1, writeSubject(recorder))
-	group4.RegisterHandler(2, writeSubject(recorder))
-
-	group5 := group3.Group(5).
-		SetDefaultHandler(writeSubject(recorder))
-	group5.RegisterHandler(1, writeSubject(recorder))
-	group5.RegisterHandler(2, writeSubject(recorder))
+			}).
+		RegisterHandler(1, writeSubject(recorder)).
+		RegisterHandler(2, writeSubject(recorder)).
+		RegisterHandler(4, writeSubject(recorder))
 
 	expectedSubjects := []string{
-		"1/",
 		"2/",
 		"3/1/", "3/2/",
 		"3/5/1/", "3/5/2/",
-		"4/1/", "4/2/",
+		"4/1/", "4/2/", "4/4/",
 	}
 
 	gotSubjects := mux.Subjects()
@@ -197,17 +187,15 @@ func TestMessageMux_Group(t *testing.T) {
 		t.Errorf("unexpected output: got %s, want %s", gotSubjects, expectedSubjects)
 	}
 
-	messages := []*testGroupMessage{
-		{1, "1"},
-		{2, "2"},
-		{4, "4"},
-
-		{3, "1"},
-		{3, "2"},
+	messages := []*testcaseTransformMessage{
+		{2, -1, "msg 2/"},
+		{3, 1, "msg 3/1/"},
+		{3, 5, "1"},
+		{4, 2, "msg 4/2/"},
 	}
 
 	for _, message := range messages {
-		err := mux.HandleMessageWithoutMutex(message)
+		err := mux.HandleMessage(message)
 		if err != nil {
 			t.Errorf("unexpected error: got %v", err)
 			break
@@ -215,11 +203,10 @@ func TestMessageMux_Group(t *testing.T) {
 	}
 
 	expectedRecord := `
-1
-2
-*4*
-^3-1^
-^3-2^
+msg 2/
+msg 3/1/
+^TransformLevel2 5/1/^
+_msg 4/2/_
 `
 
 	gotRecord := recorder.String()
@@ -229,13 +216,35 @@ func TestMessageMux_Group(t *testing.T) {
 
 }
 
-type testGroupMessage struct {
-	typeId int
-	body   string
+func testcaseTransformLevel1(old *testcaseTransformMessage) (fresh *testcaseTransformMessage, err error) {
+	return &testcaseTransformMessage{
+		level0TypeId: old.level1TypeId,
+		level1TypeId: 0,
+		body:         old.body,
+	}, nil
 }
 
-func writeSubject(w *strings.Builder) func(message *testGroupMessage) error {
-	return func(message *testGroupMessage) error {
+func testcaseTransformLevel2(old *testcaseTransformMessage) (fresh *testcaseTransformMessage, err error) {
+	level2TypeId, err := strconv.Atoi(old.body)
+	if err != nil {
+		return nil, err
+	}
+	originalLevel1TypeId := old.level0TypeId
+	return &testcaseTransformMessage{
+		level0TypeId: level2TypeId,
+		level1TypeId: 0,
+		body:         fmt.Sprintf("TransformLevel2 %v/%v/", originalLevel1TypeId, level2TypeId),
+	}, nil
+}
+
+type testcaseTransformMessage struct {
+	level0TypeId int
+	level1TypeId int
+	body         string
+}
+
+func writeSubject(w *strings.Builder) func(message *testcaseTransformMessage) error {
+	return func(message *testcaseTransformMessage) error {
 		w.WriteString(message.body)
 		w.WriteString("\n")
 		return nil

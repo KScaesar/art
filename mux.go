@@ -65,7 +65,6 @@ type SubjectFactory[Message any] func(Message) (string, error)
 func NewMessageMux[Subject constraints.Ordered, Message any](getSubject SubjectFactory[Message], logger Logger) *MessageMux[Subject, Message] {
 	return &MessageMux[Subject, Message]{
 		logger:         logger,
-		isRoot:         true,
 		groupDelimiter: "/",
 		getSubject:     getSubject,
 		handlers:       make(map[string]MessageHandler[Message]),
@@ -81,9 +80,9 @@ type MessageMux[Subject constraints.Ordered, Message any] struct {
 	mu     sync.RWMutex
 	logger Logger
 
-	isRoot         bool
-	groupName      string
-	groupDelimiter string
+	parentGroupName string
+	groupDelimiter  string
+	transform       func(old Message) (fresh Message, err error)
 
 	// getSubject 是為了避免 generic type 呼叫 method 所造成的效能降低
 	// 同時可以因應不同情境, 改變取得 subject 的規則
@@ -99,31 +98,44 @@ type MessageMux[Subject constraints.Ordered, Message any] struct {
 	defaultHandler  MessageHandleFunc[Message]
 }
 
-func (mux *MessageMux[Subject, Message]) handle(message Message) (err error) {
-	logger := mux.logger
+func (mux *MessageMux[Subject, Message]) Transform(transform func(old Message) (fresh Message, err error)) *MessageMux[Subject, Message] {
+	mux.mu.RLock()
+	defer mux.mu.RUnlock()
+	mux.transform = transform
+	return mux
+}
 
+func (mux *MessageMux[Subject, Message]) HandleMessage(message Message) error {
+	mux.mu.RLock()
+	defer mux.mu.RUnlock()
+
+	if mux.transform == nil {
+		return mux.handle(message)
+	}
+
+	old := message
+	fresh, err := mux.transform(old)
+	if err != nil {
+		return err
+	}
+	return mux.handle(fresh)
+}
+
+func (mux *MessageMux[Subject, Message]) handle(message Message) (err error) {
 	subject, err := mux.getSubject(message)
 	if err != nil {
 		Err := ErrorWrapWithMessage(err, "Failed to parse subject from the message")
-		if mux.isRoot {
-			logger.Error("%v", Err)
-		}
+		mux.logger.Error("%v", Err)
 		return Err
 	}
-	if mux.isRoot {
-		logger.Info("receive subject=%v", subject)
-	}
+	mux.logger.Debug("receive subject=%v", subject)
 
 	defer func() {
 		if err != nil {
-			if mux.isRoot {
-				logger.Error("hande subject=%v fail", subject)
-			}
+			mux.logger.Error("hande subject=%v fail", subject)
 			return
 		}
-		if mux.isRoot {
-			logger.Info("hande subject=%v success", subject)
-		}
+		mux.logger.Debug("hande subject=%v success", subject)
 	}()
 
 	handler, ok := mux.handlers[subject]
@@ -139,32 +151,28 @@ func (mux *MessageMux[Subject, Message]) handle(message Message) (err error) {
 		return mux.notFoundHandler(message)
 	}
 
-	return ErrNotFound
+	return ErrorWrapWithMessage(ErrNotFound, "mux subject")
 }
 
 func (mux *MessageMux[Subject, Message]) Subjects() (result []string) {
+	mux.mu.RLock()
+	defer mux.mu.RUnlock()
+	return mux.subjects()
+}
+
+func (mux *MessageMux[Subject, Message]) subjects() (result []string) {
 	for subject, handler := range mux.handlers {
 		m, ok := handler.(*MessageMux[Subject, Message])
 		if ok {
-			result = append(result, m.Subjects()...)
+			result = append(result, m.subjects()...)
 			continue
 		}
-		result = append(result, mux.groupName+subject)
+		result = append(result, mux.parentGroupName+subject)
 	}
 	sort.SliceStable(result, func(i, j int) bool {
 		return result[i] < result[j]
 	})
 	return
-}
-
-func (mux *MessageMux[Subject, Message]) HandleMessageWithoutMutex(message Message) error {
-	return mux.handle(message)
-}
-
-func (mux *MessageMux[Subject, Message]) HandleMessage(message Message) error {
-	mux.mu.RLock()
-	defer mux.mu.RUnlock()
-	return mux.handle(message)
 }
 
 func (mux *MessageMux[Subject, Message]) RegisterHandler(s Subject, h MessageHandleFunc[Message]) *MessageMux[Subject, Message] {
@@ -220,35 +228,52 @@ func (mux *MessageMux[Subject, Message]) SetDefaultHandler(h MessageHandleFunc[M
 	return mux
 }
 
-func (mux *MessageMux[Subject, Message]) SetGroupDelimiter(delimiter string) {
+func (mux *MessageMux[Subject, Message]) SetGroupDelimiter(delimiter string) *MessageMux[Subject, Message] {
 	mux.mu.Lock()
 	defer mux.mu.Unlock()
 	mux.groupDelimiter = delimiter
+	return mux
 }
 
 func (mux *MessageMux[Subject, Message]) Group(s Subject) *MessageMux[Subject, Message] {
 	mux.mu.Lock()
 	defer mux.mu.Unlock()
 
-	childName := CleanSubject(s) + mux.groupDelimiter
-	groupName := mux.groupName + childName
-
-	_, ok := mux.handlers[childName]
+	groupName := CleanSubject(s) + mux.groupDelimiter
+	_, ok := mux.handlers[groupName]
 	if ok {
 		panic(fmt.Sprintf("mux have duplicate group=%v", groupName))
 	}
 
-	groupMux := NewMessageMux[Subject, Message](mux.getSubject, mux.logger)
-	groupMux.isRoot = false
-	groupMux.groupName = groupName
-	groupMux.groupDelimiter = mux.groupDelimiter
-	// groupMux.defaultHandler = func(message Message) error { return nil }
-
-	mux.handlers[childName] = groupMux
+	groupMux := newGroupMux(mux, groupName)
+	mux.handlers[groupName] = groupMux
 	return groupMux
 }
 
 func CleanSubject[Subject constraints.Ordered](s Subject) string {
+	actions := []func(s string) string{
+		strings.TrimSpace,
+		func(s string) string { return strings.Trim(s, `/.\`) },
+		strings.TrimSpace,
+	}
+
 	subject := fmt.Sprintf("%v", s)
-	return strings.Trim(strings.TrimSpace(subject), `/.\`)
+	for _, action := range actions {
+		subject = action(subject)
+	}
+	return subject
+}
+
+func newGroupMux[Subject constraints.Ordered, Message any](parent *MessageMux[Subject, Message], groupName string) *MessageMux[Subject, Message] {
+	return &MessageMux[Subject, Message]{
+		logger:          SilentLogger(),
+		parentGroupName: parent.parentGroupName + groupName,
+		groupDelimiter:  parent.groupDelimiter,
+		transform:       nil,
+		getSubject:      parent.getSubject,
+		handlers:        make(map[string]MessageHandler[Message]),
+		middlewares:     make([]MessageDecorator[Message], 0),
+		notFoundHandler: parent.notFoundHandler,
+		defaultHandler:  nil,
+	}
 }
