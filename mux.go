@@ -109,23 +109,19 @@ func (mux *MessageMux[Subject, Message]) Transform(transform func(old Message) (
 	return mux
 }
 
-func (mux *MessageMux[Subject, Message]) HandleMessage(message Message) error {
+func (mux *MessageMux[Subject, Message]) HandleMessage(message Message) (err error) {
 	mux.mu.RLock()
 	defer mux.mu.RUnlock()
 
-	if mux.transform == nil {
-		return mux.handle(message)
+	if mux.transform != nil {
+		message, err = mux.transform(message)
+		if err != nil {
+			Err := ErrorWrapWithMessage(err, "Failed to transform")
+			mux.logger.Error("%v", Err)
+			return err
+		}
 	}
 
-	old := message
-	fresh, err := mux.transform(old)
-	if err != nil {
-		return err
-	}
-	return mux.handle(fresh)
-}
-
-func (mux *MessageMux[Subject, Message]) handle(message Message) (err error) {
 	subject, err := mux.getSubject(message)
 	if err != nil {
 		Err := ErrorWrapWithMessage(err, "Failed to parse subject from the message")
@@ -134,17 +130,55 @@ func (mux *MessageMux[Subject, Message]) handle(message Message) (err error) {
 	}
 	mux.logger.Debug("receive subject=%v", subject)
 
-	defer func() {
-		if err != nil {
-			mux.logger.Error("hande subject=%v fail", subject)
-			return
-		}
-		mux.logger.Debug("hande subject=%v success", subject)
-	}()
+	err = handleMessage(mux, message, subject)
+	if err != nil {
+		mux.logger.Error("hande subject=%v fail: %v", subject, err)
+		return err
+	}
+	mux.logger.Debug("hande subject=%v success", subject)
+	return nil
+}
 
-	handler, ok := searchHandler(mux, subject)
-	if ok {
-		return LinkMiddlewares(handler.HandleMessage, mux.middlewares...)(message)
+func handleMessage[Subject constraints.Ordered, Message any](mux *MessageMux[Subject, Message], message Message, subject string) (err error) {
+	cursor := len(subject) - 1
+	for cursor >= 0 {
+		// 將給定的主題字串按照指定的分組分隔符進行解析, 並返回所有可能的分組組合.
+		// 例如, subject = "1/2/3/", 可能的分組:
+		// - ["1/2/3/", ""]
+		// - ["1/2/", "3/"]
+		// - ["1/", "2/3/"]
+		prefix := subject[:cursor+1]
+		postfix := subject[cursor+1:]
+
+		handler, found := mux.handlers[prefix]
+		if !found {
+			cursor--
+			for cursor >= 0 && subject[cursor] != mux.groupDelimiter[0] {
+				cursor--
+			}
+			continue
+		}
+
+		groupMux, isGroup := handler.(*MessageMux[Subject, Message])
+		if !isGroup {
+			return LinkMiddlewares(handler.HandleMessage, mux.middlewares...)(message)
+		}
+
+		if groupMux.transform == nil {
+			return handleMessage(groupMux, message, postfix)
+		}
+
+		message, err = groupMux.transform(message)
+		if err != nil {
+			return ErrorWrapWithMessage(err, "Failed to transform")
+		}
+
+		subject, err = groupMux.getSubject(message)
+		if err != nil {
+			return ErrorWrapWithMessage(err, "Failed to parse subject from the message")
+		}
+
+		return handleMessage(groupMux, message, subject)
 	}
 
 	if mux.defaultHandler != nil {
@@ -158,34 +192,6 @@ func (mux *MessageMux[Subject, Message]) handle(message Message) (err error) {
 	return ErrorWrapWithMessage(ErrNotFound, "mux subject")
 }
 
-func searchHandler[Subject constraints.Ordered, Message any](mux *MessageMux[Subject, Message], subject string) (MessageHandler[Message], bool) {
-	groupSubjects := parseGroupSubject(subject, mux.groupDelimiter)
-	for _, groupSubject := range groupSubjects {
-		prefix := groupSubject[0]
-		postfix := groupSubject[1]
-		handler, ok := mux.handlers[prefix]
-		if !ok {
-			continue
-		}
-
-		m, ok := handler.(*MessageMux[Subject, Message])
-		if ok {
-			if m.transform == nil {
-				return searchHandler(m, postfix)
-			}
-			return searchHandler(m, prefix)
-		}
-		return handler, true
-	}
-	return nil, false
-}
-
-// parseGroupSubject 將給定的主題字串按照指定的分組分隔符進行解析，並返回所有可能的分組組合。
-// 例如， subject = "1/2/3/" 和 groupDelimiter = "/"，
-// 函數將返回以下所有可能的分組組合：
-// - ["1/2/3/", ""]
-// - ["1/2/", "3/"]
-// - ["1/", "2/3/"]
 func parseGroupSubject(subject string, groupDelimiter string) [][]string {
 	var result [][]string
 	cursor := len(subject) - 1
@@ -317,7 +323,7 @@ func newGroupMux[Subject constraints.Ordered, Message any](parent *MessageMux[Su
 		transform:       nil,
 		getSubject:      parent.getSubject,
 		handlers:        make(map[string]MessageHandler[Message]),
-		middlewares:     make([]MessageDecorator[Message], 0),
+		middlewares:     append([]MessageDecorator[Message]{}, parent.middlewares...),
 		notFoundHandler: parent.notFoundHandler,
 		defaultHandler:  nil,
 	}

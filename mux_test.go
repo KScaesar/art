@@ -6,13 +6,10 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
-	"strings"
 	"testing"
-
-	"golang.org/x/exp/slices"
 )
 
-func TestMessageMux_handle(t *testing.T) {
+func TestMessageMux_HandleMessage(t *testing.T) {
 	// arrange
 	type redisMessage struct {
 		ctx     context.Context
@@ -44,7 +41,7 @@ func TestMessageMux_handle(t *testing.T) {
 		body:    []byte(`{"data":"world"}`),
 		channel: "hello",
 	}
-	err := mux.handle(dto)
+	err := mux.HandleMessage(dto)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -144,11 +141,9 @@ hello_world_decoratorA
 }
 
 func TestMessageMux_Transform(t *testing.T) {
-	recorder := &strings.Builder{}
-	recorder.WriteString("\n")
+	recorder := []string{}
 	record := func(message *testcaseTransformMessage) error {
-		recorder.WriteString(message.body)
-		recorder.WriteString("\n")
+		recorder = append(recorder, message.body)
 		return nil
 	}
 
@@ -189,8 +184,10 @@ func TestMessageMux_Transform(t *testing.T) {
 	}
 
 	gotSubjects := mux.Subjects()
-	if !slices.Equal(gotSubjects, expectedSubjects) {
-		t.Errorf("unexpected output: got %s, want %s", gotSubjects, expectedSubjects)
+	for i, gotSubject := range gotSubjects {
+		if gotSubject != expectedSubjects[i] {
+			t.Errorf("unexpected output: got %s, want %s", gotSubject, expectedSubjects[i])
+		}
 	}
 
 	messages := []*testcaseTransformMessage{
@@ -208,18 +205,18 @@ func TestMessageMux_Transform(t *testing.T) {
 		}
 	}
 
-	expectedRecord := `
-msg 2/
-msg 3/1/
-^TransformLevel2 5/1/^
-_msg 4/2/_
-`
-
-	gotRecord := recorder.String()
-	if gotRecord != expectedRecord {
-		t.Errorf("unexpected output: got %s, want %s", gotRecord, expectedRecord)
+	expectedRecords := []string{
+		"msg 2/",
+		"msg 3/1/",
+		"^TransformLevel2 5/1/^",
+		"_msg 4/2/_",
 	}
 
+	for i, gotRecord := range recorder {
+		if gotRecord != expectedRecords[i] {
+			t.Errorf("unexpected output: got %s, want %s", gotRecord, expectedRecords[i])
+		}
+	}
 }
 
 func testcaseTransformLevel1(old *testcaseTransformMessage) (fresh *testcaseTransformMessage, err error) {
@@ -281,17 +278,19 @@ func TestMessageMux_Group(t *testing.T) {
 		body    string
 	}
 
-	recorder := &strings.Builder{}
-	recorder.WriteString("\n")
+	recorder := []string{}
 	record := func(message *testcaseGroupMessage) error {
-		recorder.WriteString(message.body)
-		recorder.WriteString("\n")
+		recorder = append(recorder, message.body)
 		return nil
 	}
 
 	newSubject := func(msg *testcaseGroupMessage) (string, error) { return string(msg.subject), nil }
 	mux := NewMessageMux[Subject, *testcaseGroupMessage](newSubject, NewLogger(true, LogLevelInfo))
-	mux.SetGroupDelimiter("/")
+	mux.SetGroupDelimiter("/").
+		AddPreMiddleware(func(message *testcaseGroupMessage) error {
+			message.body = "*" + message.body + "*"
+			return nil
+		})
 
 	mux.RegisterHandler("topic1", record)
 
@@ -308,6 +307,10 @@ func TestMessageMux_Group(t *testing.T) {
 		RegisterHandler("game1", record).
 		RegisterHandler("/game2/kindA/", record)
 	topic4_game3 := topic4.Group("game3").
+		AddPreMiddleware(func(message *testcaseGroupMessage) error {
+			message.body = "&" + message.body + "&"
+			return nil
+		}).
 		RegisterHandler("kindX", record).
 		RegisterHandler("kindY", record)
 	topic4_game3.Group("v2").
@@ -369,28 +372,29 @@ func TestMessageMux_Group(t *testing.T) {
 		}
 	}
 
-	expectedRecord := `
-topic3/upgraded.users/
-topic4/game3/kindX/
-topic5/game3/kindY/
-topic4/game3/kindY/
-topic2/users/
-topic3/created/orders/
-topic5/game3/v2/kindX/
-topic5/game2/kindA/
-topic3/login/users/
-topic1/
-topic4/game3/v3/kindY/
-topic5/game3/kindX/
-topic5/game1/
-topic4/game1/
-topic4/game3/v2/kindX/
-topic2/orders/
-topic4/game2/kindA/
-`
+	expectedRecords := []string{
+		"*topic3/upgraded.users/*",
+		"&*topic4/game3/kindX/*&",
+		"*topic5/game3/kindY/*",
+		"&*topic4/game3/kindY/*&",
+		"*topic2/users/*",
+		"*topic3/created/orders/*",
+		"*topic5/game3/v2/kindX/*",
+		"*topic5/game2/kindA/*",
+		"*topic3/login/users/*",
+		"*topic1/*",
+		"&*topic4/game3/v3/kindY/*&",
+		"*topic5/game3/kindX/*",
+		"*topic5/game1/*",
+		"*topic4/game1/*",
+		"&*topic4/game3/v2/kindX/*&",
+		"*topic2/orders/*",
+		"*topic4/game2/kindA/*",
+	}
 
-	gotRecord := recorder.String()
-	if gotRecord != expectedRecord {
-		t.Errorf("unexpected output: got %s, want %s", gotRecord, expectedRecord)
+	for i, gotRecord := range recorder {
+		if gotRecord != expectedRecords[i] {
+			t.Errorf("unexpected output: got %s, want %s", gotRecord, expectedRecords[i])
+		}
 	}
 }
