@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func WaitPingSendPong(ping <-chan error, pong func() error, isStop func() bool, pingWaitSecond int) error {
+func WaitPingSendPong(waitPing <-chan error, sendPong func() error, isStop func() bool, pingWaitSecond int) error {
 	pingWaitTime := time.Duration(pingWaitSecond) * time.Second
 
 	timer := time.NewTimer(pingWaitTime)
@@ -17,12 +17,12 @@ func WaitPingSendPong(ping <-chan error, pong func() error, isStop func() bool, 
 		case <-timer.C:
 			return errors.New("wait ping timeout")
 
-		case err := <-ping:
+		case err := <-waitPing:
 			if err != nil {
-				return fmt.Errorf("handle ping: %v", err)
+				return fmt.Errorf("wait ping: %v", err)
 			}
 
-			err = pong()
+			err = sendPong()
 			if err != nil {
 				return fmt.Errorf("send pong: %v", err)
 			}
@@ -44,7 +44,7 @@ func SendPingWaitPong(ping func() error, pong <-chan error, isStop func() bool, 
 	done := make(chan struct{})
 	defer close(done)
 
-	notify := make(chan error, 2)
+	result := make(chan error, 2)
 
 	sendPing := func() {
 		ticker := time.NewTicker(pingPeriod)
@@ -55,7 +55,7 @@ func SendPingWaitPong(ping func() error, pong <-chan error, isStop func() bool, 
 			case <-ticker.C:
 				err := ping()
 				if err != nil {
-					notify <- fmt.Errorf("send ping: %v", err)
+					result <- fmt.Errorf("Send ping: %v", err)
 					return
 				}
 
@@ -63,7 +63,7 @@ func SendPingWaitPong(ping func() error, pong <-chan error, isStop func() bool, 
 				return
 			}
 		}
-		notify <- nil
+		result <- nil
 	}
 
 	waitPong := func() {
@@ -73,12 +73,12 @@ func SendPingWaitPong(ping func() error, pong <-chan error, isStop func() bool, 
 		for !isStop() {
 			select {
 			case <-timer.C:
-				notify <- errors.New("wait pong timeout")
+				result <- errors.New("wait pong timeout")
 				return
 
 			case err := <-pong:
 				if err != nil {
-					notify <- fmt.Errorf("handle pong: %v", err)
+					result <- fmt.Errorf("handle pong: %v", err)
 					return
 				}
 
@@ -91,10 +91,10 @@ func SendPingWaitPong(ping func() error, pong <-chan error, isStop func() bool, 
 				return
 			}
 		}
-		notify <- nil
+		result <- nil
 	}
 
 	go sendPing()
 	go waitPong()
-	return <-notify
+	return <-result
 }
