@@ -52,7 +52,7 @@ func NewSession[S constraints.Ordered, rM, sM any](recvMux *MessageMux[S, rM], a
 	if adapter.Logger != nil {
 		logger = adapter.Logger
 	}
-	logger.WithSessionId(sessId)
+	logger = logger.WithSessionId(sessId)
 
 	return &Session[S, rM, sM]{
 		keys:     make(map[string]interface{}),

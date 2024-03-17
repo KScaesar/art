@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"sync"
 
 	"golang.org/x/exp/constraints"
 )
@@ -60,13 +59,13 @@ func LinkMiddlewares[Message any](handler MessageHandleFunc[Message], middleware
 
 //
 
-type SubjectFactory[Message any] func(Message) (string, error)
+type NewSubjectFunc[Message any] func(Message) (string, error)
 
-func NewMessageMux[Subject constraints.Ordered, Message any](getSubject SubjectFactory[Message], logger Logger) *MessageMux[Subject, Message] {
+func NewMessageMux[Subject constraints.Ordered, Message any](newSubject NewSubjectFunc[Message]) *MessageMux[Subject, Message] {
 	return &MessageMux[Subject, Message]{
-		logger:         logger,
+		logger:         DefaultLogger(),
 		groupDelimiter: "/",
-		getSubject:     getSubject,
+		newSubject:     newSubject,
 		handlers:       make(map[string]MessageHandler[Message]),
 		middlewares:    make([]MessageDecorator[Message], 0),
 	}
@@ -77,20 +76,19 @@ func NewMessageMux[Subject constraints.Ordered, Message any](getSubject SubjectF
 //
 // rMessage represents a high-level abstraction data structure containing metadata (e.g. header) + body
 type MessageMux[Subject constraints.Ordered, Message any] struct {
-	mu     sync.RWMutex
 	logger Logger
 
 	parentGroupName string
 	groupDelimiter  string
 	transform       func(old Message) (fresh Message, err error)
 
-	// getSubject 是為了避免 generic type 呼叫 method 所造成的效能降低
+	// newSubject 是為了避免 generic type 呼叫 method 所造成的效能降低
 	// 同時可以因應不同情境, 改變取得 subject 的規則
 	//
 	// https://www.youtube.com/watch?v=D1hI55EcBB4&t=20260s
 	//
 	// https://hackmd.io/@fieliapm/BkHvJjYq3#/5/2
-	getSubject  SubjectFactory[Message]
+	newSubject  NewSubjectFunc[Message]
 	handlers    map[string]MessageHandler[Message]
 	middlewares []MessageDecorator[Message]
 
@@ -98,9 +96,11 @@ type MessageMux[Subject constraints.Ordered, Message any] struct {
 	defaultHandler  MessageHandleFunc[Message]
 }
 
+func (mux *MessageMux[Subject, Message]) SetLogger(logger Logger) {
+	mux.logger = logger
+}
+
 func (mux *MessageMux[Subject, Message]) Transform(transform func(old Message) (fresh Message, err error)) *MessageMux[Subject, Message] {
-	mux.mu.RLock()
-	defer mux.mu.RUnlock()
 	if mux.transform != nil {
 		panic("mux transform has set")
 	}
@@ -109,9 +109,6 @@ func (mux *MessageMux[Subject, Message]) Transform(transform func(old Message) (
 }
 
 func (mux *MessageMux[Subject, Message]) HandleMessage(message Message) (err error) {
-	mux.mu.RLock()
-	defer mux.mu.RUnlock()
-
 	if mux.transform != nil {
 		message, err = mux.transform(message)
 		if err != nil {
@@ -121,7 +118,7 @@ func (mux *MessageMux[Subject, Message]) HandleMessage(message Message) (err err
 		}
 	}
 
-	subject, err := mux.getSubject(message)
+	subject, err := mux.newSubject(message)
 	if err != nil {
 		Err := ErrorWrapWithMessage(err, "Failed to parse subject from the message")
 		mux.logger.Error("%v", Err)
@@ -172,7 +169,7 @@ func handleMessage[Subject constraints.Ordered, Message any](mux *MessageMux[Sub
 			return ErrorWrapWithMessage(err, "Failed to transform")
 		}
 
-		subject, err = groupMux.getSubject(message)
+		subject, err = groupMux.newSubject(message)
 		if err != nil {
 			return ErrorWrapWithMessage(err, "Failed to parse subject from the message")
 		}
@@ -205,8 +202,6 @@ func parseGroupSubject(subject string, groupDelimiter string) [][]string {
 }
 
 func (mux *MessageMux[Subject, Message]) Subjects() (result []string) {
-	mux.mu.RLock()
-	defer mux.mu.RUnlock()
 	return mux.subjects()
 }
 
@@ -226,9 +221,6 @@ func (mux *MessageMux[Subject, Message]) subjects() (result []string) {
 }
 
 func (mux *MessageMux[Subject, Message]) RegisterHandler(s Subject, h MessageHandleFunc[Message]) *MessageMux[Subject, Message] {
-	mux.mu.Lock()
-	defer mux.mu.Unlock()
-
 	subject := CleanSubject(s) + mux.groupDelimiter
 	_, ok := mux.handlers[subject]
 	if ok {
@@ -240,15 +232,11 @@ func (mux *MessageMux[Subject, Message]) RegisterHandler(s Subject, h MessageHan
 }
 
 func (mux *MessageMux[Subject, Message]) AddMiddleware(middlewares ...MessageDecorator[Message]) *MessageMux[Subject, Message] {
-	mux.mu.Lock()
-	defer mux.mu.Unlock()
 	mux.middlewares = append(mux.middlewares, middlewares...)
 	return mux
 }
 
 func (mux *MessageMux[Subject, Message]) AddPreMiddleware(handlers ...MessageHandleFunc[Message]) *MessageMux[Subject, Message] {
-	mux.mu.Lock()
-	defer mux.mu.Unlock()
 	for _, handler := range handlers {
 		mux.middlewares = append(mux.middlewares, handler.PreMiddleware())
 	}
@@ -256,8 +244,6 @@ func (mux *MessageMux[Subject, Message]) AddPreMiddleware(handlers ...MessageHan
 }
 
 func (mux *MessageMux[Subject, Message]) AddPostMiddleware(handlers ...MessageHandleFunc[Message]) *MessageMux[Subject, Message] {
-	mux.mu.Lock()
-	defer mux.mu.Unlock()
 	for _, handler := range handlers {
 		mux.middlewares = append(mux.middlewares, handler.PostMiddleware())
 	}
@@ -265,30 +251,21 @@ func (mux *MessageMux[Subject, Message]) AddPostMiddleware(handlers ...MessageHa
 }
 
 func (mux *MessageMux[Subject, Message]) SetNotFoundHandler(h MessageHandleFunc[Message]) *MessageMux[Subject, Message] {
-	mux.mu.Lock()
-	defer mux.mu.Unlock()
 	mux.notFoundHandler = h
 	return mux
 }
 
 func (mux *MessageMux[Subject, Message]) SetDefaultHandler(h MessageHandleFunc[Message]) *MessageMux[Subject, Message] {
-	mux.mu.Lock()
-	defer mux.mu.Unlock()
 	mux.defaultHandler = h
 	return mux
 }
 
 func (mux *MessageMux[Subject, Message]) SetGroupDelimiter(delimiter string) *MessageMux[Subject, Message] {
-	mux.mu.Lock()
-	defer mux.mu.Unlock()
 	mux.groupDelimiter = delimiter
 	return mux
 }
 
 func (mux *MessageMux[Subject, Message]) Group(s Subject) *MessageMux[Subject, Message] {
-	mux.mu.Lock()
-	defer mux.mu.Unlock()
-
 	groupName := CleanSubject(s) + mux.groupDelimiter
 	_, ok := mux.handlers[groupName]
 	if ok {
@@ -320,7 +297,7 @@ func newGroupMux[Subject constraints.Ordered, Message any](parent *MessageMux[Su
 		parentGroupName: parent.parentGroupName + groupName,
 		groupDelimiter:  parent.groupDelimiter,
 		transform:       nil,
-		getSubject:      parent.getSubject,
+		newSubject:      parent.newSubject,
 		handlers:        make(map[string]MessageHandler[Message]),
 		middlewares:     append([]MessageDecorator[Message]{}, parent.middlewares...),
 		notFoundHandler: parent.notFoundHandler,
