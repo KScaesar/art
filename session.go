@@ -3,6 +3,7 @@ package Artifex
 import (
 	"bytes"
 	"context"
+	"sync"
 	"sync/atomic"
 
 	"golang.org/x/exp/constraints"
@@ -69,6 +70,7 @@ func NewSession[S constraints.Ordered, rM, sM any](recvMux *MessageMux[S, rM], a
 }
 
 type Session[Subject constraints.Ordered, rMessage, sMessage any] struct {
+	mu             sync.RWMutex
 	keys           map[string]interface{}
 	pingpong       func() error
 	enablePingPong atomic.Bool
@@ -90,6 +92,9 @@ func (sess *Session[Subject, rMessage, sMessage]) Logger() Logger {
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) Listen() error {
+	sess.mu.RLock()
+	defer sess.mu.RUnlock()
+
 	if sess.isStop.Load() {
 		return ErrorWrapWithMessage(ErrClosed, "Artifex session")
 	}
@@ -150,6 +155,9 @@ func (sess *Session[Subject, rMessage, sMessage]) Send(message sMessage) error {
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) Stop() {
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+
 	if sess.isStop.Load() {
 		return
 	}
@@ -159,6 +167,9 @@ func (sess *Session[Subject, rMessage, sMessage]) Stop() {
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) StopWithMessage(message sMessage) {
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+
 	if sess.isStop.Load() {
 		return
 	}

@@ -30,13 +30,14 @@ type Artist[Subject constraints.Ordered, rMessage, sMessage any] struct {
 }
 
 func (hub *Artist[Subject, rMessage, sMessage]) Stop() {
-	if hub.isStop.Load() {
-		return
-	}
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
 
+	if hub.isStop.Load() {
+		return
+	}
 	hub.isStop.Store(true)
+
 	wg := sync.WaitGroup{}
 	for sess := range hub.sessions {
 		session := sess
