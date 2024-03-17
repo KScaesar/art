@@ -47,9 +47,16 @@ func (hub *Artist[Subject, rMessage, sMessage]) Stop() {
 	wg.Done()
 }
 
-func (hub *Artist[Subject, rMessage, sMessage]) Register(adapter Adapter[Subject, rMessage, sMessage]) (*Session[Subject, rMessage, sMessage], error) {
+func (hub *Artist[Subject, rMessage, sMessage]) Connect(permanent bool, newAdapter NewAdapterFunc[Subject, rMessage, sMessage]) (
+	*Session[Subject, rMessage, sMessage], error,
+) {
 	if hub.isStop.Load() {
 		return nil, ErrClosed
+	}
+
+	adapter, err := newAdapter()
+	if err != nil {
+		return nil, err
 	}
 
 	sess, err := NewSession(hub.recvMux, adapter)
@@ -60,7 +67,23 @@ func (hub *Artist[Subject, rMessage, sMessage]) Register(adapter Adapter[Subject
 	go func() {
 		hub.enter(sess)
 		defer hub.leave(sess)
-		sess.Listen()
+
+	Listen:
+		err = sess.Listen()
+		if err == nil {
+			return
+		}
+
+		if !permanent {
+			return
+		}
+
+		for !hub.isStop.Load() && !sess.IsStop() {
+			err = Reconnect(sess, newAdapter, 30)
+			if err == nil {
+				goto Listen
+			}
+		}
 	}()
 
 	return sess, nil
@@ -88,6 +111,7 @@ func (hub *Artist[Subject, rMessage, sMessage]) leave(sess *Session[Subject, rMe
 	defer hub.mu.Unlock()
 
 	delete(hub.sessions, sess)
+	defer sess.Stop()
 
 	for _, action := range hub.leaveHandlers {
 		action(sess)

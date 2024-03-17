@@ -12,13 +12,16 @@ type AdapterRecvFunc[Subject constraints.Ordered, rMessage, sMessage any] func(p
 type AdapterSendFunc[sMessage any] func(session Logger, message sMessage) error
 type AdapterStopFunc[sMessage any] func(session Logger, message sMessage)
 
+type NewAdapterFunc[Subject constraints.Ordered, rMessage, sMessage any] func() (Adapter[Subject, rMessage, sMessage], error)
+
 type Adapter[Subject constraints.Ordered, rMessage, sMessage any] struct {
 	Identifier string
 	Context    context.Context
-	Recv       AdapterRecvFunc[Subject, rMessage, sMessage]
-	Send       AdapterSendFunc[sMessage]
-	Stop       AdapterStopFunc[sMessage]
 	Logger     Logger
+
+	Recv AdapterRecvFunc[Subject, rMessage, sMessage]
+	Send AdapterSendFunc[sMessage]
+	Stop AdapterStopFunc[sMessage]
 }
 
 func NewSession[S constraints.Ordered, rM, sM any](recvMux *MessageMux[S, rM], adapter Adapter[S, rM, sM]) (*Session[S, rM, sM], error) {
@@ -39,6 +42,11 @@ func NewSession[S constraints.Ordered, rM, sM any](recvMux *MessageMux[S, rM], a
 		sessId = builder.String()
 	}
 
+	ctx := context.Background()
+	if adapter.Context != nil {
+		ctx = adapter.Context
+	}
+
 	logger := DefaultLogger()
 	if adapter.Logger != nil {
 		logger = adapter.Logger
@@ -46,28 +54,35 @@ func NewSession[S constraints.Ordered, rM, sM any](recvMux *MessageMux[S, rM], a
 	logger.WithSessionId(sessId)
 
 	return &Session[S, rM, sM]{
-		Identifier: sessId,
-		keys:       make(map[string]interface{}),
+		keys:     make(map[string]interface{}),
+		pingpong: func() error { return nil },
+
 		recvMux:    recvMux,
-		recv:       adapter.Recv,
-		send:       adapter.Send,
-		stop:       adapter.Stop,
+		Identifier: sessId,
+		Context:    ctx,
 		logger:     logger,
+
+		recv: adapter.Recv,
+		send: adapter.Send,
+		stop: adapter.Stop,
 	}, nil
 }
 
 type Session[Subject constraints.Ordered, rMessage, sMessage any] struct {
-	Identifier     string
 	keys           map[string]interface{}
 	pingpong       func() error
 	enablePingPong atomic.Bool
 	isStop         atomic.Bool
+	isListen       atomic.Bool
 
-	recvMux *MessageMux[Subject, rMessage]
-	recv    AdapterRecvFunc[Subject, rMessage, sMessage]
-	send    AdapterSendFunc[sMessage]
-	stop    AdapterStopFunc[sMessage]
-	logger  Logger
+	recvMux    *MessageMux[Subject, rMessage]
+	Identifier string
+	Context    context.Context
+	logger     Logger
+
+	recv AdapterRecvFunc[Subject, rMessage, sMessage]
+	send AdapterSendFunc[sMessage]
+	stop AdapterStopFunc[sMessage]
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) Logger() Logger {
@@ -75,6 +90,15 @@ func (sess *Session[Subject, rMessage, sMessage]) Logger() Logger {
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) Listen() error {
+	if sess.isStop.Load() {
+		return ErrClosed
+	}
+
+	if sess.isListen.Load() {
+		return nil
+	}
+	sess.isListen.Store(true)
+
 	result := make(chan error, 2)
 
 	go func() {
@@ -87,16 +111,13 @@ func (sess *Session[Subject, rMessage, sMessage]) Listen() error {
 		}()
 	}
 
-	err := <-result
-	if err != nil {
-		sess.Stop()
-	}
-	return err
+	return <-result
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) listen() error {
 	for !sess.isStop.Load() {
-		if err := sess.Recv(); err != nil {
+		err := sess.Recv()
+		if err != nil {
 			return err
 		}
 	}
@@ -104,7 +125,16 @@ func (sess *Session[Subject, rMessage, sMessage]) listen() error {
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) Recv() error {
+	if sess.isStop.Load() {
+		return ErrClosed
+	}
+
 	message, err := sess.recv(sess)
+
+	if sess.isStop.Load() {
+		return nil
+	}
+
 	if err != nil {
 		sess.logger.Error("recv message fail: %v", err)
 		return err
@@ -113,11 +143,19 @@ func (sess *Session[Subject, rMessage, sMessage]) Recv() error {
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) Send(message sMessage) error {
+	if sess.isStop.Load() {
+		return ErrClosed
+	}
 	return sess.send(sess.logger, message)
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) Stop() {
-	sess.StopWithMessage(nil)
+	if sess.isStop.Load() {
+		return
+	}
+	sess.isStop.Store(true)
+	sess.isListen.Store(false)
+	sess.stop(sess.logger, nil)
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) StopWithMessage(message sMessage) {
@@ -125,6 +163,7 @@ func (sess *Session[Subject, rMessage, sMessage]) StopWithMessage(message sMessa
 		return
 	}
 	sess.isStop.Store(true)
+	sess.isListen.Store(false)
 	sess.stop(sess.logger, message)
 }
 
@@ -132,6 +171,8 @@ func (sess *Session[Subject, rMessage, sMessage]) IsStop() bool {
 	return sess.isStop.Load()
 }
 
+// SendPingWaitPong sends a ping message and waits for a corresponding pong message.
+// This function can be used in configuration with the Artist.SetEnterHandler to activate relevant settings.
 func (sess *Session[Subject, rMessage, sMessage]) SendPingWaitPong(pongSubject Subject, pongWaitSecond int, ping, pong func(sess *Session[Subject, rMessage, sMessage]) error) {
 	sess.enablePingPong.Store(true)
 	waitPong := make(chan error, 1)
@@ -148,6 +189,8 @@ func (sess *Session[Subject, rMessage, sMessage]) SendPingWaitPong(pongSubject S
 	}
 }
 
+// WaitPingSendPong waits for a ping message and sends a corresponding pong message.
+// This function can be used in configuration with the Artist.SetEnterHandler to activate relevant settings.
 func (sess *Session[Subject, rMessage, sMessage]) WaitPingSendPong(pingSubject Subject, pingWaitSecond int, ping, pong func(sess *Session[Subject, rMessage, sMessage]) error) {
 	sess.enablePingPong.Store(true)
 	waitPing := make(chan error, 1)
