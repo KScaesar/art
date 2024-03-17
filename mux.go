@@ -75,15 +75,14 @@ func NewMessageMux[Subject constraints.Ordered, Message any](getSubject SubjectF
 // MessageMux refers to a router or multiplexer, which can be used to handle different message.
 // Itself is also a MessageHandler, but with added routing capabilities.
 //
-// Message represents a high-level abstraction data structure containing metadata (e.g. header) + body
+// rMessage represents a high-level abstraction data structure containing metadata (e.g. header) + body
 type MessageMux[Subject constraints.Ordered, Message any] struct {
 	mu     sync.RWMutex
 	logger Logger
 
 	parentGroupName string
 	groupDelimiter  string
-	// groups          []*MessageMux[Subject, Message]
-	transform func(old Message) (fresh Message, err error)
+	transform       func(old Message) (fresh Message, err error)
 
 	// getSubject 是為了避免 generic type 呼叫 method 所造成的效能降低
 	// 同時可以因應不同情境, 改變取得 subject 的規則
@@ -103,7 +102,7 @@ func (mux *MessageMux[Subject, Message]) Transform(transform func(old Message) (
 	mux.mu.RLock()
 	defer mux.mu.RUnlock()
 	if mux.transform != nil {
-		panic("mux transform had set")
+		panic("mux transform has set")
 	}
 	mux.transform = transform
 	return mux
@@ -128,7 +127,7 @@ func (mux *MessageMux[Subject, Message]) HandleMessage(message Message) (err err
 		mux.logger.Error("%v", Err)
 		return Err
 	}
-	mux.logger.Debug("receive subject=%v", subject)
+	mux.logger.Debug("handle subject=%v", subject)
 
 	err = handleMessage(mux, message, subject)
 	if err != nil {

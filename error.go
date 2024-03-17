@@ -8,6 +8,7 @@ import (
 
 var (
 	ErrUniversal        = NewCustomError(2000, "universal error")
+	ErrClosed           = NewCustomError(2000, "service has been closed")
 	ErrNotFound         = NewCustomError(2100, "not found")
 	ErrInvalidParameter = NewCustomError(2200, "invalid parameter")
 	ErrTimeout          = NewCustomError(2300, "timeout")

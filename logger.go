@@ -44,6 +44,7 @@ type Logger interface {
 	SetLogLevel(level LogLevel)
 	WithCallDepth(externalDepth uint) Logger
 	WithMessageId(msgId string) Logger
+	WithSessionId(sessId string) Logger
 }
 
 var (
@@ -77,6 +78,7 @@ func NewLogger(printPath bool, level LogLevel) Logger {
 		logLevel:          &level,
 
 		contextKey: []string{
+			"sess_id",
 			"msg_id",
 		},
 		contextInfo: newContextInfo(),
@@ -183,6 +185,15 @@ func (l stdLogger) WithMessageId(msgId string) Logger {
 	return l
 }
 
+func (l stdLogger) WithSessionId(sessId string) Logger {
+	if sessId == "" {
+		return l
+	}
+
+	l.contextInfo = l.contextInfo.copyAndSet("sess_id", sessId)
+	return l
+}
+
 //
 
 func newContextInfo() map[string]string {
@@ -222,6 +233,10 @@ func SilentLogger() Logger {
 }
 
 type silentLogger struct{}
+
+func (l silentLogger) WithSessionId(string) Logger {
+	return l
+}
 
 func (silentLogger) Debug(format string, a ...interface{}) {
 	return

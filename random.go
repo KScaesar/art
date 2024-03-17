@@ -2,9 +2,11 @@ package Artifex
 
 import (
 	"math/rand"
+	"time"
 )
 
 func GenerateRandomCode(length int) string {
+	rand.Seed(time.Now().UnixNano())
 	charset := "abcdefghijkmnpqrstuvwxyz23456789"
 	code := make([]byte, length)
 	for i := range code {
