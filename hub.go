@@ -9,22 +9,24 @@ import (
 
 func NewArtist[Subject constraints.Ordered, rMessage, sMessage any](recvMux *MessageMux[Subject, rMessage]) *Artist[Subject, rMessage, sMessage] {
 	return &Artist[Subject, rMessage, sMessage]{
-		sessions:       make(map[*Session[Subject, rMessage, sMessage]]bool),
-		enterHandlers:  make([]func(sess *Session[Subject, rMessage, sMessage]), 0),
-		leaveHandlers:  make([]func(sess *Session[Subject, rMessage, sMessage]), 0),
-		concurrencyQty: -1,
-		recvMux:        recvMux,
+		recvMux:       recvMux,
+		sessions:      make(map[*Session[Subject, rMessage, sMessage]]bool),
+		enterHandlers: make([]func(sess *Session[Subject, rMessage, sMessage]) error, 0),
+		leaveHandlers: make([]func(sess *Session[Subject, rMessage, sMessage]), 0),
 	}
 }
 
 type Artist[Subject constraints.Ordered, rMessage, sMessage any] struct {
-	mu             sync.RWMutex
-	isStop         atomic.Bool
-	sessions       map[*Session[Subject, rMessage, sMessage]]bool
-	enterHandlers  []func(sess *Session[Subject, rMessage, sMessage])
-	leaveHandlers  []func(sess *Session[Subject, rMessage, sMessage])
-	concurrencyQty int
-	recvMux        *MessageMux[Subject, rMessage]
+	mu       sync.RWMutex
+	isStop   atomic.Bool
+	recvMux  *MessageMux[Subject, rMessage]
+	sessions map[*Session[Subject, rMessage, sMessage]]bool
+
+	concurrencyQty          int                                                      // Option
+	permanentConnect        bool                                                     // Option
+	enterHandlers           []func(sess *Session[Subject, rMessage, sMessage]) error // Option
+	leaveHandlers           []func(sess *Session[Subject, rMessage, sMessage])       // Option
+	backoffMaxElapsedMinute int                                                      // Option
 }
 
 func (hub *Artist[Subject, rMessage, sMessage]) Stop() {
@@ -47,12 +49,12 @@ func (hub *Artist[Subject, rMessage, sMessage]) Stop() {
 	wg.Done()
 }
 
-func (hub *Artist[Subject, rMessage, sMessage]) Connect(permanent bool, newAdapter NewAdapterFunc[Subject, rMessage, sMessage]) (
-	*Session[Subject, rMessage, sMessage], error,
-) {
+func (hub *Artist[Subject, rMessage, sMessage]) Connect(newAdapter NewAdapterFunc[Subject, rMessage, sMessage]) (*Session[Subject, rMessage, sMessage], error) {
 	if hub.isStop.Load() {
-		return nil, ErrClosed
+		return nil, ErrorWrapWithMessage(ErrClosed, "Artifex hub")
 	}
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
 
 	adapter, err := newAdapter()
 	if err != nil {
@@ -64,9 +66,21 @@ func (hub *Artist[Subject, rMessage, sMessage]) Connect(permanent bool, newAdapt
 		return nil, err
 	}
 
+	err = hub.enter(sess)
+	if err != nil {
+		hub.leave(sess)
+		return nil, err
+	}
+
+	backoffMaxElapsedMinute := 30
+	if hub.backoffMaxElapsedMinute > 0 {
+		backoffMaxElapsedMinute = hub.backoffMaxElapsedMinute
+	}
+
 	go func() {
-		hub.enter(sess)
-		defer hub.leave(sess)
+		defer func() {
+			hub.leave(sess)
+		}()
 
 	Listen:
 		err = sess.Listen()
@@ -74,12 +88,12 @@ func (hub *Artist[Subject, rMessage, sMessage]) Connect(permanent bool, newAdapt
 			return
 		}
 
-		if !permanent {
+		if !hub.permanentConnect {
 			return
 		}
 
-		for !hub.isStop.Load() && !sess.IsStop() {
-			err = Reconnect(sess, newAdapter, 30)
+		for !sess.IsStop() && !hub.isStop.Load() {
+			err = Reconnect(sess, newAdapter, backoffMaxElapsedMinute)
 			if err == nil {
 				goto Listen
 			}
@@ -89,30 +103,20 @@ func (hub *Artist[Subject, rMessage, sMessage]) Connect(permanent bool, newAdapt
 	return sess, nil
 }
 
-func (hub *Artist[Subject, rMessage, sMessage]) enter(sess *Session[Subject, rMessage, sMessage]) {
-	if hub.isStop.Load() {
-		return
-	}
-	hub.mu.Lock()
-	defer hub.mu.Unlock()
-
+func (hub *Artist[Subject, rMessage, sMessage]) enter(sess *Session[Subject, rMessage, sMessage]) error {
 	hub.sessions[sess] = true
-
 	for _, action := range hub.enterHandlers {
-		action(sess)
+		err := action(sess)
+		if err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func (hub *Artist[Subject, rMessage, sMessage]) leave(sess *Session[Subject, rMessage, sMessage]) {
-	if hub.isStop.Load() {
-		return
-	}
-	hub.mu.Lock()
-	defer hub.mu.Unlock()
-
 	delete(hub.sessions, sess)
 	defer sess.Stop()
-
 	for _, action := range hub.leaveHandlers {
 		action(sess)
 	}
@@ -190,7 +194,7 @@ func (hub *Artist[Subject, rMessage, sMessage]) SetConcurrencyQty(concurrencyQty
 	hub.concurrencyQty = concurrencyQty
 }
 
-func (hub *Artist[Subject, rMessage, sMessage]) SetEnterHandler(enterHandler func(sess *Session[Subject, rMessage, sMessage])) {
+func (hub *Artist[Subject, rMessage, sMessage]) SetEnterHandler(enterHandler func(sess *Session[Subject, rMessage, sMessage]) error) {
 	if hub.isStop.Load() {
 		return
 	}
@@ -208,4 +212,24 @@ func (hub *Artist[Subject, rMessage, sMessage]) SetLeaveHandler(leaveHandler fun
 	defer hub.mu.Unlock()
 
 	hub.leaveHandlers = append(hub.leaveHandlers, leaveHandler)
+}
+
+func (hub *Artist[Subject, rMessage, sMessage]) SetBackoffMaxElapsedMinute(backoffMaxElapsedMinute int) {
+	if hub.isStop.Load() {
+		return
+	}
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+
+	hub.backoffMaxElapsedMinute = backoffMaxElapsedMinute
+}
+
+func (hub *Artist[Subject, rMessage, sMessage]) SetPermanentConnect(permanent bool) {
+	if hub.isStop.Load() {
+		return
+	}
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+
+	hub.permanentConnect = permanent
 }

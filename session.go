@@ -91,7 +91,7 @@ func (sess *Session[Subject, rMessage, sMessage]) Logger() Logger {
 
 func (sess *Session[Subject, rMessage, sMessage]) Listen() error {
 	if sess.isStop.Load() {
-		return ErrClosed
+		return ErrorWrapWithMessage(ErrClosed, "Artifex session")
 	}
 
 	if sess.isListen.Load() {
@@ -126,7 +126,7 @@ func (sess *Session[Subject, rMessage, sMessage]) listen() error {
 
 func (sess *Session[Subject, rMessage, sMessage]) Recv() error {
 	if sess.isStop.Load() {
-		return ErrClosed
+		return ErrorWrapWithMessage(ErrClosed, "Artifex session")
 	}
 
 	message, err := sess.recv(sess)
@@ -144,7 +144,7 @@ func (sess *Session[Subject, rMessage, sMessage]) Recv() error {
 
 func (sess *Session[Subject, rMessage, sMessage]) Send(message sMessage) error {
 	if sess.isStop.Load() {
-		return ErrClosed
+		return ErrorWrapWithMessage(ErrClosed, "Artist session")
 	}
 	return sess.send(sess.logger, message)
 }
