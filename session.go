@@ -53,8 +53,9 @@ func NewSession[S constraints.Ordered, rM, sM any](recvMux *Mux[S, rM], adapter 
 	logger = logger.WithSessionId(sessId)
 
 	return &Session[S, rM, sM]{
-		keys:     make(map[string]interface{}),
-		pingpong: func() error { return nil },
+		keys:      make(map[string]interface{}),
+		pingpong:  func() error { return nil },
+		notifyAll: make([]chan error, 0),
 
 		recvMux:    recvMux,
 		Identifier: sessId,
@@ -74,6 +75,7 @@ type Session[Subject constraints.Ordered, rMessage, sMessage any] struct {
 	enablePingPong atomic.Bool
 	isStop         atomic.Bool
 	isListen       atomic.Bool
+	notifyAll      []chan error
 
 	recvMux    *Mux[Subject, rMessage]
 	Identifier string
@@ -114,7 +116,17 @@ func (sess *Session[Subject, rMessage, sMessage]) Listen() error {
 		}()
 	}
 
-	return <-result
+	err := <-result
+	go func() {
+		sess.mu.Lock()
+		defer sess.mu.Unlock()
+		for _, notify := range sess.notifyAll {
+			notify <- err
+			close(notify)
+		}
+		sess.notifyAll = make([]chan error, 0)
+	}()
+	return err
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) listen() error {
@@ -179,6 +191,25 @@ func (sess *Session[Subject, rMessage, sMessage]) StopWithMessage(message sMessa
 
 func (sess *Session[Subject, rMessage, sMessage]) IsStop() bool {
 	return sess.isStop.Load()
+}
+
+// Notify returns a channel for receiving the result of the Session.Listen.
+// If the session is already closed,
+// it returns a channel containing an error message indicating the session is closed.
+// Once notified, the channel will be closed immediately.
+func (sess *Session[Subject, rMessage, sMessage]) Notify() <-chan error {
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+
+	ch := make(chan error, 1)
+	if sess.isStop.Load() {
+		ch <- ErrorWrapWithMessage(ErrClosed, "Artist session")
+		close(ch)
+		return ch
+	}
+
+	sess.notifyAll = append(sess.notifyAll, ch)
+	return ch
 }
 
 // SendPingWaitPong sends a ping message and waits for a corresponding pong message.
