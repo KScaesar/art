@@ -102,7 +102,28 @@ func (hub *Artist[Subject, rMessage, sMessage]) exit(sess *Session[Subject, rMes
 	}
 }
 
-func (hub *Artist[Subject, rMessage, sMessage]) DoAction(action func(*Session[Subject, rMessage, sMessage])) {
+func (hub *Artist[Subject, rMessage, sMessage]) FindSession(filter func(*Session[Subject, rMessage, sMessage]) bool) (session *Session[Subject, rMessage, sMessage], found bool) {
+	var target *Session[Subject, rMessage, sMessage]
+	hub.DoAsyncAction(func(sess *Session[Subject, rMessage, sMessage]) {
+		if filter(sess) {
+			target = sess
+		}
+	})
+	return target, target != nil
+}
+
+func (hub *Artist[Subject, rMessage, sMessage]) FindSessions(filter func(*Session[Subject, rMessage, sMessage]) bool) (sessions []*Session[Subject, rMessage, sMessage], found bool) {
+	sessions = make([]*Session[Subject, rMessage, sMessage], 0)
+	hub.DoSyncAction(func(sess *Session[Subject, rMessage, sMessage]) bool {
+		if filter(sess) {
+			sessions = append(sessions, sess)
+		}
+		return false
+	})
+	return sessions, len(sessions) > 0
+}
+
+func (hub *Artist[Subject, rMessage, sMessage]) DoSyncAction(action func(*Session[Subject, rMessage, sMessage]) (stop bool)) {
 	if hub.isStop.Load() {
 		return
 	}
@@ -110,11 +131,13 @@ func (hub *Artist[Subject, rMessage, sMessage]) DoAction(action func(*Session[Su
 	defer hub.mu.RUnlock()
 
 	for sess := range hub.sessions {
-		action(sess)
+		stop := action(sess)
+		if stop {
+			break
+		}
 	}
 }
-
-func (hub *Artist[Subject, rMessage, sMessage]) BroadcastFilter(msg sMessage, filter func(*Session[Subject, rMessage, sMessage]) bool) {
+func (hub *Artist[Subject, rMessage, sMessage]) DoAsyncAction(action func(*Session[Subject, rMessage, sMessage])) {
 	if hub.isStop.Load() {
 		return
 	}
@@ -122,16 +145,10 @@ func (hub *Artist[Subject, rMessage, sMessage]) BroadcastFilter(msg sMessage, fi
 	defer hub.mu.RUnlock()
 
 	var bucket chan struct{}
-
 	for sess := range hub.sessions {
 		session := sess
-
-		if !filter(session) {
-			continue
-		}
-
 		if hub.concurrencyQty <= 0 {
-			go session.Send(msg)
+			go action(session)
 			continue
 		}
 
@@ -141,9 +158,17 @@ func (hub *Artist[Subject, rMessage, sMessage]) BroadcastFilter(msg sMessage, fi
 			defer func() {
 				<-bucket
 			}()
-			session.Send(msg)
+			action(session)
 		}()
 	}
+}
+
+func (hub *Artist[Subject, rMessage, sMessage]) BroadcastFilter(msg sMessage, filter func(*Session[Subject, rMessage, sMessage]) bool) {
+	hub.DoAsyncAction(func(sess *Session[Subject, rMessage, sMessage]) {
+		if filter(sess) {
+			sess.Send(msg)
+		}
+	})
 }
 
 func (hub *Artist[Subject, rMessage, sMessage]) Broadcast(msg sMessage) {
@@ -158,7 +183,18 @@ func (hub *Artist[Subject, rMessage, sMessage]) BroadcastOther(msg sMessage, sel
 	})
 }
 
-func (hub *Artist[Subject, rMessage, sMessage]) Len() int {
+func (hub *Artist[Subject, rMessage, sMessage]) Count(filter func(*Session[Subject, rMessage, sMessage]) bool) int {
+	cnt := 0
+	hub.DoSyncAction(func(sess *Session[Subject, rMessage, sMessage]) bool {
+		if filter(sess) {
+			cnt++
+		}
+		return false
+	})
+	return cnt
+}
+
+func (hub *Artist[Subject, rMessage, sMessage]) Total() int {
 	hub.mu.RLock()
 	defer hub.mu.RUnlock()
 	return len(hub.sessions)
