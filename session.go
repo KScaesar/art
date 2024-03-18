@@ -163,7 +163,8 @@ func (sess *Session[Subject, rMessage, sMessage]) Stop() {
 	}
 	sess.isStop.Store(true)
 	sess.isListen.Store(false)
-	sess.stop(sess.logger, nil)
+	var empty sMessage
+	sess.stop(sess.logger, empty)
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) StopWithMessage(message sMessage) {
@@ -188,7 +189,7 @@ func (sess *Session[Subject, rMessage, sMessage]) SendPingWaitPong(pongSubject S
 	sess.enablePingPong.Store(true)
 	waitPong := make(chan error, 1)
 
-	sess.recvMux.RegisterHandler(pongSubject, func(message rMessage) error {
+	sess.recvMux.Handler(pongSubject, func(message rMessage) error {
 		waitPong <- pong(sess)
 		return nil
 	})
@@ -206,7 +207,7 @@ func (sess *Session[Subject, rMessage, sMessage]) WaitPingSendPong(pingSubject S
 	sess.enablePingPong.Store(true)
 	waitPing := make(chan error, 1)
 
-	sess.recvMux.RegisterHandler(pingSubject, func(message rMessage) error {
+	sess.recvMux.Handler(pingSubject, func(message rMessage) error {
 		waitPing <- ping(sess)
 		return nil
 	})

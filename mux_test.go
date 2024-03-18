@@ -22,12 +22,12 @@ func TestMessageMux_HandleMessage(t *testing.T) {
 		return message.channel + "/", nil
 	}
 
-	mux := NewMessageMux[string, *redisMessage](getSubject, DefaultLogger()).
-		RegisterHandler("hello", func(dto *redisMessage) error {
+	mux := NewMessageMux[string, *redisMessage](getSubject).
+		Handler("hello", func(dto *redisMessage) error {
 			fmt.Fprintf(recorder, "topic=%v, payload=%v", dto.channel, string(dto.body))
 			return nil
 		}).
-		RegisterHandler("foo", func(dto *redisMessage) error {
+		Handler("foo", func(dto *redisMessage) error {
 			fmt.Fprintf(recorder, "topic=%v, payload=%v", dto.channel, string(dto.body))
 			return nil
 		})
@@ -35,7 +35,7 @@ func TestMessageMux_HandleMessage(t *testing.T) {
 	// expect
 	expected := `topic=hello, payload={"data":"world"}`
 
-	// action
+	// handlerParam
 	dto := &redisMessage{
 		ctx:     context.Background(),
 		body:    []byte(`{"data":"world"}`),
@@ -56,7 +56,7 @@ func TestLinkMiddlewares(t *testing.T) {
 	buf := new(bytes.Buffer)
 	buf.WriteString("\n")
 
-	decorator1 := func(next MessageHandleFunc[string]) MessageHandleFunc[string] {
+	decorator1 := func(next MessageHandler[string]) MessageHandler[string] {
 		return func(dto string) error {
 			fmt.Fprintf(buf, "%s_decorator1\n", dto)
 
@@ -70,7 +70,7 @@ func TestLinkMiddlewares(t *testing.T) {
 		}
 	}
 
-	decorator2 := func(next MessageHandleFunc[string]) MessageHandleFunc[string] {
+	decorator2 := func(next MessageHandler[string]) MessageHandler[string] {
 		return func(dto string) error {
 			fmt.Fprintf(buf, "%s_decorator2\n", dto)
 
@@ -84,7 +84,7 @@ func TestLinkMiddlewares(t *testing.T) {
 		}
 	}
 
-	decorator3 := func(next MessageHandleFunc[string]) MessageHandleFunc[string] {
+	decorator3 := func(next MessageHandler[string]) MessageHandler[string] {
 		return func(dto string) error {
 			fmt.Fprintf(buf, "%s_decorator3\n", dto)
 
@@ -150,21 +150,22 @@ func TestMessageMux_Transform(t *testing.T) {
 	newSubject := func(msg *testcaseTransformMessage) (string, error) {
 		return strconv.Itoa(msg.level0TypeId) + "/", nil
 	}
-	mux := NewMessageMux[int, *testcaseTransformMessage](newSubject, NewLogger(true, LogLevelInfo))
+	mux := NewMessageMux[int, *testcaseTransformMessage](newSubject)
+	mux.SetLogger(NewLogger(true, LogLevelInfo))
 
-	mux.RegisterHandler(2, record)
+	mux.Handler(2, record)
 
 	mux.Group(3).Transform(testcaseTransformLevel1).
-		RegisterHandler(1, record).
-		RegisterHandler(2, record).
+		Handler(1, record).
+		Handler(2, record).
 		Group(5).Transform(testcaseTransformLevel2).
 		AddPreMiddleware(
 			func(message *testcaseTransformMessage) error {
 				message.body = "^" + message.body + "^"
 				return nil
 			}).
-		RegisterHandler(1, record).
-		RegisterHandler(2, record)
+		Handler(1, record).
+		Handler(2, record)
 
 	mux.Group(4).Transform(testcaseTransformLevel1).
 		AddPreMiddleware(
@@ -172,9 +173,9 @@ func TestMessageMux_Transform(t *testing.T) {
 				message.body = "_" + message.body + "_"
 				return nil
 			}).
-		RegisterHandler(1, record).
-		RegisterHandler(2, record).
-		RegisterHandler(4, record)
+		Handler(1, record).
+		Handler(2, record).
+		Handler(4, record)
 
 	expectedSubjects := []string{
 		"2/",
@@ -285,45 +286,45 @@ func TestMessageMux_Group(t *testing.T) {
 	}
 
 	newSubject := func(msg *testcaseGroupMessage) (string, error) { return string(msg.subject), nil }
-	mux := NewMessageMux[Subject, *testcaseGroupMessage](newSubject, NewLogger(true, LogLevelInfo))
+	mux := NewMessageMux[Subject, *testcaseGroupMessage](newSubject).SetLogger(NewLogger(true, LogLevelInfo))
 	mux.SetGroupDelimiter("/").
 		AddPreMiddleware(func(message *testcaseGroupMessage) error {
 			message.body = "*" + message.body + "*"
 			return nil
 		})
 
-	mux.RegisterHandler("topic1", record)
+	mux.Handler("topic1", record)
 
 	mux.Group("/topic2").
-		RegisterHandler("/orders", record).
-		RegisterHandler("/users", record)
+		Handler("/orders", record).
+		Handler("/users", record)
 
 	mux.Group("topic3/").
-		RegisterHandler("created/orders/", record).
-		RegisterHandler("login/users/", record).
-		RegisterHandler("upgraded.users/", record)
+		Handler("created/orders/", record).
+		Handler("login/users/", record).
+		Handler("upgraded.users/", record)
 
 	topic4 := mux.Group("/topic4/").
-		RegisterHandler("game1", record).
-		RegisterHandler("/game2/kindA/", record)
+		Handler("game1", record).
+		Handler("/game2/kindA/", record)
 	topic4_game3 := topic4.Group("game3").
 		AddPreMiddleware(func(message *testcaseGroupMessage) error {
 			message.body = "&" + message.body + "&"
 			return nil
 		}).
-		RegisterHandler("kindX", record).
-		RegisterHandler("kindY", record)
+		Handler("kindX", record).
+		Handler("kindY", record)
 	topic4_game3.Group("v2").
-		RegisterHandler("kindX", record)
+		Handler("kindX", record)
 	topic4_game3.Group("v3").
-		RegisterHandler("kindY", record)
+		Handler("kindY", record)
 
-	mux.RegisterHandler("topic5/game1/", record)
-	mux.RegisterHandler("topic5/game2/kindA", record)
-	mux.RegisterHandler("//topic5/game3/kindX/", record)
-	mux.RegisterHandler("topic5/game3/kindY/", record)
-	mux.RegisterHandler("topic5/game3/v2/kindX//", record)
-	mux.RegisterHandler("topic5/game3/v3/kindY", record)
+	mux.Handler("topic5/game1/", record)
+	mux.Handler("topic5/game2/kindA", record)
+	mux.Handler("//topic5/game3/kindX/", record)
+	mux.Handler("topic5/game3/kindY/", record)
+	mux.Handler("topic5/game3/v2/kindX//", record)
+	mux.Handler("topic5/game3/v3/kindY", record)
 
 	expectedSubjects := []string{
 		"topic1/",
