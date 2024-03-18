@@ -116,3 +116,60 @@ func Reconnect[Subject constraints.Ordered, rMessage, sMessage any](
 
 	}, cfg)
 }
+
+func connect(permanent bool, obj Repairable, NewMaterial func() (material any, err error), backoffMaxElapsedMinute int) error {
+Listen:
+	err := obj.Work()
+	if err == nil {
+		return nil
+	}
+
+	if !permanent {
+		return err
+	}
+
+	for !obj.IsStop() {
+		err = Reconnect2(obj, NewMaterial, backoffMaxElapsedMinute)
+		if err == nil {
+			goto Listen
+		}
+	}
+	return err
+}
+
+type PermanentConnect struct {
+	permanent               bool
+	obj                     Repairable
+	NewMaterial             func() (material any, err error)
+	backoffMaxElapsedMinute int
+}
+
+type Repairable interface {
+	Repair(material any)
+	IsStop() bool
+	Work() error
+}
+
+func Reconnect2(obj Repairable, NewMaterial func() (material any, err error), backoffMaxElapsedMinute int) error {
+	cfg := backoff.NewExponentialBackOff()
+	cfg.InitialInterval = 500 * time.Millisecond
+	cfg.Multiplier = 1.5
+	cfg.RandomizationFactor = 0.5
+	cfg.MaxElapsedTime = time.Duration(backoffMaxElapsedMinute) * time.Minute
+
+	return backoff.Retry(func() error {
+		if obj.IsStop() {
+			return nil
+		}
+
+		material, err := NewMaterial()
+		if err != nil {
+			return err
+		}
+
+		obj.Repair(material)
+
+		return nil
+
+	}, cfg)
+}
