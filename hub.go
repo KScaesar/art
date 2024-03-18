@@ -174,22 +174,22 @@ func (hub *Artist[Subject, rMessage, sMessage]) SetConcurrencyQty(concurrencyQty
 	hub.concurrencyQty = concurrencyQty
 }
 
-func (hub *Artist[Subject, rMessage, sMessage]) SetSpawnHandler(enterHandler func(sess *Session[Subject, rMessage, sMessage]) error) {
+func (hub *Artist[Subject, rMessage, sMessage]) SetSpawnHandler(spawnHandler func(sess *Session[Subject, rMessage, sMessage]) error) {
 	if hub.isStop.Load() {
 		return
 	}
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
 
-	hub.spawnHandlers = append(hub.spawnHandlers, enterHandler)
+	hub.spawnHandlers = append(hub.spawnHandlers, spawnHandler)
 }
 
-func (hub *Artist[Subject, rMessage, sMessage]) SetExitHandler(leaveHandler func(sess *Session[Subject, rMessage, sMessage])) {
+func (hub *Artist[Subject, rMessage, sMessage]) SetExitHandler(exitHandler func(sess *Session[Subject, rMessage, sMessage])) {
 	if hub.isStop.Load() {
 		return
 	}
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
 
-	hub.exitHandlers = append(hub.exitHandlers, leaveHandler)
+	hub.exitHandlers = append(hub.exitHandlers, exitHandler)
 }
