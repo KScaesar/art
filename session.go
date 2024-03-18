@@ -213,7 +213,7 @@ func (sess *Session[Subject, rMessage, sMessage]) Notify() <-chan error {
 }
 
 // SendPingWaitPong sends a ping message and waits for a corresponding pong message.
-// This function can be used in configuration with the Artist.SetEnterHandler to activate relevant settings.
+// This function can be used in configuration by the Artist.SetSpawnHandler or Roamer.SpawnHandlers
 func (sess *Session[Subject, rMessage, sMessage]) SendPingWaitPong(pongSubject Subject, pongWaitSecond int, ping, pong func(sess *Session[Subject, rMessage, sMessage]) error) {
 	sess.enablePingPong.Store(true)
 	waitPong := make(chan error, 1)
@@ -230,8 +230,8 @@ func (sess *Session[Subject, rMessage, sMessage]) SendPingWaitPong(pongSubject S
 	}
 }
 
-// WaitPingSendPong waits for a ping message and sends a corresponding pong message.
-// This function can be used in configuration with the Artist.SetEnterHandler to activate relevant settings.
+// WaitPingSendPong waits for a ping message and response a corresponding pong message.
+// This function can be used in configuration by the Artist.SetSpawnHandler or Roamer.SpawnHandlers
 func (sess *Session[Subject, rMessage, sMessage]) WaitPingSendPong(pingSubject Subject, pingWaitSecond int, ping, pong func(sess *Session[Subject, rMessage, sMessage]) error) {
 	sess.enablePingPong.Store(true)
 	waitPing := make(chan error, 1)
