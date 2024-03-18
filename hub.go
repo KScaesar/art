@@ -16,6 +16,15 @@ func NewArtist[Subject constraints.Ordered, rMessage, sMessage any](recvMux *Mes
 	}
 }
 
+// Artist can manage the lifecycle of multiple Sessions.
+// On the contrary, Roamer can manage the lifecycle of a single Session.
+//
+//   - concurrencyQty controls how many tasks can run simultaneously,
+//     preventing resource usage or avoid frequent context switches.
+//   - recvMux is a multiplexer used for handle messages.
+//   - newAdapter is used to create a new adapter.
+//   - spawnHandlers are used for additional operations during session creation.
+//   - exitHandlers are used for cleanup operations when the session ends.
 type Artist[Subject constraints.Ordered, rMessage, sMessage any] struct {
 	mu       sync.RWMutex
 	isStop   atomic.Bool
@@ -104,17 +113,19 @@ func (hub *Artist[Subject, rMessage, sMessage]) exit(sess *Session[Subject, rMes
 
 func (hub *Artist[Subject, rMessage, sMessage]) FindSession(filter func(*Session[Subject, rMessage, sMessage]) bool) (session *Session[Subject, rMessage, sMessage], found bool) {
 	var target *Session[Subject, rMessage, sMessage]
-	hub.DoAsyncAction(func(sess *Session[Subject, rMessage, sMessage]) {
+	hub.DoSync(func(sess *Session[Subject, rMessage, sMessage]) (stop bool) {
 		if filter(sess) {
 			target = sess
+			return true
 		}
+		return false
 	})
 	return target, target != nil
 }
 
 func (hub *Artist[Subject, rMessage, sMessage]) FindSessions(filter func(*Session[Subject, rMessage, sMessage]) bool) (sessions []*Session[Subject, rMessage, sMessage], found bool) {
 	sessions = make([]*Session[Subject, rMessage, sMessage], 0)
-	hub.DoSyncAction(func(sess *Session[Subject, rMessage, sMessage]) bool {
+	hub.DoSync(func(sess *Session[Subject, rMessage, sMessage]) bool {
 		if filter(sess) {
 			sessions = append(sessions, sess)
 		}
@@ -123,7 +134,7 @@ func (hub *Artist[Subject, rMessage, sMessage]) FindSessions(filter func(*Sessio
 	return sessions, len(sessions) > 0
 }
 
-func (hub *Artist[Subject, rMessage, sMessage]) DoSyncAction(action func(*Session[Subject, rMessage, sMessage]) (stop bool)) {
+func (hub *Artist[Subject, rMessage, sMessage]) DoSync(action func(*Session[Subject, rMessage, sMessage]) (stop bool)) {
 	if hub.isStop.Load() {
 		return
 	}
@@ -137,7 +148,8 @@ func (hub *Artist[Subject, rMessage, sMessage]) DoSyncAction(action func(*Sessio
 		}
 	}
 }
-func (hub *Artist[Subject, rMessage, sMessage]) DoAsyncAction(action func(*Session[Subject, rMessage, sMessage])) {
+
+func (hub *Artist[Subject, rMessage, sMessage]) DoAsync(action func(*Session[Subject, rMessage, sMessage])) {
 	if hub.isStop.Load() {
 		return
 	}
@@ -164,7 +176,7 @@ func (hub *Artist[Subject, rMessage, sMessage]) DoAsyncAction(action func(*Sessi
 }
 
 func (hub *Artist[Subject, rMessage, sMessage]) BroadcastFilter(msg sMessage, filter func(*Session[Subject, rMessage, sMessage]) bool) {
-	hub.DoAsyncAction(func(sess *Session[Subject, rMessage, sMessage]) {
+	hub.DoAsync(func(sess *Session[Subject, rMessage, sMessage]) {
 		if filter(sess) {
 			sess.Send(msg)
 		}
@@ -185,7 +197,7 @@ func (hub *Artist[Subject, rMessage, sMessage]) BroadcastOther(msg sMessage, sel
 
 func (hub *Artist[Subject, rMessage, sMessage]) Count(filter func(*Session[Subject, rMessage, sMessage]) bool) int {
 	cnt := 0
-	hub.DoSyncAction(func(sess *Session[Subject, rMessage, sMessage]) bool {
+	hub.DoSync(func(sess *Session[Subject, rMessage, sMessage]) bool {
 		if filter(sess) {
 			cnt++
 		}

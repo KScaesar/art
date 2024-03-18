@@ -10,8 +10,8 @@ import (
 )
 
 type AdapterRecvFunc[Subject constraints.Ordered, rMessage, sMessage any] func(parent *Session[Subject, rMessage, sMessage]) (rMessage, error)
-type AdapterSendFunc[sMessage any] func(session Logger, message sMessage) error
-type AdapterStopFunc[sMessage any] func(session Logger, message sMessage)
+type AdapterSendFunc[sMessage any] func(message sMessage) error
+type AdapterStopFunc[sMessage any] func(message sMessage)
 
 type NewAdapterFunc[Subject constraints.Ordered, rMessage, sMessage any] func() (Adapter[Subject, rMessage, sMessage], error)
 
@@ -151,7 +151,7 @@ func (sess *Session[Subject, rMessage, sMessage]) Send(message sMessage) error {
 	if sess.isStop.Load() {
 		return ErrorWrapWithMessage(ErrClosed, "Artist session")
 	}
-	return sess.send(sess.logger, message)
+	return sess.send(message)
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) Stop() {
@@ -164,7 +164,7 @@ func (sess *Session[Subject, rMessage, sMessage]) Stop() {
 	sess.isStop.Store(true)
 	sess.isListen.Store(false)
 	var empty sMessage
-	sess.stop(sess.logger, empty)
+	sess.stop(empty)
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) StopWithMessage(message sMessage) {
@@ -176,7 +176,7 @@ func (sess *Session[Subject, rMessage, sMessage]) StopWithMessage(message sMessa
 	}
 	sess.isStop.Store(true)
 	sess.isListen.Store(false)
-	sess.stop(sess.logger, message)
+	sess.stop(message)
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) IsStop() bool {
