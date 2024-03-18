@@ -1,18 +1,14 @@
 package Artifex
 
 import (
-	"time"
-
-	"github.com/cenkalti/backoff/v4"
 	"golang.org/x/exp/constraints"
 )
 
 type ConnectParam[Subject constraints.Ordered, rMessage, sMessage any] struct {
 	RecvMux                 *MessageMux[Subject, rMessage]                           // Must
 	NewAdapter              NewAdapterFunc[Subject, rMessage, sMessage]              // Must
-	Permanent               bool                                                     // Option
-	EnterHandlers           []func(sess *Session[Subject, rMessage, sMessage]) error // Option
-	LeaveHandlers           []func(sess *Session[Subject, rMessage, sMessage])       // Option
+	SpawnHandlers           []func(sess *Session[Subject, rMessage, sMessage]) error // Option
+	ExitHandlers            []func(sess *Session[Subject, rMessage, sMessage])       // Option
 	BackoffMaxElapsedMinute int                                                      // Option
 }
 
@@ -21,155 +17,67 @@ func Connect[Subject constraints.Ordered, rMessage, sMessage any](param ConnectP
 	if err != nil {
 		return nil, err
 	}
-
 	sess, err := NewSession(param.RecvMux, adapter)
 	if err != nil {
 		return nil, err
 	}
 
-	if param.EnterHandlers != nil {
-		for _, enter := range param.EnterHandlers {
-			err = enter(sess)
-			if err == nil {
-				continue
-			}
-
-			if param.LeaveHandlers != nil {
-				for _, leave := range param.LeaveHandlers {
-					leave(sess)
-				}
-			}
-			sess.Stop()
-			return nil, err
-		}
+	if param.SpawnHandlers == nil {
+		param.SpawnHandlers = make([]func(sess *Session[Subject, rMessage, sMessage]) error, 0)
+	}
+	if param.ExitHandlers == nil {
+		param.ExitHandlers = make([]func(sess *Session[Subject, rMessage, sMessage]), 0)
 	}
 
-	backoffMaxElapsedMinute := 30
-	if param.BackoffMaxElapsedMinute > 0 {
-		backoffMaxElapsedMinute = param.BackoffMaxElapsedMinute
+	for _, spawn := range param.SpawnHandlers {
+		err = spawn(sess)
+		if err == nil {
+			continue
+		}
+		for _, exist := range param.ExitHandlers {
+			exist(sess)
+		}
+		sess.Stop()
+		return nil, err
 	}
 
 	go func() {
 		defer func() {
-			if param.LeaveHandlers != nil {
-				for _, leave := range param.LeaveHandlers {
-					leave(sess)
-				}
+			for _, exit := range param.ExitHandlers {
+				exit(sess)
 			}
 			sess.Stop()
 		}()
 
-	Listen:
-		err = sess.Listen()
-		if err == nil {
-			return
+		cnt := 0
+		tasker := PermanentTasker{
+			Run: func() error {
+				return sess.Listen()
+			},
+			ActiveStop: func() bool {
+				return sess.IsStop()
+			},
+			SelfRepair: func() error {
+				cnt++
+				sess.Logger().Info("%v reconnect %v times", sess.Identifier, cnt)
+				adapter, err = param.NewAdapter()
+				if err != nil {
+					return err
+				}
+				cnt = 0
+				sess.Logger().Info("%v reconnect success", sess.Identifier)
+
+				sess.recv = adapter.Recv
+				sess.send = adapter.Send
+				sess.stop = adapter.Stop
+				sess.isListen.Store(false)
+				return nil
+			},
+			BackoffMaxElapsedMinute: param.BackoffMaxElapsedMinute,
 		}
 
-		if !param.Permanent {
-			return
-		}
-
-		for !sess.IsStop() {
-			err = Reconnect(sess, param.NewAdapter, backoffMaxElapsedMinute)
-			if err == nil {
-				goto Listen
-			}
-		}
+		tasker.Start()
 	}()
 
 	return sess, nil
-}
-
-func Reconnect[Subject constraints.Ordered, rMessage, sMessage any](
-	sess *Session[Subject, rMessage, sMessage],
-	newAdapter NewAdapterFunc[Subject, rMessage, sMessage],
-	backoffMaxElapsedMinute int,
-) error {
-	cfg := backoff.NewExponentialBackOff()
-	cfg.InitialInterval = 500 * time.Millisecond
-	cfg.Multiplier = 1.5
-	cfg.RandomizationFactor = 0.5
-	cfg.MaxElapsedTime = time.Duration(backoffMaxElapsedMinute) * time.Minute
-
-	cnt := 0
-	return backoff.Retry(func() error {
-		if sess.IsStop() {
-			return nil
-		}
-
-		adapter, err := newAdapter()
-
-		cnt++
-		sess.Logger().Info("%v reconnect %v times", adapter.Identifier, cnt)
-
-		if err != nil {
-			return err
-		}
-
-		sess.recv = adapter.Recv
-		sess.send = adapter.Send
-		sess.stop = adapter.Stop
-		sess.isListen.Store(false)
-
-		sess.Logger().Info("%v reconnect success", adapter.Identifier)
-		return nil
-
-	}, cfg)
-}
-
-func connect(permanent bool, obj Repairable, NewMaterial func() (material any, err error), backoffMaxElapsedMinute int) error {
-Listen:
-	err := obj.Work()
-	if err == nil {
-		return nil
-	}
-
-	if !permanent {
-		return err
-	}
-
-	for !obj.IsStop() {
-		err = Reconnect2(obj, NewMaterial, backoffMaxElapsedMinute)
-		if err == nil {
-			goto Listen
-		}
-	}
-	return err
-}
-
-type PermanentConnect struct {
-	permanent               bool
-	obj                     Repairable
-	NewMaterial             func() (material any, err error)
-	backoffMaxElapsedMinute int
-}
-
-type Repairable interface {
-	Repair(material any)
-	IsStop() bool
-	Work() error
-}
-
-func Reconnect2(obj Repairable, NewMaterial func() (material any, err error), backoffMaxElapsedMinute int) error {
-	cfg := backoff.NewExponentialBackOff()
-	cfg.InitialInterval = 500 * time.Millisecond
-	cfg.Multiplier = 1.5
-	cfg.RandomizationFactor = 0.5
-	cfg.MaxElapsedTime = time.Duration(backoffMaxElapsedMinute) * time.Minute
-
-	return backoff.Retry(func() error {
-		if obj.IsStop() {
-			return nil
-		}
-
-		material, err := NewMaterial()
-		if err != nil {
-			return err
-		}
-
-		obj.Repair(material)
-
-		return nil
-
-	}, cfg)
 }
