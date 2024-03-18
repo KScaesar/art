@@ -75,7 +75,7 @@ func NewMux[Subject constraints.Ordered, Message any](getSubject NewSubjectFunc[
 type Mux[Subject constraints.Ordered, Message any] struct {
 	logger          Logger
 	node            *trie[Message]
-	groupDelimiter  string
+	delimiter       string
 	delimiterAtLeft bool
 	isCleanSubject  bool
 }
@@ -156,9 +156,9 @@ func (mux *Mux[Subject, Message]) PostMiddleware(handleFuncs ...HandleFunc[Messa
 func (mux *Mux[Subject, Message]) Handler(s Subject, h HandleFunc[Message]) *Mux[Subject, Message] {
 	var subject string
 	if mux.delimiterAtLeft {
-		subject = mux.groupDelimiter + CleanSubject(s, mux.isCleanSubject)
+		subject = mux.delimiter + CleanSubject(s, mux.isCleanSubject)
 	} else {
-		subject = CleanSubject(s, mux.isCleanSubject) + mux.groupDelimiter
+		subject = CleanSubject(s, mux.isCleanSubject) + mux.delimiter
 	}
 
 	handler := &routeHandler[Message]{
@@ -187,9 +187,9 @@ func (mux *Mux[Subject, Message]) SetNotFoundHandler(h HandleFunc[Message]) *Mux
 func (mux *Mux[Subject, Message]) Group(s Subject) *Mux[Subject, Message] {
 	var groupName string
 	if mux.delimiterAtLeft {
-		groupName = mux.groupDelimiter + CleanSubject(s, mux.isCleanSubject)
+		groupName = mux.delimiter + CleanSubject(s, mux.isCleanSubject)
 	} else {
-		groupName = CleanSubject(s, mux.isCleanSubject) + mux.groupDelimiter
+		groupName = CleanSubject(s, mux.isCleanSubject) + mux.delimiter
 	}
 
 	handler := &routeHandler[Message]{}
@@ -197,14 +197,14 @@ func (mux *Mux[Subject, Message]) Group(s Subject) *Mux[Subject, Message] {
 	return &Mux[Subject, Message]{
 		logger:          mux.logger,
 		node:            groupNode,
-		groupDelimiter:  mux.groupDelimiter,
+		delimiter:       mux.delimiter,
 		delimiterAtLeft: mux.delimiterAtLeft,
 		isCleanSubject:  mux.isCleanSubject,
 	}
 }
 
-func (mux *Mux[Subject, Message]) SetGroupDelimiter(groupDelimiter string, atLeft bool) *Mux[Subject, Message] {
-	mux.groupDelimiter = groupDelimiter
+func (mux *Mux[Subject, Message]) SetDelimiter(delimiter string, atLeft bool) *Mux[Subject, Message] {
+	mux.delimiter = delimiter
 	mux.delimiterAtLeft = atLeft
 	return mux
 }

@@ -151,7 +151,7 @@ func TestMessageMux_Transform(t *testing.T) {
 	}
 	mux := NewMux[int, *testcaseTransformMessage](newSubject).
 		SetLogger(NewLogger(true, LogLevelInfo)).
-		SetGroupDelimiter("/", true)
+		SetDelimiter("/", true)
 
 	mux.Handler(2, record)
 
@@ -264,7 +264,7 @@ func TestMessageMux_Group(t *testing.T) {
 	mux := NewMux[Subject, *testcaseGroupMessage](newSubject).
 		SetLogger(NewLogger(true, LogLevelInfo)).
 		SetCleanSubject(true).
-		SetGroupDelimiter("/", false)
+		SetDelimiter("/", false)
 
 	mux.PreMiddleware(func(message *testcaseGroupMessage) error {
 		message.body = "*" + message.body + "*"
