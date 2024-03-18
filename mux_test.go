@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"reflect"
 	"strconv"
 	"testing"
 )
@@ -19,10 +18,10 @@ func TestMessageMux_HandleMessage(t *testing.T) {
 	recorder := &bytes.Buffer{}
 
 	getSubject := func(message *redisMessage) (string, error) {
-		return message.channel + "/", nil
+		return message.channel, nil
 	}
 
-	mux := NewMessageMux[string, *redisMessage](getSubject).
+	mux := NewMux[string, *redisMessage](getSubject).
 		Handler("hello", func(dto *redisMessage) error {
 			fmt.Fprintf(recorder, "topic=%v, payload=%v", dto.channel, string(dto.body))
 			return nil
@@ -35,7 +34,7 @@ func TestMessageMux_HandleMessage(t *testing.T) {
 	// expect
 	expected := `topic=hello, payload={"data":"world"}`
 
-	// handlerParam
+	// routeHandler
 	dto := &redisMessage{
 		ctx:     context.Background(),
 		body:    []byte(`{"data":"world"}`),
@@ -48,7 +47,7 @@ func TestMessageMux_HandleMessage(t *testing.T) {
 
 	// assert
 	if expected != recorder.String() {
-		t.Errorf("handle(): %v, but want: %v", recorder.String(), expected)
+		t.Errorf("handleMessage(): %v, but want: %v", recorder.String(), expected)
 	}
 }
 
@@ -56,7 +55,7 @@ func TestLinkMiddlewares(t *testing.T) {
 	buf := new(bytes.Buffer)
 	buf.WriteString("\n")
 
-	decorator1 := func(next MessageHandler[string]) MessageHandler[string] {
+	decorator1 := func(next HandleFunc[string]) HandleFunc[string] {
 		return func(dto string) error {
 			fmt.Fprintf(buf, "%s_decorator1\n", dto)
 
@@ -70,7 +69,7 @@ func TestLinkMiddlewares(t *testing.T) {
 		}
 	}
 
-	decorator2 := func(next MessageHandler[string]) MessageHandler[string] {
+	decorator2 := func(next HandleFunc[string]) HandleFunc[string] {
 		return func(dto string) error {
 			fmt.Fprintf(buf, "%s_decorator2\n", dto)
 
@@ -84,7 +83,7 @@ func TestLinkMiddlewares(t *testing.T) {
 		}
 	}
 
-	decorator3 := func(next MessageHandler[string]) MessageHandler[string] {
+	decorator3 := func(next HandleFunc[string]) HandleFunc[string] {
 		return func(dto string) error {
 			fmt.Fprintf(buf, "%s_decorator3\n", dto)
 
@@ -101,13 +100,13 @@ func TestLinkMiddlewares(t *testing.T) {
 	tests := []struct {
 		name        string
 		msg         string
-		middlewares []MessageDecorator[string]
+		middlewares []Middleware[string]
 		expected    string
 	}{
 		{
 			name:        "Multiple decorator check sequence",
 			msg:         "hello_world",
-			middlewares: []MessageDecorator[string]{decorator1, decorator2, decorator3},
+			middlewares: []Middleware[string]{decorator1, decorator2, decorator3},
 			expected: `
 hello_world_decorator1
 hello_world_decorator2
@@ -148,10 +147,11 @@ func TestMessageMux_Transform(t *testing.T) {
 	}
 
 	newSubject := func(msg *testcaseTransformMessage) (string, error) {
-		return strconv.Itoa(msg.level0TypeId) + "/", nil
+		return "/" + strconv.Itoa(msg.level0TypeId), nil
 	}
-	mux := NewMessageMux[int, *testcaseTransformMessage](newSubject)
-	mux.SetLogger(NewLogger(true, LogLevelInfo))
+	mux := NewMux[int, *testcaseTransformMessage](newSubject).
+		SetLogger(NewLogger(true, LogLevelInfo)).
+		SetGroupDelimiter("/", true)
 
 	mux.Handler(2, record)
 
@@ -159,7 +159,7 @@ func TestMessageMux_Transform(t *testing.T) {
 		Handler(1, record).
 		Handler(2, record).
 		Group(5).Transform(testcaseTransformLevel2).
-		AddPreMiddleware(
+		PreMiddleware(
 			func(message *testcaseTransformMessage) error {
 				message.body = "^" + message.body + "^"
 				return nil
@@ -168,7 +168,7 @@ func TestMessageMux_Transform(t *testing.T) {
 		Handler(2, record)
 
 	mux.Group(4).Transform(testcaseTransformLevel1).
-		AddPreMiddleware(
+		PreMiddleware(
 			func(message *testcaseTransformMessage) error {
 				message.body = "_" + message.body + "_"
 				return nil
@@ -178,10 +178,10 @@ func TestMessageMux_Transform(t *testing.T) {
 		Handler(4, record)
 
 	expectedSubjects := []string{
-		"2/",
-		"3/1/", "3/2/",
-		"3/5/1/", "3/5/2/",
-		"4/1/", "4/2/", "4/4/",
+		"/2",
+		"/3/1", "/3/2",
+		"/3/5/1", "/3/5/2",
+		"/4/1", "/4/2", "/4/4",
 	}
 
 	gotSubjects := mux.Subjects()
@@ -220,56 +220,31 @@ func TestMessageMux_Transform(t *testing.T) {
 	}
 }
 
-func testcaseTransformLevel1(old *testcaseTransformMessage) (fresh *testcaseTransformMessage, err error) {
-	return &testcaseTransformMessage{
-		level0TypeId: old.level1TypeId,
-		level1TypeId: 0,
-		body:         old.body,
-	}, nil
+func testcaseTransformLevel1(msg *testcaseTransformMessage) (err error) {
+	old := msg
+	msg.level0TypeId = old.level1TypeId
+	msg.level1TypeId = 0
+	return nil
 }
 
-func testcaseTransformLevel2(old *testcaseTransformMessage) (fresh *testcaseTransformMessage, err error) {
-	level2TypeId, err := strconv.Atoi(old.body)
+func testcaseTransformLevel2(msg *testcaseTransformMessage) (err error) {
+	level2TypeId, err := strconv.Atoi(msg.body)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	originalLevel1TypeId := old.level0TypeId
-	return &testcaseTransformMessage{
-		level0TypeId: level2TypeId,
-		level1TypeId: 0,
-		body:         fmt.Sprintf("TransformLevel2 %v/%v/", originalLevel1TypeId, level2TypeId),
-	}, nil
+	originalLevel1TypeId := msg.level0TypeId
+
+	msg.level0TypeId = level2TypeId
+	msg.level1TypeId = 0
+	msg.body = fmt.Sprintf("TransformLevel2 %v/%v/", originalLevel1TypeId, level2TypeId)
+
+	return nil
 }
 
 type testcaseTransformMessage struct {
 	level0TypeId int
 	level1TypeId int
 	body         string
-}
-
-func Test_parseGroupSubject(t *testing.T) {
-	groupDelimiter := "/"
-	tests := []struct {
-		name    string
-		subject string
-		want    [][]string
-	}{
-		{
-			subject: "1/2/3/",
-			want: [][]string{
-				{"1/2/3/", ""},
-				{"1/2/", "3/"},
-				{"1/", "2/3/"},
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := parseGroupSubject(tt.subject, groupDelimiter); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("parseGroupSubject() = %v, want %v", got, tt.want)
-			}
-		})
-	}
 }
 
 func TestMessageMux_Group(t *testing.T) {
@@ -286,12 +261,15 @@ func TestMessageMux_Group(t *testing.T) {
 	}
 
 	newSubject := func(msg *testcaseGroupMessage) (string, error) { return string(msg.subject), nil }
-	mux := NewMessageMux[Subject, *testcaseGroupMessage](newSubject).SetLogger(NewLogger(true, LogLevelInfo))
-	mux.SetGroupDelimiter("/").
-		AddPreMiddleware(func(message *testcaseGroupMessage) error {
-			message.body = "*" + message.body + "*"
-			return nil
-		})
+	mux := NewMux[Subject, *testcaseGroupMessage](newSubject).
+		SetLogger(NewLogger(true, LogLevelInfo)).
+		SetCleanSubject(true).
+		SetGroupDelimiter("/", false)
+
+	mux.PreMiddleware(func(message *testcaseGroupMessage) error {
+		message.body = "*" + message.body + "*"
+		return nil
+	})
 
 	mux.Handler("topic1", record)
 
@@ -308,7 +286,7 @@ func TestMessageMux_Group(t *testing.T) {
 		Handler("game1", record).
 		Handler("/game2/kindA/", record)
 	topic4_game3 := topic4.Group("game3").
-		AddPreMiddleware(func(message *testcaseGroupMessage) error {
+		PreMiddleware(func(message *testcaseGroupMessage) error {
 			message.body = "&" + message.body + "&"
 			return nil
 		}).

@@ -25,7 +25,7 @@ type Adapter[Subject constraints.Ordered, rMessage, sMessage any] struct {
 	Stop AdapterStopFunc[sMessage]
 }
 
-func NewSession[S constraints.Ordered, rM, sM any](recvMux *MessageMux[S, rM], adapter Adapter[S, rM, sM]) (*Session[S, rM, sM], error) {
+func NewSession[S constraints.Ordered, rM, sM any](recvMux *Mux[S, rM], adapter Adapter[S, rM, sM]) (*Session[S, rM, sM], error) {
 	if recvMux == nil || adapter.Stop == nil {
 		return nil, ErrorWrapWithMessage(ErrInvalidParameter, "session adapter: mux or stop is empty")
 	}
@@ -35,13 +35,11 @@ func NewSession[S constraints.Ordered, rM, sM any](recvMux *MessageMux[S, rM], a
 	}
 
 	var sessId string
-	if adapter.Identifier == "" {
-		builder := bytes.NewBuffer(make([]byte, 0, 13))
-		builder.WriteString(GenerateRandomCode(6))
-		builder.WriteString("-")
-		builder.WriteString(GenerateRandomCode(6))
-		sessId = builder.String()
-	}
+	builder := bytes.NewBuffer(make([]byte, 0, 13))
+	builder.WriteString(GenerateRandomCode(6))
+	builder.WriteString("-")
+	builder.WriteString(GenerateRandomCode(6))
+	sessId = builder.String()
 
 	ctx := context.Background()
 	if adapter.Context != nil {
@@ -77,7 +75,7 @@ type Session[Subject constraints.Ordered, rMessage, sMessage any] struct {
 	isStop         atomic.Bool
 	isListen       atomic.Bool
 
-	recvMux    *MessageMux[Subject, rMessage]
+	recvMux    *Mux[Subject, rMessage]
 	Identifier string
 	Context    context.Context
 	logger     Logger

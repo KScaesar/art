@@ -7,16 +7,12 @@ import (
 	"golang.org/x/exp/constraints"
 )
 
-type MessageHandler[Message any] func(message Message) error
+type HandleFunc[Message any] func(message Message) error
 
-func (fn MessageHandler[Message]) HandleMessage(message Message) error {
-	return fn(message)
-}
-
-func (fn MessageHandler[Message]) PreMiddleware() MessageDecorator[Message] {
-	return func(next MessageHandler[Message]) MessageHandler[Message] {
+func (h HandleFunc[Message]) PreMiddleware() Middleware[Message] {
+	return func(next HandleFunc[Message]) HandleFunc[Message] {
 		return func(message Message) error {
-			err := fn(message)
+			err := h(message)
 			if err != nil {
 				return err
 			}
@@ -25,25 +21,25 @@ func (fn MessageHandler[Message]) PreMiddleware() MessageDecorator[Message] {
 	}
 }
 
-func (fn MessageHandler[Message]) PostMiddleware() MessageDecorator[Message] {
-	return func(next MessageHandler[Message]) MessageHandler[Message] {
+func (h HandleFunc[Message]) PostMiddleware() Middleware[Message] {
+	return func(next HandleFunc[Message]) HandleFunc[Message] {
 		return func(message Message) error {
 			err := next(message)
 			if err != nil {
 				return err
 			}
-			return fn(message)
+			return h(message)
 		}
 	}
 }
 
-func (fn MessageHandler[Message]) LinkMiddlewares(middlewares ...MessageDecorator[Message]) MessageHandler[Message] {
-	return LinkMiddlewares(fn, middlewares...)
+func (h HandleFunc[Message]) LinkMiddlewares(middlewares ...Middleware[Message]) HandleFunc[Message] {
+	return LinkMiddlewares(h, middlewares...)
 }
 
-type MessageDecorator[Message any] func(next MessageHandler[Message]) MessageHandler[Message]
+type Middleware[Message any] func(next HandleFunc[Message]) HandleFunc[Message]
 
-func LinkMiddlewares[Message any](handler MessageHandler[Message], middlewares ...MessageDecorator[Message]) MessageHandler[Message] {
+func LinkMiddlewares[Message any](handler HandleFunc[Message], middlewares ...Middleware[Message]) HandleFunc[Message] {
 	n := len(middlewares)
 	for i := n - 1; 0 <= i; i-- {
 		decorator := middlewares[i]
@@ -56,63 +52,52 @@ func LinkMiddlewares[Message any](handler MessageHandler[Message], middlewares .
 
 type NewSubjectFunc[Message any] func(Message) (string, error)
 
-func NewMessageMux[Subject constraints.Ordered, Message any](getSubject NewSubjectFunc[Message]) *MessageMux[Subject, Message] {
-	node := &trie[Message]{
-		kind: rootKind,
-	}
-	node.insert("", 0, handlerParam[Message]{
+func NewMux[Subject constraints.Ordered, Message any](getSubject NewSubjectFunc[Message]) *Mux[Subject, Message] {
+	handler := &routeHandler[Message]{
 		getSubject: getSubject,
-	})
-	return &MessageMux[Subject, Message]{
-		logger:         DefaultLogger(),
-		groupDelimiter: "/",
-		node:           node,
+	}
+
+	node := &trie[Message]{
+		child: make(map[string]*trie[Message]),
+	}
+	node.addRoute("", 0, handler)
+
+	return &Mux[Subject, Message]{
+		logger: DefaultLogger(),
+		node:   node,
 	}
 }
 
-// MessageMux refers to a router or multiplexer, which can be used to handle different message.
-// Itself is also a MessageHandler, but with added routing capabilities.
+// Mux refers to a router or multiplexer, which can be used to handle different message.
+// Itself is also a HandleFunc, but with added routing capabilities.
 //
-// rMessage represents a high-level abstraction data structure containing metadata (e.g. header) + body
-type MessageMux[Subject constraints.Ordered, Message any] struct {
-	logger         Logger
-	groupDelimiter string
-	node           *trie[Message]
+// Message represents a high-level abstraction data structure containing metadata (e.g. header) + body
+type Mux[Subject constraints.Ordered, Message any] struct {
+	logger          Logger
+	node            *trie[Message]
+	groupDelimiter  string
+	delimiterAtLeft bool
+	isCleanSubject  bool
 }
 
-func (mux *MessageMux[Subject, Message]) SetLogger(logger Logger) *MessageMux[Subject, Message] {
-	mux.logger = logger
-	return mux
-}
-
-func (mux *MessageMux[Subject, Message]) Transform(transforms []func(old Message) (fresh Message, err error)) *MessageMux[Subject, Message] {
-	mux.node.insert("", 0, handlerParam[Message]{
-		transforms: transforms,
-	})
-	return mux
-}
-
-func (mux *MessageMux[Subject, Message]) HandleMessage(message Message) (err error) {
+func (mux *Mux[Subject, Message]) HandleMessage(message Message) (err error) {
 	if mux.node.transforms != nil {
-		for _, transform := range mux.node.transforms {
-			message, err = transform(message)
-			if err != nil {
-				Err := ErrorWrapWithMessage(err, "Failed to transform")
-				mux.logger.Error("%v", Err)
-				return err
-			}
+		err = mux.node.transform(message)
+		if err != nil {
+			mux.logger.Error("%v", err)
+			return err
 		}
 	}
 
 	subject, err := mux.node.getSubject(message)
 	if err != nil {
-		Err := ErrorWrapWithMessage(err, "Failed to parse subject from the message")
-		mux.logger.Error("%v", Err)
-		return Err
+		mux.logger.Error("%v", err)
+		return err
 	}
 	mux.logger.Debug("handle subject=%v", subject)
 
-	err = mux.node.handle(subject, 0, message)
+	path := &routeHandler[Message]{}
+	err = mux.node.handleMessage(subject, 0, path, message)
 	if err != nil {
 		mux.logger.Error("hande subject=%v fail: %v", subject, err)
 		return err
@@ -121,74 +106,120 @@ func (mux *MessageMux[Subject, Message]) HandleMessage(message Message) (err err
 	return nil
 }
 
-func (mux *MessageMux[Subject, Message]) Subjects() (result []string) {
+func (mux *Mux[Subject, Message]) SetLogger(logger Logger) *Mux[Subject, Message] {
+	mux.logger = logger
+	return mux
+}
+
+func (mux *Mux[Subject, Message]) Transform(transforms ...HandleFunc[Message]) *Mux[Subject, Message] {
+	handler := &routeHandler[Message]{
+		transforms: transforms,
+	}
+	mux.node.addRoute("", 0, handler)
+	return mux
+}
+
+func (mux *Mux[Subject, Message]) SubjectFunc(getSubject NewSubjectFunc[Message]) *Mux[Subject, Message] {
+	handler := &routeHandler[Message]{
+		getSubject: getSubject,
+	}
+	mux.node.addRoute("", 0, handler)
+	return mux
+}
+
+func (mux *Mux[Subject, Message]) Middleware(middlewares ...Middleware[Message]) *Mux[Subject, Message] {
+	handler := &routeHandler[Message]{
+		middlewares: middlewares,
+	}
+	mux.node.addRoute("", 0, handler)
+	return mux
+}
+
+func (mux *Mux[Subject, Message]) PreMiddleware(handleFuncs ...HandleFunc[Message]) *Mux[Subject, Message] {
+	handler := &routeHandler[Message]{}
+	for _, h := range handleFuncs {
+		handler.middlewares = append(handler.middlewares, h.PreMiddleware())
+	}
+	mux.node.addRoute("", 0, handler)
+	return mux
+}
+
+func (mux *Mux[Subject, Message]) PostMiddleware(handleFuncs ...HandleFunc[Message]) *Mux[Subject, Message] {
+	handler := &routeHandler[Message]{}
+	for _, h := range handleFuncs {
+		handler.middlewares = append(handler.middlewares, h.PostMiddleware())
+	}
+	mux.node.addRoute("", 0, handler)
+	return mux
+}
+
+func (mux *Mux[Subject, Message]) Handler(s Subject, h HandleFunc[Message]) *Mux[Subject, Message] {
+	var subject string
+	if mux.delimiterAtLeft {
+		subject = mux.groupDelimiter + CleanSubject(s, mux.isCleanSubject)
+	} else {
+		subject = CleanSubject(s, mux.isCleanSubject) + mux.groupDelimiter
+	}
+
+	handler := &routeHandler[Message]{
+		handler: h,
+	}
+	mux.node.addRoute(subject, 0, handler)
+	return mux
+}
+
+func (mux *Mux[Subject, Message]) SetDefaultHandler(h HandleFunc[Message]) *Mux[Subject, Message] {
+	handler := &routeHandler[Message]{
+		defaultHandler: h,
+	}
+	mux.node.addRoute("", 0, handler)
+	return mux
+}
+
+func (mux *Mux[Subject, Message]) SetNotFoundHandler(h HandleFunc[Message]) *Mux[Subject, Message] {
+	handler := &routeHandler[Message]{
+		notFoundHandler: h,
+	}
+	mux.node.addRoute("", 0, handler)
+	return mux
+}
+
+func (mux *Mux[Subject, Message]) Group(s Subject) *Mux[Subject, Message] {
+	var groupName string
+	if mux.delimiterAtLeft {
+		groupName = mux.groupDelimiter + CleanSubject(s, mux.isCleanSubject)
+	} else {
+		groupName = CleanSubject(s, mux.isCleanSubject) + mux.groupDelimiter
+	}
+
+	handler := &routeHandler[Message]{}
+	groupNode := mux.node.addRoute(groupName, 0, handler)
+	return &Mux[Subject, Message]{
+		logger:          mux.logger,
+		node:            groupNode,
+		groupDelimiter:  mux.groupDelimiter,
+		delimiterAtLeft: mux.delimiterAtLeft,
+		isCleanSubject:  mux.isCleanSubject,
+	}
+}
+
+func (mux *Mux[Subject, Message]) SetGroupDelimiter(groupDelimiter string, atLeft bool) *Mux[Subject, Message] {
+	mux.groupDelimiter = groupDelimiter
+	mux.delimiterAtLeft = atLeft
+	return mux
+}
+
+func (mux *Mux[Subject, Message]) Subjects() (result []string) {
 	subjects, _ := mux.node.endpoint()
 	return subjects
 }
 
-func (mux *MessageMux[Subject, Message]) Handler(s Subject, h MessageHandler[Message]) *MessageMux[Subject, Message] {
-	subject := CleanSubject(s) + mux.groupDelimiter
-	mux.node.insert(subject, 0, handlerParam[Message]{
-		handler: h,
-	})
+func (mux *Mux[Subject, Message]) SetCleanSubject(cleanSubject bool) *Mux[Subject, Message] {
+	mux.isCleanSubject = cleanSubject
 	return mux
 }
 
-func (mux *MessageMux[Subject, Message]) Middleware(middlewares ...MessageDecorator[Message]) *MessageMux[Subject, Message] {
-	mux.node.insert("", 0, handlerParam[Message]{
-		middlewares: middlewares,
-	})
-	return mux
-}
-
-func (mux *MessageMux[Subject, Message]) AddPreMiddleware(handlers ...MessageHandler[Message]) *MessageMux[Subject, Message] {
-	param := handlerParam[Message]{}
-	for _, handler := range handlers {
-		param.middlewares = append(param.middlewares, handler.PreMiddleware())
-	}
-	mux.node.insert("", 0, param)
-	return mux
-}
-
-func (mux *MessageMux[Subject, Message]) AddPostMiddleware(handlers ...MessageHandler[Message]) *MessageMux[Subject, Message] {
-	param := handlerParam[Message]{}
-	for _, handler := range handlers {
-		param.middlewares = append(param.middlewares, handler.PostMiddleware())
-	}
-	mux.node.insert("", 0, param)
-	return mux
-}
-
-func (mux *MessageMux[Subject, Message]) SetNotFoundHandler(h MessageHandler[Message]) *MessageMux[Subject, Message] {
-	mux.node.insert("", 0, handlerParam[Message]{
-		notFoundHandler: h,
-	})
-	return mux
-}
-
-func (mux *MessageMux[Subject, Message]) SetDefaultHandler(h MessageHandler[Message]) *MessageMux[Subject, Message] {
-	mux.node.insert("", 0, handlerParam[Message]{
-		defaultHandler: h,
-	})
-	return mux
-}
-
-func (mux *MessageMux[Subject, Message]) SetGroupDelimiter(delimiter string) *MessageMux[Subject, Message] {
-	mux.groupDelimiter = delimiter
-	return mux
-}
-
-func (mux *MessageMux[Subject, Message]) Group(s Subject) *MessageMux[Subject, Message] {
-	groupName := CleanSubject(s) + mux.groupDelimiter
-	groupNode := mux.node.insert(groupName, 0, handlerParam[Message]{})
-	return &MessageMux[Subject, Message]{
-		logger:         mux.logger,
-		groupDelimiter: mux.groupDelimiter,
-		node:           groupNode,
-	}
-}
-
-func CleanSubject[Subject constraints.Ordered](s Subject) string {
+func CleanSubject[Subject constraints.Ordered](s Subject, isClean bool) string {
 	actions := []func(s string) string{
 		strings.TrimSpace,
 		func(s string) string { return strings.Trim(s, `/.\`) },
@@ -196,22 +227,12 @@ func CleanSubject[Subject constraints.Ordered](s Subject) string {
 	}
 
 	subject := fmt.Sprintf("%v", s)
+	if !isClean {
+		return subject
+	}
+
 	for _, action := range actions {
 		subject = action(subject)
 	}
 	return subject
-}
-
-func newGroupMux[Subject constraints.Ordered, Message any](parent *MessageMux[Subject, Message], groupName string) *MessageMux[Subject, Message] {
-	return &MessageMux[Subject, Message]{
-		logger:          SilentLogger(),
-		parentGroupName: parent.parentGroupName + groupName,
-		groupDelimiter:  parent.groupDelimiter,
-		transform:       nil,
-		newSubject:      parent.newSubject,
-		handlers:        make(map[string]MessageHandler[Message]),
-		middlewares:     append([]MessageDecorator[Message]{}, parent.middlewares...),
-		notFoundHandler: parent.notFoundHandler,
-		defaultHandler:  nil,
-	}
 }

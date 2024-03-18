@@ -12,7 +12,7 @@ import (
 //   - SpawnHandlers are used for additional operations during session creation.
 //   - ExitHandlers are used for cleanup operations when the session ends.
 type Roamer[Subject constraints.Ordered, rMessage, sMessage any] struct {
-	RecvMux       *MessageMux[Subject, rMessage]                           // Must
+	RecvMux       *Mux[Subject, rMessage]                                  // Must
 	NewAdapter    NewAdapterFunc[Subject, rMessage, sMessage]              // Must
 	SpawnHandlers []func(sess *Session[Subject, rMessage, sMessage]) error // Option
 	ExitHandlers  []func(sess *Session[Subject, rMessage, sMessage])       // Option

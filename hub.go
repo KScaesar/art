@@ -7,7 +7,7 @@ import (
 	"golang.org/x/exp/constraints"
 )
 
-func NewArtist[Subject constraints.Ordered, rMessage, sMessage any](recvMux *MessageMux[Subject, rMessage]) *Artist[Subject, rMessage, sMessage] {
+func NewArtist[Subject constraints.Ordered, rMessage, sMessage any](recvMux *Mux[Subject, rMessage]) *Artist[Subject, rMessage, sMessage] {
 	return &Artist[Subject, rMessage, sMessage]{
 		recvMux:       recvMux,
 		sessions:      make(map[*Session[Subject, rMessage, sMessage]]bool),
@@ -28,7 +28,7 @@ func NewArtist[Subject constraints.Ordered, rMessage, sMessage any](recvMux *Mes
 type Artist[Subject constraints.Ordered, rMessage, sMessage any] struct {
 	mu       sync.RWMutex
 	isStop   atomic.Bool
-	recvMux  *MessageMux[Subject, rMessage]
+	recvMux  *Mux[Subject, rMessage]
 	sessions map[*Session[Subject, rMessage, sMessage]]bool
 
 	concurrencyQty int                                                      // Option

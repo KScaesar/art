@@ -6,115 +6,156 @@ import (
 	"sort"
 )
 
-type nodeKind uint8
+// getSubject 是為了避免 generic type 呼叫 method 所造成的效能降低
+// 也可以因應不同情境, 改變取得 subject 的規則
+//
+// https://www.youtube.com/watch?v=D1hI55EcBB4&t=20260s
+//
+// https://hackmd.io/@fieliapm/BkHvJjYq3#/5/2
+//
+// hande message 執行路徑, 依照欄位的順序, 從上到下
+type routeHandler[M any] struct {
+	transforms  []HandleFunc[M]
+	getSubject  NewSubjectFunc[M]
+	middlewares []Middleware[M]
+	handler     HandleFunc[M]
 
-const (
-	normalKind nodeKind = iota
-	rootKind
-)
+	defaultHandler  HandleFunc[M]
+	notFoundHandler HandleFunc[M]
+}
 
-type handlerParam[M any] struct {
-	// getSubject 是為了避免 generic type 呼叫 method 所造成的效能降低
-	// 也可以因應不同情境, 改變取得 subject 的規則
-	//
-	// https://www.youtube.com/watch?v=D1hI55EcBB4&t=20260s
-	//
-	// https://hackmd.io/@fieliapm/BkHvJjYq3#/5/2
-	getSubject      NewSubjectFunc[M]
-	transforms      []func(old M) (fresh M, err error)
-	defaultHandler  MessageHandler[M]
-	middlewares     []MessageDecorator[M]
-	handler         MessageHandler[M]
-	notFoundHandler MessageHandler[M]
+func (path *routeHandler[M]) collect(node *trie[M]) {
+	if node.middlewares != nil {
+		path.middlewares = append(path.middlewares, node.middlewares...)
+	}
+	if node.getSubject != nil {
+		path.getSubject = node.getSubject
+	}
+	if node.defaultHandler != nil {
+		path.defaultHandler = node.defaultHandler
+	}
+	if node.notFoundHandler != nil {
+		path.notFoundHandler = node.notFoundHandler
+	}
+}
+
+func (route *routeHandler[M]) register(subject string, node *trie[M]) {
+	if route.transforms != nil {
+		node.routeHandler.transforms = append(node.routeHandler.transforms, route.transforms...)
+	}
+	if route.getSubject != nil {
+		if node.routeHandler.getSubject != nil {
+			panic("assign duplicated getSubject: " + subject)
+		}
+		node.routeHandler.getSubject = route.getSubject
+	}
+	if route.middlewares != nil {
+		node.routeHandler.middlewares = append(node.routeHandler.middlewares, route.middlewares...)
+	}
+	if route.handler != nil {
+		if node.routeHandler.handler != nil {
+			panic("assign duplicated handler: " + subject)
+		}
+		node.routeHandler.handler = route.handler
+	}
+	if route.defaultHandler != nil {
+		if node.routeHandler.defaultHandler != nil {
+			panic("assign duplicated defaultHandler: " + subject)
+		}
+		node.routeHandler.defaultHandler = route.defaultHandler
+	}
+	if route.notFoundHandler != nil {
+		if node.routeHandler.notFoundHandler != nil {
+			panic("assign duplicated notFoundHandler: " + subject)
+		}
+		node.routeHandler.notFoundHandler = route.notFoundHandler
+	}
+}
+
+func (handler *routeHandler[M]) reset() {
+	handler.transforms = handler.transforms[:0]
+	handler.getSubject = nil
+	handler.middlewares = handler.middlewares[:0]
+	handler.handler = nil
+	handler.defaultHandler = nil
+	handler.notFoundHandler = nil
 }
 
 type trie[M any] struct {
-	kind        nodeKind
 	child       map[string]*trie[M]
+	part        string
 	fullSubject string
-	handlerParam[M]
+	routeHandler[M]
 }
 
-func (node *trie[M]) insert(subject string, idx int, param handlerParam[M]) *trie[M] {
-	if len(subject) == idx {
-		if param.transforms != nil {
-			node.handlerParam.transforms = append(node.handlerParam.transforms, param.transforms...)
-		}
-		if param.getSubject != nil {
-			node.handlerParam.getSubject = param.getSubject
-		}
-		if param.defaultHandler != nil {
-			if node.handlerParam.defaultHandler != nil {
-				panic("assign duplicated defaultHandler: " + subject)
-			}
-			node.handlerParam.defaultHandler = param.defaultHandler
-		}
-		if param.middlewares != nil {
-			node.handlerParam.middlewares = append(node.handlerParam.middlewares, param.middlewares...)
-		}
-		if param.handler != nil {
-			if node.handlerParam.handler != nil {
-				panic("assign duplicated handler: " + subject)
-			}
-			node.handlerParam.handler = param.handler
-		}
+func (node *trie[M]) addRoute(subject string, cursor int, handler *routeHandler[M]) *trie[M] {
+	if len(subject) == cursor {
+		handler.register(subject, node)
 		return node
 	}
 
-	char := string(subject[idx])
-	if node.child == nil {
-		node.child = make(map[string]*trie[M])
-	}
-
-	next, exist := node.child[char]
+	part := string(subject[cursor])
+	next, exist := node.child[part]
 	if !exist {
 		next = &trie[M]{
-			child:       nil,
-			fullSubject: node.fullSubject + char,
+			child:       make(map[string]*trie[M]),
+			part:        part,
+			fullSubject: node.fullSubject + part,
 		}
-		node.child[char] = next
+		node.child[part] = next
 	}
 
-	return next.insert(subject, idx+1, param)
+	return next.addRoute(subject, cursor+1, handler)
 }
 
-func (node *trie[M]) handle(subject string, idx int, msg M) (err error) {
-	if len(subject) == idx {
-		return LinkMiddlewares(node.handler, node.middlewares...)(msg)
-	}
+func (node *trie[M]) handleMessage(subject string, cursor int, path *routeHandler[M], msg M) (err error) {
+Loop:
+	path.collect(node)
 
-	if node.transforms == nil {
-		return node.handle(subject, idx+1, msg)
-	}
-
-	idx = 0
-	for _, transform := range node.transforms {
-		msg, err = transform(msg)
+	if node.transforms != nil {
+		cursor = 0
+		err = node.transform(msg)
 		if err != nil {
-			return ErrorWrapWithMessage(err, "Failed to transform")
+			return err
+		}
+
+		subject, err = path.getSubject(msg)
+		if err != nil {
+			return err
 		}
 	}
 
-	subject, err = node.getSubject(msg)
-	if err != nil {
-		return ErrorWrapWithMessage(err, "Failed to parse subject from the message")
+	if len(subject) == cursor {
+		return LinkMiddlewares(node.handler, path.middlewares...)(msg)
 	}
 
-	char := string(subject[idx])
-	next, exist := node.child[char]
+	word := string(subject[cursor])
+	next, exist := node.child[word]
 	if exist {
-		return next.handle(subject, idx, msg)
+		node = next
+		cursor++
+		goto Loop
 	}
 
-	if node.defaultHandler != nil {
-		return LinkMiddlewares(node.defaultHandler, node.middlewares...)(msg)
+	if path.defaultHandler != nil {
+		return LinkMiddlewares(path.defaultHandler, path.middlewares...)(msg)
 	}
 
-	if node.notFoundHandler != nil {
-		return node.notFoundHandler(msg)
+	if path.notFoundHandler != nil {
+		return path.notFoundHandler(msg)
 	}
 
 	return ErrorWrapWithMessage(ErrNotFound, "mux subject")
+}
+
+func (node *trie[M]) transform(message M) error {
+	for _, transform := range node.transforms {
+		err := transform(message)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (node *trie[M]) endpoint() (subjects, functions []string) {
