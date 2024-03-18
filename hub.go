@@ -22,10 +22,9 @@ type Artist[Subject constraints.Ordered, rMessage, sMessage any] struct {
 	recvMux  *MessageMux[Subject, rMessage]
 	sessions map[*Session[Subject, rMessage, sMessage]]bool
 
-	concurrencyQty          int                                                      // Option
-	spawnHandlers           []func(sess *Session[Subject, rMessage, sMessage]) error // Option
-	exitHandlers            []func(sess *Session[Subject, rMessage, sMessage])       // Option
-	backoffMaxElapsedMinute int                                                      // Option
+	concurrencyQty int                                                      // Option
+	spawnHandlers  []func(sess *Session[Subject, rMessage, sMessage]) error // Option
+	exitHandlers   []func(sess *Session[Subject, rMessage, sMessage])       // Option
 }
 
 func (hub *Artist[Subject, rMessage, sMessage]) Stop() {
@@ -74,37 +73,11 @@ func (hub *Artist[Subject, rMessage, sMessage]) Connect(newAdapter NewAdapterFun
 
 	go func() {
 		defer func() {
+			hub.mu.Lock()
 			hub.exit(sess)
+			hub.mu.Unlock()
 		}()
-
-		cnt := 0
-		tasker := PermanentTasker{
-			Run: func() error {
-				return sess.Listen()
-			},
-			ActiveStop: func() bool {
-				return hub.isStop.Load() && sess.IsStop()
-			},
-			SelfRepair: func() error {
-				cnt++
-				sess.Logger().Info("%v reconnect %v times", sess.Identifier, cnt)
-				adapter, err = newAdapter()
-				if err != nil {
-					return err
-				}
-				cnt = 0
-				sess.Logger().Info("%v reconnect success", sess.Identifier)
-
-				sess.recv = adapter.Recv
-				sess.send = adapter.Send
-				sess.stop = adapter.Stop
-				sess.isListen.Store(false)
-				return nil
-			},
-			BackoffMaxElapsedMinute: hub.backoffMaxElapsedMinute,
-		}
-
-		tasker.Start()
+		sess.Listen()
 	}()
 
 	return sess, nil
@@ -219,14 +192,4 @@ func (hub *Artist[Subject, rMessage, sMessage]) SetExitHandler(leaveHandler func
 	defer hub.mu.Unlock()
 
 	hub.exitHandlers = append(hub.exitHandlers, leaveHandler)
-}
-
-func (hub *Artist[Subject, rMessage, sMessage]) SetBackoffMaxElapsedMinute(backoffMaxElapsedMinute int) {
-	if hub.isStop.Load() {
-		return
-	}
-	hub.mu.Lock()
-	defer hub.mu.Unlock()
-
-	hub.backoffMaxElapsedMinute = backoffMaxElapsedMinute
 }
