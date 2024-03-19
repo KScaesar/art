@@ -21,12 +21,18 @@ type Adapter[Subject constraints.Ordered, rMessage, sMessage any] struct {
 	Send AdapterSendFunc[sMessage]                    // Must
 	Stop AdapterStopFunc[sMessage]                    // Must
 
-	Identifier string          // Option
-	Context    context.Context // Option
-	Logger     Logger          // Option
+	Identifier                             string          // Option
+	Context                                context.Context // Option
+	Logger                                 Logger          // Option
+	Lifecycle[Subject, rMessage, sMessage]                 // Option
 }
 
-func NewSession[S constraints.Ordered, rM, sM any](recvMux *Mux[S, rM], adapter Adapter[S, rM, sM]) (*Session[S, rM, sM], error) {
+func NewSession[S constraints.Ordered, rM, sM any](recvMux *Mux[S, rM], newAdapter NewAdapterFunc[S, rM, sM]) (*Session[S, rM, sM], error) {
+	adapter, err := newAdapter()
+	if err != nil {
+		return nil, err
+	}
+
 	if recvMux == nil || adapter.Stop == nil {
 		return nil, ErrorWrapWithMessage(ErrInvalidParameter, "session adapter: mux or stop is empty")
 	}
@@ -53,7 +59,7 @@ func NewSession[S constraints.Ordered, rM, sM any](recvMux *Mux[S, rM], adapter 
 	}
 	logger = logger.WithSessionId(sessId)
 
-	return &Session[S, rM, sM]{
+	session := &Session[S, rM, sM]{
 		Keys:      make(map[string]any),
 		pingpong:  func() error { return nil },
 		notifyAll: make([]chan error, 0),
@@ -63,15 +69,31 @@ func NewSession[S constraints.Ordered, rM, sM any](recvMux *Mux[S, rM], adapter 
 		Context:    ctx,
 		logger:     logger,
 
-		recv: adapter.Recv,
-		send: adapter.Send,
-		stop: adapter.Stop,
-	}, nil
+		recv:      adapter.Recv,
+		send:      adapter.Send,
+		stop:      adapter.Stop,
+		lifecycle: adapter.Lifecycle,
+	}
+
+	err = session.lifecycle.Spawn(session)
+	if err != nil {
+		return nil, err
+	}
+
+	go func() {
+		notify := session.Notify()
+		select {
+		case <-notify:
+			session.lifecycle.Exit(session)
+		}
+	}()
+
+	return session, nil
 }
 
 type Session[Subject constraints.Ordered, rMessage, sMessage any] struct {
 	mu             sync.RWMutex
-	Keys           maputil.Data
+	Keys           maputil.Data // Keys not concurrency safe
 	pingpong       func() error
 	enablePingPong atomic.Bool
 	isStop         atomic.Bool
@@ -83,9 +105,19 @@ type Session[Subject constraints.Ordered, rMessage, sMessage any] struct {
 	Context    context.Context
 	logger     Logger
 
-	recv AdapterRecvFunc[Subject, rMessage, sMessage]
-	send AdapterSendFunc[sMessage]
-	stop AdapterStopFunc[sMessage]
+	recv      AdapterRecvFunc[Subject, rMessage, sMessage]
+	send      AdapterSendFunc[sMessage]
+	stop      AdapterStopFunc[sMessage]
+	lifecycle Lifecycle[Subject, rMessage, sMessage]
+}
+
+func (sess *Session[Subject, rMessage, sMessage]) SelfRepair(adapter Adapter[Subject, rMessage, sMessage]) {
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+
+	sess.recv = adapter.Recv
+	sess.send = adapter.Send
+	sess.stop = adapter.Stop
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) Logger() Logger {
@@ -214,7 +246,6 @@ func (sess *Session[Subject, rMessage, sMessage]) Notify() <-chan error {
 }
 
 // SendPingWaitPong sends a ping message and waits for a corresponding pong message.
-// This function can be used in configuration by the Artist.SetSpawnHandler or Roamer.SpawnHandlers
 func (sess *Session[Subject, rMessage, sMessage]) SendPingWaitPong(pongSubject Subject, pongWaitSecond int, ping, pong func(sess *Session[Subject, rMessage, sMessage]) error) {
 	sess.enablePingPong.Store(true)
 	waitPong := make(chan error, 1)
@@ -232,7 +263,6 @@ func (sess *Session[Subject, rMessage, sMessage]) SendPingWaitPong(pongSubject S
 }
 
 // WaitPingSendPong waits for a ping message and response a corresponding pong message.
-// This function can be used in configuration by the Artist.SetSpawnHandler or Roamer.SpawnHandlers
 func (sess *Session[Subject, rMessage, sMessage]) WaitPingSendPong(pingSubject Subject, pingWaitSecond int, ping, pong func(sess *Session[Subject, rMessage, sMessage]) error) {
 	sess.enablePingPong.Store(true)
 	waitPing := make(chan error, 1)

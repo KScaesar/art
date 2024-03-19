@@ -9,31 +9,23 @@ import (
 
 func NewArtist[Subject constraints.Ordered, rMessage, sMessage any](recvMux *Mux[Subject, rMessage]) *Artist[Subject, rMessage, sMessage] {
 	return &Artist[Subject, rMessage, sMessage]{
-		recvMux:       recvMux,
-		sessions:      make(map[*Session[Subject, rMessage, sMessage]]bool),
-		spawnHandlers: make([]func(sess *Session[Subject, rMessage, sMessage]) error, 0),
-		exitHandlers:  make([]func(sess *Session[Subject, rMessage, sMessage]), 0),
+		recvMux:  recvMux,
+		sessions: make(map[*Session[Subject, rMessage, sMessage]]bool),
 	}
 }
 
 // Artist can manage the lifecycle of multiple Sessions.
-// On the contrary, Roamer can manage the lifecycle of a single Session.
 //
 //   - concurrencyQty controls how many tasks can run simultaneously,
 //     preventing resource usage or avoid frequent context switches.
 //   - recvMux is a multiplexer used for handle messages.
 //   - newAdapter is used to create a new adapter.
-//   - spawnHandlers are used for additional operations during session creation.
-//   - exitHandlers are used for cleanup operations when the session ends.
 type Artist[Subject constraints.Ordered, rMessage, sMessage any] struct {
-	mu       sync.RWMutex
-	isStop   atomic.Bool
-	recvMux  *Mux[Subject, rMessage]
-	sessions map[*Session[Subject, rMessage, sMessage]]bool
-
-	concurrencyQty int                                                      // Option
-	spawnHandlers  []func(sess *Session[Subject, rMessage, sMessage]) error // Option
-	exitHandlers   []func(sess *Session[Subject, rMessage, sMessage])       // Option
+	mu             sync.RWMutex
+	isStop         atomic.Bool
+	recvMux        *Mux[Subject, rMessage]
+	sessions       map[*Session[Subject, rMessage, sMessage]]bool
+	concurrencyQty int // Option
 }
 
 func (hub *Artist[Subject, rMessage, sMessage]) Stop() {
@@ -48,10 +40,12 @@ func (hub *Artist[Subject, rMessage, sMessage]) Stop() {
 	wg := sync.WaitGroup{}
 	for sess := range hub.sessions {
 		session := sess
+		delete(hub.sessions, session)
+
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			hub.exit(session)
+			session.Stop()
 		}()
 	}
 	wg.Done()
@@ -64,51 +58,27 @@ func (hub *Artist[Subject, rMessage, sMessage]) Connect(newAdapter NewAdapterFun
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
 
-	adapter, err := newAdapter()
+	sess, err := NewSession(hub.recvMux, newAdapter)
 	if err != nil {
 		return nil, err
 	}
 
-	sess, err := NewSession(hub.recvMux, adapter)
+	hub.sessions[sess] = true
 	if err != nil {
-		return nil, err
-	}
-
-	err = hub.spawn(sess)
-	if err != nil {
-		hub.exit(sess)
+		delete(hub.sessions, sess)
 		return nil, err
 	}
 
 	go func() {
 		defer func() {
 			hub.mu.Lock()
-			hub.exit(sess)
+			delete(hub.sessions, sess)
 			hub.mu.Unlock()
 		}()
 		sess.Listen()
 	}()
 
 	return sess, nil
-}
-
-func (hub *Artist[Subject, rMessage, sMessage]) spawn(sess *Session[Subject, rMessage, sMessage]) error {
-	hub.sessions[sess] = true
-	for _, action := range hub.spawnHandlers {
-		err := action(sess)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (hub *Artist[Subject, rMessage, sMessage]) exit(sess *Session[Subject, rMessage, sMessage]) {
-	delete(hub.sessions, sess)
-	defer sess.Stop()
-	for _, action := range hub.exitHandlers {
-		action(sess)
-	}
 }
 
 func (hub *Artist[Subject, rMessage, sMessage]) FindSession(filter func(*Session[Subject, rMessage, sMessage]) bool) (session *Session[Subject, rMessage, sMessage], found bool) {
@@ -220,24 +190,4 @@ func (hub *Artist[Subject, rMessage, sMessage]) SetConcurrencyQty(concurrencyQty
 	defer hub.mu.Unlock()
 
 	hub.concurrencyQty = concurrencyQty
-}
-
-func (hub *Artist[Subject, rMessage, sMessage]) SetSpawnHandler(spawnHandler func(sess *Session[Subject, rMessage, sMessage]) error) {
-	if hub.isStop.Load() {
-		return
-	}
-	hub.mu.Lock()
-	defer hub.mu.Unlock()
-
-	hub.spawnHandlers = append(hub.spawnHandlers, spawnHandler)
-}
-
-func (hub *Artist[Subject, rMessage, sMessage]) SetExitHandler(exitHandler func(sess *Session[Subject, rMessage, sMessage])) {
-	if hub.isStop.Load() {
-		return
-	}
-	hub.mu.Lock()
-	defer hub.mu.Unlock()
-
-	hub.exitHandlers = append(hub.exitHandlers, exitHandler)
 }
