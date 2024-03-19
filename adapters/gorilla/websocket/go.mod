@@ -3,7 +3,7 @@ module github.com/KScaesar/Artifex/adapters/gorilla/websocket
 go 1.18
 
 require (
-	github.com/KScaesar/Artifex v0.0.0-20240319001437-358ac57c255f
+	github.com/KScaesar/Artifex v0.2.0
 	github.com/gookit/goutil v0.6.15
 	github.com/gorilla/websocket v1.5.1
 )

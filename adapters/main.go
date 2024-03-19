@@ -1,18 +1,36 @@
 package main
 
 import (
+	"flag"
 	"os"
 	"text/template"
 )
 
 func main() {
-	tmpl := Template{
-		Package:     "main",
-		Subject:     "Topic",
-		RecvMessage: "SubMsg",
-		SendMessage: "PubMsg",
-	}
+	tmpl := Template{}
+	LoadDataFromFlag(&tmpl)
+	WriteTemplate(tmpl)
+}
 
+func LoadDataFromFlag(tmpl *Template) {
+	var pkg string
+	var topic string
+	var recv string
+	var send string
+
+	flag.StringVar(&pkg, "pkg", "main", "Package")
+	flag.StringVar(&topic, "topic", "Topic", "Subject")
+	flag.StringVar(&recv, "recv", "SubMsg", "RecvMessage Name")
+	flag.StringVar(&send, "send", "PubMsg", "SendMessage Name")
+	flag.Parse()
+
+	tmpl.Package = pkg
+	tmpl.Subject = topic
+	tmpl.RecvMessage = recv
+	tmpl.SendMessage = send
+}
+
+func WriteTemplate(tmpl Template) {
 	t1 := template.Must(template.New("template").Parse(MuxTmpl))
 	file1, err := os.Create("./mux.go")
 	if err != nil {
