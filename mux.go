@@ -4,31 +4,53 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/gookit/goutil/maputil"
 	"golang.org/x/exp/constraints"
 )
 
-type HandleFunc[Message any] func(message Message) error
+// RouteParam are used to capture values from subject.
+// These parameters represent resources or identifiers.
+//
+// Example:
+//
+//	define subject = "/users/:id"
+//	ingress message subject = /users/1017
+//
+//	route:
+//		key : value
+//	→	id  : 1017
+type RouteParam struct {
+	maputil.Data
+}
+
+func (r *RouteParam) reset() {
+	for k := range r.Data {
+		delete(r.Data, k)
+	}
+}
+
+type HandleFunc[Message any] func(message Message, route *RouteParam) error
 
 func (h HandleFunc[Message]) PreMiddleware() Middleware[Message] {
 	return func(next HandleFunc[Message]) HandleFunc[Message] {
-		return func(message Message) error {
-			err := h(message)
+		return func(message Message, route *RouteParam) error {
+			err := h(message, route)
 			if err != nil {
 				return err
 			}
-			return next(message)
+			return next(message, route)
 		}
 	}
 }
 
 func (h HandleFunc[Message]) PostMiddleware() Middleware[Message] {
 	return func(next HandleFunc[Message]) HandleFunc[Message] {
-		return func(message Message) error {
-			err := next(message)
+		return func(message Message, route *RouteParam) error {
+			err := next(message, route)
 			if err != nil {
 				return err
 			}
-			return h(message)
+			return h(message, route)
 		}
 	}
 }
@@ -57,9 +79,7 @@ func NewMux[Subject constraints.Ordered, Message any](getSubject NewSubjectFunc[
 		getSubject: getSubject,
 	}
 
-	node := &trie[Message]{
-		child: make(map[string]*trie[Message]),
-	}
+	node := newTrie[Message]()
 	node.addRoute("", 0, handler)
 
 	return &Mux[Subject, Message]{
@@ -80,9 +100,20 @@ type Mux[Subject constraints.Ordered, Message any] struct {
 	isCleanSubject  bool
 }
 
-func (mux *Mux[Subject, Message]) HandleMessage(message Message) (err error) {
+// HandleMessage to handle various messages coming from the adapter
+//
+// - route parameter can nil
+func (mux *Mux[Subject, Message]) HandleMessage(message Message, route *RouteParam) (err error) {
+	if route == nil {
+		route = routeParamPool.Get()
+		defer func() {
+			route.reset()
+			routeParamPool.Put(route)
+		}()
+	}
+
 	if mux.node.transforms != nil {
-		err = mux.node.transform(message)
+		err = mux.node.transform(message, route)
 		if err != nil {
 			mux.logger.Error("%v", err)
 			return err
@@ -97,7 +128,7 @@ func (mux *Mux[Subject, Message]) HandleMessage(message Message) (err error) {
 	mux.logger.Debug("handle subject=%v", subject)
 
 	path := &routeHandler[Message]{}
-	err = mux.node.handleMessage(subject, 0, path, message)
+	err = mux.node.handleMessage(subject, 0, path, message, route)
 	if err != nil {
 		mux.logger.Error("hande subject=%v fail: %v", subject, err)
 		return err

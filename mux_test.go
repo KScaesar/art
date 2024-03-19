@@ -22,11 +22,11 @@ func TestMessageMux_HandleMessage(t *testing.T) {
 	}
 
 	mux := NewMux[string, *redisMessage](getSubject).
-		Handler("hello", func(dto *redisMessage) error {
+		Handler("hello", func(dto *redisMessage, route *RouteParam) error {
 			fmt.Fprintf(recorder, "topic=%v, payload=%v", dto.channel, string(dto.body))
 			return nil
 		}).
-		Handler("foo", func(dto *redisMessage) error {
+		Handler("foo", func(dto *redisMessage, route *RouteParam) error {
 			fmt.Fprintf(recorder, "topic=%v, payload=%v", dto.channel, string(dto.body))
 			return nil
 		})
@@ -40,7 +40,7 @@ func TestMessageMux_HandleMessage(t *testing.T) {
 		body:    []byte(`{"data":"world"}`),
 		channel: "hello",
 	}
-	err := mux.HandleMessage(dto)
+	err := mux.HandleMessage(dto, nil)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -56,10 +56,10 @@ func TestLinkMiddlewares(t *testing.T) {
 	buf.WriteString("\n")
 
 	decorator1 := func(next HandleFunc[string]) HandleFunc[string] {
-		return func(dto string) error {
+		return func(dto string, route *RouteParam) error {
 			fmt.Fprintf(buf, "%s_decorator1\n", dto)
 
-			err := next(dto)
+			err := next(dto, route)
 			if err != nil {
 				return err
 			}
@@ -70,10 +70,10 @@ func TestLinkMiddlewares(t *testing.T) {
 	}
 
 	decorator2 := func(next HandleFunc[string]) HandleFunc[string] {
-		return func(dto string) error {
+		return func(dto string, route *RouteParam) error {
 			fmt.Fprintf(buf, "%s_decorator2\n", dto)
 
-			err := next(dto)
+			err := next(dto, route)
 			if err != nil {
 				return err
 			}
@@ -84,10 +84,10 @@ func TestLinkMiddlewares(t *testing.T) {
 	}
 
 	decorator3 := func(next HandleFunc[string]) HandleFunc[string] {
-		return func(dto string) error {
+		return func(dto string, route *RouteParam) error {
 			fmt.Fprintf(buf, "%s_decorator3\n", dto)
 
-			err := next(dto)
+			err := next(dto, route)
 			if err != nil {
 				return err
 			}
@@ -122,13 +122,13 @@ hello_world_decoratorA
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			baseFunc := func(msg string) error {
+			baseFunc := func(msg string, route *RouteParam) error {
 				fmt.Fprintf(buf, "%s_base\n", msg)
 				return nil
 			}
 
 			handler := LinkMiddlewares(baseFunc, tt.middlewares...)
-			err := handler(tt.msg)
+			err := handler(tt.msg, nil)
 			if err != nil {
 				t.Errorf("unexpected error: got %v", err)
 			}
@@ -141,7 +141,7 @@ hello_world_decoratorA
 
 func TestMessageMux_Transform(t *testing.T) {
 	recorder := []string{}
-	record := func(message *testcaseTransformMessage) error {
+	record := func(message *testcaseTransformMessage, route *RouteParam) error {
 		recorder = append(recorder, message.body)
 		return nil
 	}
@@ -160,7 +160,7 @@ func TestMessageMux_Transform(t *testing.T) {
 		Handler(2, record).
 		Group(5).Transform(testcaseTransformLevel2).
 		PreMiddleware(
-			func(message *testcaseTransformMessage) error {
+			func(message *testcaseTransformMessage, route *RouteParam) error {
 				message.body = "^" + message.body + "^"
 				return nil
 			}).
@@ -169,7 +169,7 @@ func TestMessageMux_Transform(t *testing.T) {
 
 	mux.Group(4).Transform(testcaseTransformLevel1).
 		PreMiddleware(
-			func(message *testcaseTransformMessage) error {
+			func(message *testcaseTransformMessage, route *RouteParam) error {
 				message.body = "_" + message.body + "_"
 				return nil
 			}).
@@ -199,7 +199,7 @@ func TestMessageMux_Transform(t *testing.T) {
 	}
 
 	for _, message := range messages {
-		err := mux.HandleMessage(message)
+		err := mux.HandleMessage(message, nil)
 		if err != nil {
 			t.Errorf("unexpected error: got %v", err)
 			break
@@ -220,14 +220,14 @@ func TestMessageMux_Transform(t *testing.T) {
 	}
 }
 
-func testcaseTransformLevel1(msg *testcaseTransformMessage) (err error) {
+func testcaseTransformLevel1(msg *testcaseTransformMessage, route *RouteParam) (err error) {
 	old := msg
 	msg.level0TypeId = old.level1TypeId
 	msg.level1TypeId = 0
 	return nil
 }
 
-func testcaseTransformLevel2(msg *testcaseTransformMessage) (err error) {
+func testcaseTransformLevel2(msg *testcaseTransformMessage, route *RouteParam) (err error) {
 	level2TypeId, err := strconv.Atoi(msg.body)
 	if err != nil {
 		return err
@@ -255,7 +255,7 @@ func TestMessageMux_Group(t *testing.T) {
 	}
 
 	recorder := []string{}
-	record := func(message *testcaseGroupMessage) error {
+	record := func(message *testcaseGroupMessage, route *RouteParam) error {
 		recorder = append(recorder, message.body)
 		return nil
 	}
@@ -266,7 +266,7 @@ func TestMessageMux_Group(t *testing.T) {
 		SetCleanSubject(true).
 		SetDelimiter("/", false)
 
-	mux.PreMiddleware(func(message *testcaseGroupMessage) error {
+	mux.PreMiddleware(func(message *testcaseGroupMessage, route *RouteParam) error {
 		message.body = "*" + message.body + "*"
 		return nil
 	})
@@ -286,7 +286,7 @@ func TestMessageMux_Group(t *testing.T) {
 		Handler("game1", record).
 		Handler("/game2/kindA/", record)
 	topic4_game3 := topic4.Group("game3").
-		PreMiddleware(func(message *testcaseGroupMessage) error {
+		PreMiddleware(func(message *testcaseGroupMessage, route *RouteParam) error {
 			message.body = "&" + message.body + "&"
 			return nil
 		}).
@@ -344,7 +344,7 @@ func TestMessageMux_Group(t *testing.T) {
 			subject: subject,
 			body:    string(subject),
 		}
-		err := mux.HandleMessage(message)
+		err := mux.HandleMessage(message, nil)
 		if err != nil {
 			t.Errorf("unexpected error: got %v", err)
 			break

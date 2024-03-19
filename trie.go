@@ -88,6 +88,12 @@ type trie[M any] struct {
 	routeHandler[M]
 }
 
+func newTrie[M any]() *trie[M] {
+	return &trie[M]{
+		child: make(map[string]*trie[M]),
+	}
+}
+
 func (node *trie[M]) addRoute(subject string, cursor int, handler *routeHandler[M]) *trie[M] {
 	if len(subject) == cursor {
 		handler.register(subject, node)
@@ -97,24 +103,22 @@ func (node *trie[M]) addRoute(subject string, cursor int, handler *routeHandler[
 	part := string(subject[cursor])
 	next, exist := node.child[part]
 	if !exist {
-		next = &trie[M]{
-			child:       make(map[string]*trie[M]),
-			part:        part,
-			fullSubject: node.fullSubject + part,
-		}
+		next = newTrie[M]()
+		next.part = part
+		next.fullSubject = node.fullSubject + part
 		node.child[part] = next
 	}
 
 	return next.addRoute(subject, cursor+1, handler)
 }
 
-func (node *trie[M]) handleMessage(subject string, cursor int, path *routeHandler[M], msg M) (err error) {
+func (node *trie[M]) handleMessage(subject string, cursor int, path *routeHandler[M], msg M, route *RouteParam) (err error) {
 Loop:
 	path.collect(node)
 
 	if node.transforms != nil {
 		cursor = 0
-		err = node.transform(msg)
+		err = node.transform(msg, route)
 		if err != nil {
 			return err
 		}
@@ -126,7 +130,7 @@ Loop:
 	}
 
 	if len(subject) == cursor {
-		return LinkMiddlewares(node.handler, path.middlewares...)(msg)
+		return LinkMiddlewares(node.handler, path.middlewares...)(msg, route)
 	}
 
 	word := string(subject[cursor])
@@ -138,19 +142,19 @@ Loop:
 	}
 
 	if path.defaultHandler != nil {
-		return LinkMiddlewares(path.defaultHandler, path.middlewares...)(msg)
+		return LinkMiddlewares(path.defaultHandler, path.middlewares...)(msg, route)
 	}
 
 	if path.notFoundHandler != nil {
-		return path.notFoundHandler(msg)
+		return path.notFoundHandler(msg, route)
 	}
 
 	return ErrorWrapWithMessage(ErrNotFound, "mux subject")
 }
 
-func (node *trie[M]) transform(message M) error {
+func (node *trie[M]) transform(message M, route *RouteParam) error {
 	for _, transform := range node.transforms {
-		err := transform(message)
+		err := transform(message, route)
 		if err != nil {
 			return err
 		}

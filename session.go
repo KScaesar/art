@@ -6,6 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/gookit/goutil/maputil"
 	"golang.org/x/exp/constraints"
 )
 
@@ -53,7 +54,7 @@ func NewSession[S constraints.Ordered, rM, sM any](recvMux *Mux[S, rM], adapter 
 	logger = logger.WithSessionId(sessId)
 
 	return &Session[S, rM, sM]{
-		keys:      make(map[string]interface{}),
+		Keys:      make(map[string]any),
 		pingpong:  func() error { return nil },
 		notifyAll: make([]chan error, 0),
 
@@ -70,7 +71,7 @@ func NewSession[S constraints.Ordered, rM, sM any](recvMux *Mux[S, rM], adapter 
 
 type Session[Subject constraints.Ordered, rMessage, sMessage any] struct {
 	mu             sync.RWMutex
-	keys           map[string]interface{}
+	Keys           maputil.Data
 	pingpong       func() error
 	enablePingPong atomic.Bool
 	isStop         atomic.Bool
@@ -154,7 +155,7 @@ func (sess *Session[Subject, rMessage, sMessage]) Recv() error {
 		sess.logger.Error("recv message fail: %v", err)
 		return err
 	}
-	return sess.recvMux.HandleMessage(message)
+	return sess.recvMux.HandleMessage(message, nil)
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) Send(message sMessage) error {
@@ -218,7 +219,7 @@ func (sess *Session[Subject, rMessage, sMessage]) SendPingWaitPong(pongSubject S
 	sess.enablePingPong.Store(true)
 	waitPong := make(chan error, 1)
 
-	sess.recvMux.Handler(pongSubject, func(message rMessage) error {
+	sess.recvMux.Handler(pongSubject, func(message rMessage, _ *RouteParam) error {
 		waitPong <- pong(sess)
 		return nil
 	})
@@ -236,7 +237,7 @@ func (sess *Session[Subject, rMessage, sMessage]) WaitPingSendPong(pingSubject S
 	sess.enablePingPong.Store(true)
 	waitPing := make(chan error, 1)
 
-	sess.recvMux.Handler(pingSubject, func(message rMessage) error {
+	sess.recvMux.Handler(pingSubject, func(message rMessage, _ *RouteParam) error {
 		waitPing <- ping(sess)
 		return nil
 	})
