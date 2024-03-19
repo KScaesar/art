@@ -17,13 +17,13 @@ type AdapterStopFunc[sMessage any] func(message sMessage)
 type NewAdapterFunc[Subject constraints.Ordered, rMessage, sMessage any] func() (Adapter[Subject, rMessage, sMessage], error)
 
 type Adapter[Subject constraints.Ordered, rMessage, sMessage any] struct {
-	Identifier string
-	Context    context.Context
-	Logger     Logger
+	Recv AdapterRecvFunc[Subject, rMessage, sMessage] // Must
+	Send AdapterSendFunc[sMessage]                    // Must
+	Stop AdapterStopFunc[sMessage]                    // Must
 
-	Recv AdapterRecvFunc[Subject, rMessage, sMessage]
-	Send AdapterSendFunc[sMessage]
-	Stop AdapterStopFunc[sMessage]
+	Identifier string          // Option
+	Context    context.Context // Option
+	Logger     Logger          // Option
 }
 
 func NewSession[S constraints.Ordered, rM, sM any](recvMux *Mux[S, rM], adapter Adapter[S, rM, sM]) (*Session[S, rM, sM], error) {
