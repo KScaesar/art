@@ -17,22 +17,25 @@ func LoadDataFromFlag(tmpl *Template) {
 	var topic string
 	var recv string
 	var send string
+	var path string
 
 	flag.StringVar(&pkg, "pkg", "main", "Package")
 	flag.StringVar(&topic, "topic", "Topic", "Subject")
 	flag.StringVar(&recv, "recv", "SubMsg", "RecvMessage Name")
 	flag.StringVar(&send, "send", "PubMsg", "SendMessage Name")
+	flag.StringVar(&path, "path", "./", "generate code to path")
 	flag.Parse()
 
 	tmpl.Package = pkg
 	tmpl.Subject = topic
 	tmpl.RecvMessage = recv
 	tmpl.SendMessage = send
+	tmpl.Path = path
 }
 
 func WriteTemplate(tmpl Template) {
 	t1 := template.Must(template.New("template").Parse(MuxTmpl))
-	file1, err := os.Create("./mux.go")
+	file1, err := os.Create(tmpl.Path + "mux.go")
 	if err != nil {
 		panic(err)
 	}
@@ -43,7 +46,7 @@ func WriteTemplate(tmpl Template) {
 	}
 
 	t2 := template.Must(template.New("template").Parse(SessionTmpl))
-	file2, err := os.Create("./session.go")
+	file2, err := os.Create(tmpl.Path + "session.go")
 	if err != nil {
 		panic(err)
 	}
@@ -59,4 +62,5 @@ type Template struct {
 	Subject     string
 	RecvMessage string
 	SendMessage string
+	Path        string
 }
