@@ -150,7 +150,7 @@ func TestMessageMux_Transform(t *testing.T) {
 		return "/" + strconv.Itoa(msg.level0TypeId), nil
 	}
 	mux := NewMux[int, *testcaseTransformMessage](newSubject).
-		SetDelimiter("/", true)
+		SetDelimiter('/', true)
 
 	mux.Handler(2, record)
 
@@ -262,7 +262,7 @@ func TestMessageMux_Group(t *testing.T) {
 	newSubject := func(msg *testcaseGroupMessage) (string, error) { return string(msg.subject), nil }
 	mux := NewMux[Subject, *testcaseGroupMessage](newSubject).
 		SetCleanSubject(true).
-		SetDelimiter("/", false)
+		SetDelimiter('/', false)
 
 	mux.PreMiddleware(func(message *testcaseGroupMessage, route *RouteParam) error {
 		message.body = "*" + message.body + "*"

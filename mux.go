@@ -233,8 +233,8 @@ func (mux *Mux[Subject, Message]) Group(s Subject) *Mux[Subject, Message] {
 	}
 }
 
-func (mux *Mux[Subject, Message]) SetDelimiter(delimiter string, atLeft bool) *Mux[Subject, Message] {
-	mux.delimiter = delimiter
+func (mux *Mux[Subject, Message]) SetDelimiter(delimiter byte, atLeft bool) *Mux[Subject, Message] {
+	mux.delimiter = string(delimiter)
 	mux.delimiterAtLeft = atLeft
 	return mux
 }
