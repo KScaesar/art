@@ -27,15 +27,25 @@ type Adapter[Subject constraints.Ordered, rMessage, sMessage any] struct {
 	Context       context.Context                                          // Option
 }
 
-func NewSession[S constraints.Ordered, rM, sM any](recvMux *Mux[S, rM], newAdapter NewAdapterFunc[S, rM, sM]) (*Session[S, rM, sM], error) {
+func NewSession[S constraints.Ordered, rM, sM any](recvMux *Mux[S, rM], newAdapter NewAdapterFunc[S, rM, sM]) (sess *Session[S, rM, sM], err error) {
+	if recvMux == nil {
+		return nil, ErrorWrapWithMessage(ErrInvalidParameter, "session adapter: mux is nil")
+	}
+
 	adapter, err := newAdapter()
 	if err != nil {
 		return nil, err
 	}
 
-	if recvMux == nil || adapter.Stop == nil {
-		return nil, ErrorWrapWithMessage(ErrInvalidParameter, "session adapter: mux or stop is empty")
+	if adapter.Stop == nil {
+		return nil, ErrorWrapWithMessage(ErrInvalidParameter, "session adapter: stop is nil")
 	}
+	var empty sM
+	defer func() {
+		if err != nil {
+			adapter.Stop(empty)
+		}
+	}()
 
 	if adapter.Send == nil && adapter.Recv == nil {
 		return nil, ErrorWrapWithMessage(ErrInvalidParameter, "session adapter: send and recv are empty")
@@ -88,6 +98,7 @@ type Session[Subject constraints.Ordered, rMessage, sMessage any] struct {
 	isStop         atomic.Bool
 	isListen       atomic.Bool
 	notifyAll      []chan error
+	newAdapter     NewAdapterFunc[Subject, rMessage, sMessage]
 
 	recvMux    *Mux[Subject, rMessage]
 	Identifier string
@@ -99,14 +110,20 @@ type Session[Subject constraints.Ordered, rMessage, sMessage any] struct {
 	lifecycle Lifecycle[Subject, rMessage, sMessage]
 }
 
-func (sess *Session[Subject, rMessage, sMessage]) SelfRepair(adapter Adapter[Subject, rMessage, sMessage]) {
+func (sess *Session[Subject, rMessage, sMessage]) SelfRepair() error {
 	sess.mu.Lock()
 	defer sess.mu.Unlock()
+
+	adapter, err := sess.newAdapter()
+	if err != nil {
+		return err
+	}
 
 	sess.recv = adapter.Recv
 	sess.send = adapter.Send
 	sess.stop = adapter.Stop
 	sess.isStop.Store(false)
+	return nil
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) Listen() error {
