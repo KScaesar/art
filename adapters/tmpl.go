@@ -17,11 +17,11 @@ type {{.SendMessage}} struct {
 
 //
 
-type RecvHandleFunc = Artifex.HandleFunc[*{{.RecvMessage}}]
-type RecvMiddleware = Artifex.Middleware[*{{.RecvMessage}}]
-type RecvMux = Artifex.Mux[{{.Subject}}, *{{.RecvMessage}}]
+type ConsumeHandleFunc = Artifex.HandleFunc[*{{.RecvMessage}}]
+type ConsumeMiddleware = Artifex.Middleware[*{{.RecvMessage}}]
+type ConsumeMux = Artifex.Mux[{{.Subject}}, *{{.RecvMessage}}]
 
-func NewRecvMux() *RecvMux {
+func NewConsumeMux() *ConsumeMux {
 	get{{.Subject}} := func(message *{{.RecvMessage}}) (string, error) {
 		return "", nil
 	}
@@ -31,7 +31,7 @@ func NewRecvMux() *RecvMux {
 	return mux
 }
 
-func HelloHandler() RecvHandleFunc {
+func HelloHandler() ConsumeHandleFunc {
 	return func(message *{{.RecvMessage}}, route *Artifex.RouteParam) error {
 		return nil
 	}
@@ -39,11 +39,11 @@ func HelloHandler() RecvHandleFunc {
 
 //
 
-type SendHandleFunc = Artifex.HandleFunc[*{{.SendMessage}}]
-type SendMiddleware = Artifex.Middleware[*{{.SendMessage}}]
-type SendMux = Artifex.Mux[{{.Subject}}, *{{.SendMessage}}]
+type ProduceHandleFunc = Artifex.HandleFunc[*{{.SendMessage}}]
+type ProduceMiddleware = Artifex.Middleware[*{{.SendMessage}}]
+type ProduceMux = Artifex.Mux[{{.Subject}}, *{{.SendMessage}}]
 
-func NewSendMux() *SendMux {
+func NewProduceMux() *ProduceMux {
 	get{{.Subject}} := func(message *{{.SendMessage}}) (string, error) {
 		return "", nil
 	}
@@ -53,7 +53,7 @@ func NewSendMux() *SendMux {
 	return mux
 }
 
-func WorldHandler() SendHandleFunc {
+func WorldHandler() ProduceHandleFunc {
 	return func(message *{{.SendMessage}}, route *Artifex.RouteParam) error {
 		return nil
 	}
@@ -72,16 +72,16 @@ import (
 type Adapter = Artifex.Adapter[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}]
 type Session = Artifex.Session[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}]
 
-func NewSession(recvMux *RecvMux, factory *AdapterFactory) (*Session, error) {
-	return Artifex.NewSession[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}](recvMux, factory)
+func NewSession(mux *ConsumeMux, factory *AdapterFactory) (*Session, error) {
+	return Artifex.NewSession[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}](mux, factory)
 }
 
 //
 
 type Hub = Artifex.Artist[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}]
 
-func NewHub(recvMux *RecvMux) *Hub {
-	return Artifex.NewArtist[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}](recvMux)
+func NewHub(mux *ConsumeMux) *Hub {
+	return Artifex.NewArtist[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}](mux)
 }
 
 //

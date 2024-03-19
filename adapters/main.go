@@ -7,14 +7,14 @@ import (
 
 func main() {
 	tmpl := Template{
-		Package:     "redis",
-		Subject:     "Channel",
-		RecvMessage: "RedisMessage",
-		SendMessage: "Event",
+		Package:     "main",
+		Subject:     "Topic",
+		RecvMessage: "SubMsg",
+		SendMessage: "PubMsg",
 	}
 
 	t1 := template.Must(template.New("template").Parse(MuxTmpl))
-	file1, err := os.Create("./redis/mux.go")
+	file1, err := os.Create("./mux.go")
 	if err != nil {
 		panic(err)
 	}
@@ -25,7 +25,7 @@ func main() {
 	}
 
 	t2 := template.Must(template.New("template").Parse(SessionTmpl))
-	file2, err := os.Create("./redis/session.go")
+	file2, err := os.Create("./session.go")
 	if err != nil {
 		panic(err)
 	}

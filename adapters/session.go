@@ -6,19 +6,19 @@ import (
 	"github.com/KScaesar/Artifex"
 )
 
-type Adapter = Artifex.Adapter[Subject, *RecvMessage, *SendMessage]
-type Session = Artifex.Session[Subject, *RecvMessage, *SendMessage]
+type Adapter = Artifex.Adapter[Topic, *SubMsg, *PubMsg]
+type Session = Artifex.Session[Topic, *SubMsg, *PubMsg]
 
-func NewSession(recvMux *RecvMux, factory *AdapterFactory) (*Session, error) {
-	return Artifex.NewSession[Subject, *RecvMessage, *SendMessage](recvMux, factory)
+func NewSession(mux *ConsumeMux, factory *AdapterFactory) (*Session, error) {
+	return Artifex.NewSession[Topic, *SubMsg, *PubMsg](mux, factory)
 }
 
 //
 
-type Hub = Artifex.Artist[Subject, *RecvMessage, *SendMessage]
+type Hub = Artifex.Artist[Topic, *SubMsg, *PubMsg]
 
-func NewHub(recvMux *RecvMux) *Hub {
-	return Artifex.NewArtist[Subject, *RecvMessage, *SendMessage](recvMux)
+func NewHub(mux *ConsumeMux) *Hub {
+	return Artifex.NewArtist[Topic, *SubMsg, *PubMsg](mux)
 }
 
 //
@@ -31,16 +31,16 @@ func (f *AdapterFactory) CreateAdapter() (Adapter, error) {
 	// TODO: create infra obj
 
 	return Adapter{
-		Recv: func(parent *Session) (*RecvMessage, error) {
+		Recv: func(parent *Session) (*SubMsg, error) {
 			return nil, nil
 		},
-		Send: func(message *SendMessage) error {
+		Send: func(message *PubMsg) error {
 			return nil
 		},
-		Stop: func(message *SendMessage) {
+		Stop: func(message *PubMsg) {
 
 		},
-		Lifecycle: Artifex.Lifecycle[Subject, *RecvMessage, *SendMessage]{
+		Lifecycle: Artifex.Lifecycle[Topic, *SubMsg, *PubMsg]{
 			SpawnHandlers: []func(sess *Session) error{},
 			ExitHandlers:  []func(sess *Session){},
 		},

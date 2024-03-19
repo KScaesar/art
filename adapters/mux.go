@@ -4,54 +4,54 @@ import (
 	"github.com/KScaesar/Artifex"
 )
 
-type Subject = string
+type Topic = string
 
-type RecvMessage struct {
+type SubMsg struct {
 }
 
-type SendMessage struct {
+type PubMsg struct {
 }
 
 //
 
-type RecvHandleFunc = Artifex.HandleFunc[*RecvMessage]
-type RecvMiddleware = Artifex.Middleware[*RecvMessage]
-type RecvMux = Artifex.Mux[Subject, *RecvMessage]
+type ConsumeHandleFunc = Artifex.HandleFunc[*SubMsg]
+type ConsumeMiddleware = Artifex.Middleware[*SubMsg]
+type ConsumeMux = Artifex.Mux[Topic, *SubMsg]
 
-func NewRecvMux() *RecvMux {
-	getSubject := func(message *RecvMessage) (string, error) {
+func NewConsumeMux() *ConsumeMux {
+	getTopic := func(message *SubMsg) (string, error) {
 		return "", nil
 	}
 
-	mux := Artifex.NewMux[Subject](getSubject)
+	mux := Artifex.NewMux[Topic](getTopic)
 	mux.Handler("hello", HelloHandler())
 	return mux
 }
 
-func HelloHandler() RecvHandleFunc {
-	return func(message *RecvMessage, route *Artifex.RouteParam) error {
+func HelloHandler() ConsumeHandleFunc {
+	return func(message *SubMsg, route *Artifex.RouteParam) error {
 		return nil
 	}
 }
 
 //
 
-type SendHandleFunc = Artifex.HandleFunc[*SendMessage]
-type SendMiddleware = Artifex.Middleware[*SendMessage]
-type SendMux = Artifex.Mux[Subject, *SendMessage]
+type ProduceHandleFunc = Artifex.HandleFunc[*PubMsg]
+type ProduceMiddleware = Artifex.Middleware[*PubMsg]
+type ProduceMux = Artifex.Mux[Topic, *PubMsg]
 
-func NewSendMux() *SendMux {
-	getSubject := func(message *SendMessage) (string, error) {
+func NewProduceMux() *ProduceMux {
+	getTopic := func(message *PubMsg) (string, error) {
 		return "", nil
 	}
 
-	mux := Artifex.NewMux[Subject](getSubject)
+	mux := Artifex.NewMux[Topic](getTopic)
 	mux.Handler("world", WorldHandler())
 	return mux
 }
 
-func WorldHandler() SendHandleFunc {
-	return func(message *SendMessage, route *Artifex.RouteParam) error {
+func WorldHandler() ProduceHandleFunc {
+	return func(message *PubMsg, route *Artifex.RouteParam) error {
 		return nil
 	}
 }
