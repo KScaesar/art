@@ -150,7 +150,6 @@ func TestMessageMux_Transform(t *testing.T) {
 		return "/" + strconv.Itoa(msg.level0TypeId), nil
 	}
 	mux := NewMux[int, *testcaseTransformMessage](newSubject).
-		SetLogger(NewLogger(true, LogLevelInfo)).
 		SetDelimiter("/", true)
 
 	mux.Handler(2, record)
@@ -262,7 +261,6 @@ func TestMessageMux_Group(t *testing.T) {
 
 	newSubject := func(msg *testcaseGroupMessage) (string, error) { return string(msg.subject), nil }
 	mux := NewMux[Subject, *testcaseGroupMessage](newSubject).
-		SetLogger(NewLogger(true, LogLevelInfo)).
 		SetCleanSubject(true).
 		SetDelimiter("/", false)
 

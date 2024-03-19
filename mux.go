@@ -83,8 +83,10 @@ func NewMux[Subject constraints.Ordered, Message any](getSubject NewSubjectFunc[
 	node.addRoute("", 0, handler)
 
 	return &Mux[Subject, Message]{
-		logger: DefaultLogger(),
-		node:   node,
+		node: node,
+		errorHandler: func(_ Message, _ *RouteParam, err error) error {
+			return err
+		},
 	}
 }
 
@@ -93,11 +95,11 @@ func NewMux[Subject constraints.Ordered, Message any](getSubject NewSubjectFunc[
 //
 // Message represents a high-level abstraction data structure containing metadata (e.g. header) + body
 type Mux[Subject constraints.Ordered, Message any] struct {
-	logger          Logger
 	node            *trie[Message]
 	delimiter       string
 	delimiterAtLeft bool
 	isCleanSubject  bool
+	errorHandler    func(Message, *RouteParam, error) error
 }
 
 // HandleMessage to handle various messages coming from the adapter
@@ -112,34 +114,28 @@ func (mux *Mux[Subject, Message]) HandleMessage(message Message, route *RoutePar
 		}()
 	}
 
+	defer func() {
+		if err != nil {
+			err = mux.errorHandler(message, route, err)
+		}
+	}()
+
 	if mux.node.transforms != nil {
 		err = mux.node.transform(message, route)
 		if err != nil {
-			mux.logger.Error("%v", err)
 			return err
 		}
 	}
 
 	subject, err := mux.node.getSubject(message)
 	if err != nil {
-		mux.logger.Error("%v", err)
 		return err
 	}
-	mux.logger.Debug("receive subject=%v", subject)
 
-	path := &routeHandler[Message]{}
-	err = mux.node.handleMessage(subject, 0, path, message, route)
-	if err != nil {
-		mux.logger.Error("hande subject=%v fail: %v", subject, err)
-		return err
+	path := &routeHandler[Message]{
+		middlewares: []Middleware[Message]{},
 	}
-	mux.logger.Debug("hande subject=%v success", subject)
-	return nil
-}
-
-func (mux *Mux[Subject, Message]) SetLogger(logger Logger) *Mux[Subject, Message] {
-	mux.logger = logger
-	return mux
+	return mux.node.handleMessage(subject, 0, path, message, route)
 }
 
 func (mux *Mux[Subject, Message]) Transform(transforms ...HandleFunc[Message]) *Mux[Subject, Message] {
@@ -215,6 +211,10 @@ func (mux *Mux[Subject, Message]) SetNotFoundHandler(h HandleFunc[Message]) *Mux
 	return mux
 }
 
+func (mux *Mux[Subject, Message]) SetErrorHandler(errorHandler func(Message, *RouteParam, error) error) {
+	mux.errorHandler = errorHandler
+}
+
 func (mux *Mux[Subject, Message]) Group(s Subject) *Mux[Subject, Message] {
 	var groupName string
 	if mux.delimiterAtLeft {
@@ -226,7 +226,6 @@ func (mux *Mux[Subject, Message]) Group(s Subject) *Mux[Subject, Message] {
 	handler := &routeHandler[Message]{}
 	groupNode := mux.node.addRoute(groupName, 0, handler)
 	return &Mux[Subject, Message]{
-		logger:          mux.logger,
 		node:            groupNode,
 		delimiter:       mux.delimiter,
 		delimiterAtLeft: mux.delimiterAtLeft,
