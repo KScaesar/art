@@ -21,10 +21,13 @@ type Adapter[Subject constraints.Ordered, rMessage, sMessage any] struct {
 	Send AdapterSendFunc[sMessage]                    // Must
 	Stop AdapterStopFunc[sMessage]                    // Must
 
-	Identifier                             string          // Option
-	Context                                context.Context // Option
-	Logger                                 Logger          // Option
-	Lifecycle[Subject, rMessage, sMessage]                 // Option
+	// Lifecycle
+	SpawnHandlers []func(sess *Session[Subject, rMessage, sMessage]) error // Option
+	ExitHandlers  []func(sess *Session[Subject, rMessage, sMessage])       // Option
+	Identifier    string                                                   // Option
+	Context       context.Context                                          // Option
+	Logger        Logger                                                   // Option
+
 }
 
 func NewSession[S constraints.Ordered, rM, sM any](recvMux *Mux[S, rM], newAdapter NewAdapterFunc[S, rM, sM]) (*Session[S, rM, sM], error) {
@@ -69,11 +72,16 @@ func NewSession[S constraints.Ordered, rM, sM any](recvMux *Mux[S, rM], newAdapt
 		Context:    ctx,
 		logger:     logger,
 
-		recv:      adapter.Recv,
-		send:      adapter.Send,
-		stop:      adapter.Stop,
-		lifecycle: adapter.Lifecycle,
+		recv: adapter.Recv,
+		send: adapter.Send,
+		stop: adapter.Stop,
+		lifecycle: Lifecycle[S, rM, sM]{
+			SpawnHandlers: adapter.SpawnHandlers,
+			ExitHandlers:  adapter.ExitHandlers,
+		},
 	}
+
+	recvMux.SetLogger(session.logger)
 
 	err = session.lifecycle.Spawn(session)
 	if err != nil {

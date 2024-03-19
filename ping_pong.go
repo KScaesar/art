@@ -6,14 +6,6 @@ import (
 	"time"
 )
 
-type PingPongKind int
-
-const (
-	PingPongKind_Undined PingPongKind = iota
-	PingPongKind_WaitPingSendPong
-	PingPongKind_SendPingWaitPong
-)
-
 func WaitPingSendPong(waitPing <-chan error, sendPong func() error, isStop func() bool, pingWaitSecond int) error {
 	pingWaitTime := time.Duration(pingWaitSecond) * time.Second
 

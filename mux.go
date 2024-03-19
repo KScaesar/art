@@ -125,7 +125,7 @@ func (mux *Mux[Subject, Message]) HandleMessage(message Message, route *RoutePar
 		mux.logger.Error("%v", err)
 		return err
 	}
-	mux.logger.Debug("handle subject=%v", subject)
+	mux.logger.Debug("receive subject=%v", subject)
 
 	path := &routeHandler[Message]{}
 	err = mux.node.handleMessage(subject, 0, path, message, route)
