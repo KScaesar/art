@@ -7,13 +7,12 @@ import (
 )
 
 type PermanentTasker struct {
-	Run                     func() error
-	ActiveStop              func() bool
+	RunUntilNormalStop      func() error
 	SelfRepair              func() error
 	BackoffMaxElapsedMinute int
 }
 
-func (tasker PermanentTasker) Start() error {
+func (tasker PermanentTasker) Start() {
 	backoffCfg := backoff.NewExponentialBackOff()
 	backoffCfg.InitialInterval = 500 * time.Millisecond
 	backoffCfg.Multiplier = 1.5
@@ -25,23 +24,16 @@ func (tasker PermanentTasker) Start() error {
 	backoffCfg.MaxElapsedTime = time.Duration(tasker.BackoffMaxElapsedMinute) * time.Minute
 
 Loop:
-	err := tasker.Run()
+	var err error
+	err = tasker.RunUntilNormalStop()
 	if err == nil {
-		return nil
+		return
 	}
 
-	var Err error
-	for !tasker.ActiveStop() {
-		Err = backoff.Retry(func() error {
-			if tasker.ActiveStop() {
-				return nil
-			}
-			return tasker.SelfRepair()
-		}, backoffCfg)
-
-		if Err == nil {
+	for {
+		err = backoff.Retry(tasker.SelfRepair, backoffCfg)
+		if err == nil {
 			goto Loop
 		}
 	}
-	return Err
 }
