@@ -37,18 +37,11 @@ func (hub *Artist[Subject, rMessage, sMessage]) Stop() {
 	}
 	hub.isStop.Store(true)
 
-	wg := sync.WaitGroup{}
 	for sess := range hub.sessions {
 		session := sess
+		session.Stop()
 		delete(hub.sessions, session)
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			session.Stop()
-		}()
 	}
-	wg.Done()
 }
 
 func (hub *Artist[Subject, rMessage, sMessage]) Connect(newAdapter NewAdapterFunc[Subject, rMessage, sMessage]) (*Session[Subject, rMessage, sMessage], error) {

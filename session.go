@@ -1,7 +1,6 @@
 package Artifex
 
 import (
-	"bytes"
 	"context"
 	"sync"
 	"sync/atomic"
@@ -26,8 +25,6 @@ type Adapter[Subject constraints.Ordered, rMessage, sMessage any] struct {
 	ExitHandlers  []func(sess *Session[Subject, rMessage, sMessage])       // Option
 	Identifier    string                                                   // Option
 	Context       context.Context                                          // Option
-	Logger        Logger                                                   // Option
-
 }
 
 func NewSession[S constraints.Ordered, rM, sM any](recvMux *Mux[S, rM], newAdapter NewAdapterFunc[S, rM, sM]) (*Session[S, rM, sM], error) {
@@ -44,23 +41,10 @@ func NewSession[S constraints.Ordered, rM, sM any](recvMux *Mux[S, rM], newAdapt
 		return nil, ErrorWrapWithMessage(ErrInvalidParameter, "session adapter: send and recv are empty")
 	}
 
-	var sessId string
-	builder := bytes.NewBuffer(make([]byte, 0, 13))
-	builder.WriteString(GenerateRandomCode(6))
-	builder.WriteString("-")
-	builder.WriteString(GenerateRandomCode(6))
-	sessId = builder.String()
-
 	ctx := context.Background()
 	if adapter.Context != nil {
 		ctx = adapter.Context
 	}
-
-	logger := DefaultLogger()
-	if adapter.Logger != nil {
-		logger = adapter.Logger
-	}
-	logger = logger.WithSessionId(sessId)
 
 	session := &Session[S, rM, sM]{
 		Keys:      make(map[string]any),
@@ -68,9 +52,8 @@ func NewSession[S constraints.Ordered, rM, sM any](recvMux *Mux[S, rM], newAdapt
 		notifyAll: make([]chan error, 0),
 
 		recvMux:    recvMux,
-		Identifier: sessId,
+		Identifier: adapter.Identifier,
 		Context:    ctx,
-		logger:     logger,
 
 		recv: adapter.Recv,
 		send: adapter.Send,
@@ -80,8 +63,6 @@ func NewSession[S constraints.Ordered, rM, sM any](recvMux *Mux[S, rM], newAdapt
 			ExitHandlers:  adapter.ExitHandlers,
 		},
 	}
-
-	recvMux.SetLogger(session.logger)
 
 	err = session.lifecycle.Spawn(session)
 	if err != nil {
@@ -111,7 +92,6 @@ type Session[Subject constraints.Ordered, rMessage, sMessage any] struct {
 	recvMux    *Mux[Subject, rMessage]
 	Identifier string
 	Context    context.Context
-	logger     Logger
 
 	recv      AdapterRecvFunc[Subject, rMessage, sMessage]
 	send      AdapterSendFunc[sMessage]
@@ -126,10 +106,7 @@ func (sess *Session[Subject, rMessage, sMessage]) SelfRepair(adapter Adapter[Sub
 	sess.recv = adapter.Recv
 	sess.send = adapter.Send
 	sess.stop = adapter.Stop
-}
-
-func (sess *Session[Subject, rMessage, sMessage]) Logger() Logger {
-	return sess.logger
+	sess.isStop.Store(false)
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) Listen() error {
@@ -158,6 +135,7 @@ func (sess *Session[Subject, rMessage, sMessage]) Listen() error {
 	}
 
 	err := <-result
+	sess.Stop()
 	go func() {
 		sess.mu.Lock()
 		defer sess.mu.Unlock()
@@ -192,9 +170,9 @@ func (sess *Session[Subject, rMessage, sMessage]) Recv() error {
 	}
 
 	if err != nil {
-		sess.logger.Error("recv message fail: %v", err)
 		return err
 	}
+
 	return sess.recvMux.HandleMessage(message, nil)
 }
 
