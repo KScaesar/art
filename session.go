@@ -9,30 +9,27 @@ import (
 	"golang.org/x/exp/constraints"
 )
 
-type AdapterRecvFunc[Subject constraints.Ordered, rMessage, sMessage any] func(parent *Session[Subject, rMessage, sMessage]) (rMessage, error)
-type AdapterSendFunc[sMessage any] func(message sMessage) error
-type AdapterStopFunc[sMessage any] func(message sMessage)
-
-type NewAdapterFunc[Subject constraints.Ordered, rMessage, sMessage any] func() (Adapter[Subject, rMessage, sMessage], error)
-
-type Adapter[Subject constraints.Ordered, rMessage, sMessage any] struct {
-	Recv AdapterRecvFunc[Subject, rMessage, sMessage] // Must
-	Send AdapterSendFunc[sMessage]                    // Must
-	Stop AdapterStopFunc[sMessage]                    // Must
-
-	// Lifecycle
-	SpawnHandlers []func(sess *Session[Subject, rMessage, sMessage]) error // Option
-	ExitHandlers  []func(sess *Session[Subject, rMessage, sMessage])       // Option
-	Identifier    string                                                   // Option
-	Context       context.Context                                          // Option
+type AdapterFactory[Subject constraints.Ordered, rMessage, sMessage any] interface {
+	CreateAdapter() (Adapter[Subject, rMessage, sMessage], error)
 }
 
-func NewSession[S constraints.Ordered, rM, sM any](recvMux *Mux[S, rM], newAdapter NewAdapterFunc[S, rM, sM]) (sess *Session[S, rM, sM], err error) {
+type Adapter[Subject constraints.Ordered, rMessage, sMessage any] struct {
+	Recv func(parent *Session[Subject, rMessage, sMessage]) (rMessage, error) // Must
+	Send func(message sMessage) error                                         // Must
+	Stop func(message sMessage)                                               // Must
+
+	// Lifecycle
+	Lifecycle  Lifecycle[Subject, rMessage, sMessage]
+	Identifier string          // Option
+	Context    context.Context // Option
+}
+
+func NewSession[S constraints.Ordered, rM, sM any](recvMux *Mux[S, rM], factory AdapterFactory[S, rM, sM]) (sess *Session[S, rM, sM], err error) {
 	if recvMux == nil {
 		return nil, ErrorWrapWithMessage(ErrInvalidParameter, "session adapter: mux is nil")
 	}
 
-	adapter, err := newAdapter()
+	adapter, err := factory.CreateAdapter()
 	if err != nil {
 		return nil, err
 	}
@@ -65,13 +62,10 @@ func NewSession[S constraints.Ordered, rM, sM any](recvMux *Mux[S, rM], newAdapt
 		Identifier: adapter.Identifier,
 		Context:    ctx,
 
-		recv: adapter.Recv,
-		send: adapter.Send,
-		stop: adapter.Stop,
-		lifecycle: Lifecycle[S, rM, sM]{
-			SpawnHandlers: adapter.SpawnHandlers,
-			ExitHandlers:  adapter.ExitHandlers,
-		},
+		recv:      adapter.Recv,
+		send:      adapter.Send,
+		stop:      adapter.Stop,
+		lifecycle: adapter.Lifecycle,
 	}
 
 	err = session.lifecycle.Spawn(session)
@@ -98,15 +92,15 @@ type Session[Subject constraints.Ordered, rMessage, sMessage any] struct {
 	isStop         atomic.Bool
 	isListen       atomic.Bool
 	notifyAll      []chan error
-	newAdapter     NewAdapterFunc[Subject, rMessage, sMessage]
+	factory        AdapterFactory[Subject, rMessage, sMessage]
 
 	recvMux    *Mux[Subject, rMessage]
 	Identifier string
 	Context    context.Context
 
-	recv      AdapterRecvFunc[Subject, rMessage, sMessage]
-	send      AdapterSendFunc[sMessage]
-	stop      AdapterStopFunc[sMessage]
+	recv      func(parent *Session[Subject, rMessage, sMessage]) (rMessage, error) // Must
+	send      func(message sMessage) error                                         // Must
+	stop      func(message sMessage)                                               // Must
 	lifecycle Lifecycle[Subject, rMessage, sMessage]
 }
 
@@ -114,7 +108,7 @@ func (sess *Session[Subject, rMessage, sMessage]) SelfRepair() error {
 	sess.mu.Lock()
 	defer sess.mu.Unlock()
 
-	adapter, err := sess.newAdapter()
+	adapter, err := sess.factory.CreateAdapter()
 	if err != nil {
 		return err
 	}

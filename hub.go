@@ -19,7 +19,7 @@ func NewArtist[Subject constraints.Ordered, rMessage, sMessage any](recvMux *Mux
 //   - concurrencyQty controls how many tasks can run simultaneously,
 //     preventing resource usage or avoid frequent context switches.
 //   - recvMux is a multiplexer used for handle messages.
-//   - newAdapter is used to create a new adapter.
+//   - factory is used to create a new adapter.
 type Artist[Subject constraints.Ordered, rMessage, sMessage any] struct {
 	mu             sync.RWMutex
 	isStop         atomic.Bool
@@ -44,14 +44,14 @@ func (hub *Artist[Subject, rMessage, sMessage]) Stop() {
 	}
 }
 
-func (hub *Artist[Subject, rMessage, sMessage]) Connect(newAdapter NewAdapterFunc[Subject, rMessage, sMessage]) (*Session[Subject, rMessage, sMessage], error) {
+func (hub *Artist[Subject, rMessage, sMessage]) JoinSession(factory AdapterFactory[Subject, rMessage, sMessage]) (*Session[Subject, rMessage, sMessage], error) {
 	if hub.isStop.Load() {
 		return nil, ErrorWrapWithMessage(ErrClosed, "Artifex hub")
 	}
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
 
-	sess, err := NewSession(hub.recvMux, newAdapter)
+	sess, err := NewSession(hub.recvMux, factory)
 	if err != nil {
 		return nil, err
 	}
