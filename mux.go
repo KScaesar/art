@@ -83,7 +83,10 @@ func NewMux[Subject constraints.Ordered, Message any](getSubject NewSubjectFunc[
 	node.addRoute("", 0, handler)
 
 	return &Mux[Subject, Message]{
-		node: node,
+		node:            node,
+		delimiter:       "",
+		delimiterAtLeft: true,
+		isCleanSubject:  false,
 		errorHandler: func(_ Message, _ *RouteParam, err error) error {
 			return err
 		},
@@ -115,9 +118,7 @@ func (mux *Mux[Subject, Message]) HandleMessage(message Message, route *RoutePar
 	}
 
 	defer func() {
-		if err != nil {
-			err = mux.errorHandler(message, route, err)
-		}
+		err = mux.errorHandler(message, route, err)
 	}()
 
 	if mux.node.transforms != nil {

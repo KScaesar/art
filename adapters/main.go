@@ -8,34 +8,50 @@ import (
 
 func main() {
 	tmpl := Template{}
-	LoadDataFromFlag(&tmpl)
-	WriteTemplate(tmpl)
+	ok := LoadDataFromCli(&tmpl)
+	if ok {
+		WriteTemplate(tmpl)
+	}
 }
 
-func LoadDataFromFlag(tmpl *Template) {
+func LoadDataFromCli(tmpl *Template) bool {
+	var dir string
 	var pkg string
-	var topic string
+	var subject string
 	var recv string
 	var send string
-	var path string
 
+	flag.StringVar(&dir, "dir", "./", "generate code to dir")
 	flag.StringVar(&pkg, "pkg", "main", "Package")
-	flag.StringVar(&topic, "topic", "Topic", "Subject")
-	flag.StringVar(&recv, "recv", "SubMsg", "RecvMessage Name")
-	flag.StringVar(&send, "send", "PubMsg", "SendMessage Name")
-	flag.StringVar(&path, "path", "./", "generate code to path")
+	flag.StringVar(&subject, "s", "Channel", "Subject")
+	flag.StringVar(&recv, "recv", "ConsumeMsg", "RecvMessage Name")
+	flag.StringVar(&send, "send", "ProduceMsg", "SendMessage Name")
+
+	help := flag.Bool("h", false, "help")
 	flag.Parse()
 
+	if *help {
+		os.Stdout.WriteString(`help: 
+    aritfex -dir ./kafka -pkg kafka -s Topic -recv SubMsg -send PubMsg
+`)
+		return false
+	}
+
+	if dir[len(dir)-1] != '/' {
+		dir += "/"
+	}
+
+	tmpl.Dir = dir
 	tmpl.Package = pkg
-	tmpl.Subject = topic
+	tmpl.Subject = subject
 	tmpl.RecvMessage = recv
 	tmpl.SendMessage = send
-	tmpl.Path = path
+	return true
 }
 
 func WriteTemplate(tmpl Template) {
 	t1 := template.Must(template.New("template").Parse(MuxTmpl))
-	file1, err := os.Create(tmpl.Path + "mux.go")
+	file1, err := os.Create(tmpl.Dir + "mux.go")
 	if err != nil {
 		panic(err)
 	}
@@ -46,7 +62,7 @@ func WriteTemplate(tmpl Template) {
 	}
 
 	t2 := template.Must(template.New("template").Parse(SessionTmpl))
-	file2, err := os.Create(tmpl.Path + "session.go")
+	file2, err := os.Create(tmpl.Dir + "session.go")
 	if err != nil {
 		panic(err)
 	}
@@ -58,9 +74,9 @@ func WriteTemplate(tmpl Template) {
 }
 
 type Template struct {
+	Dir         string
 	Package     string
 	Subject     string
 	RecvMessage string
 	SendMessage string
-	Path        string
 }

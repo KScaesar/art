@@ -19,8 +19,8 @@ type PingPong[S constraints.Ordered, rM, sM any] struct {
 	WaitSecond int // Must,  when enable pingpong
 
 	// Example:
-	// 	custom protocol-> "ping" or "pong"
-	//	ws protocol -> PongMessage = 10, PingMessage = 9
+	//	custom protocol    -> "ping", "pong"
+	//	websocket protocol -> PingMessage = 9, PongMessage = 10
 	WaitSubject S                                    // Must,  when enable pingpong
 	SendFunc    func(sess *Session[S, rM, sM]) error // Must,  when enable pingpong
 

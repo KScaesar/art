@@ -20,8 +20,9 @@ type Adapter[Subject constraints.Ordered, rMessage, sMessage any] struct {
 
 	// Lifecycle
 	Lifecycle  Lifecycle[Subject, rMessage, sMessage]
-	Identifier string          // Option
-	Context    context.Context // Option
+	Identifier string                                // Option
+	Context    context.Context                       // Option
+	PingPong   PingPong[Subject, rMessage, sMessage] // Option
 }
 
 func NewSession[S constraints.Ordered, rM, sM any](recvMux *Mux[S, rM], factory AdapterFactory[S, rM, sM]) (sess *Session[S, rM, sM], err error) {
@@ -54,7 +55,7 @@ func NewSession[S constraints.Ordered, rM, sM any](recvMux *Mux[S, rM], factory 
 	}
 
 	session := &Session[S, rM, sM]{
-		Keys: make(map[string]any),
+		AppData: make(map[string]any),
 		// pingpong:  func() error { return nil },
 		notifyAll: make([]chan error, 0),
 
@@ -86,7 +87,7 @@ func NewSession[S constraints.Ordered, rM, sM any](recvMux *Mux[S, rM], factory 
 
 type Session[Subject constraints.Ordered, rMessage, sMessage any] struct {
 	mu        sync.RWMutex
-	Keys      maputil.Data // Keys not concurrency safe
+	AppData   maputil.Data // AppData not concurrency safe
 	pingpong  PingPong[Subject, rMessage, sMessage]
 	isStop    atomic.Bool
 	isListen  atomic.Bool
