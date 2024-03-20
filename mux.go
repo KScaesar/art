@@ -11,6 +11,8 @@ import (
 // RouteParam are used to capture values from subject.
 // These parameters represent resources or identifiers.
 //
+// TODO: not implement
+//
 // Example:
 //
 //	define subject = "/users/:id"
