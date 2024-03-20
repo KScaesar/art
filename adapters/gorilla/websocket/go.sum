@@ -4,6 +4,8 @@ github.com/KScaesar/Artifex v0.1.0 h1:L/C1/hr5Ct5CpWJmvLpcT1Uqdh3YvDWmPq66SG4rns
 github.com/KScaesar/Artifex v0.1.0/go.mod h1:PdwsEw2NlZQ0EvyOlFZKz3ekdl77qPG+2dvM4xSoO1A=
 github.com/KScaesar/Artifex v0.2.0 h1:B2NNteJyYr4xP9wzu1ssY860ooYDFTJgQ43xIoGz508=
 github.com/KScaesar/Artifex v0.2.0/go.mod h1:PdwsEw2NlZQ0EvyOlFZKz3ekdl77qPG+2dvM4xSoO1A=
+github.com/KScaesar/Artifex v0.4.0 h1:AMdGjPZqYKt1ujwHwh/o4yRujdePx81dp3MTrIiNn0U=
+github.com/KScaesar/Artifex v0.4.0/go.mod h1:PdwsEw2NlZQ0EvyOlFZKz3ekdl77qPG+2dvM4xSoO1A=
 github.com/cenkalti/backoff/v4 v4.2.1 h1:y4OZtCnogmCPw98Zjyt5a6+QwPLGkiQsYW5oUqylYbM=
 github.com/cenkalti/backoff/v4 v4.2.1/go.mod h1:Y3VNntkOUPxTVeUxJ/G5vcM//AlwfmyYozVcomhLiZE=
 github.com/gookit/goutil v0.6.15 h1:mMQ0ElojNZoyPD0eVROk5QXJPh2uKR4g06slgPDF5Jo=

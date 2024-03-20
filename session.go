@@ -27,6 +27,10 @@ type Session[Subject constraints.Ordered, rMessage, sMessage any] struct {
 	Pingpong  PingPong[Subject, rMessage, sMessage]
 	Lifecycle Lifecycle[Subject, rMessage, sMessage]
 
+	// When adapter encounters an error, it Fixup error to make things right.
+	// This makes sure that the Session keeps going without any problems until we decide to Stop it.
+	Fixup func() error
+
 	isStop    atomic.Bool
 	isListen  atomic.Bool
 	notifyAll []chan error
@@ -40,12 +44,6 @@ func (sess *Session[Subject, rMessage, sMessage]) init() (err error) {
 	if sess.AdapterStop == nil {
 		return ErrorWrapWithMessage(ErrInvalidParameter, "session: AdapterStop is nil")
 	}
-	var empty sMessage
-	defer func() {
-		if err != nil {
-			sess.AdapterStop(empty)
-		}
-	}()
 
 	if sess.AdapterSend == nil && sess.AdapterRecv == nil {
 		return ErrorWrapWithMessage(ErrInvalidParameter, "session: AdapterSend and AdapterRecv are nil")
@@ -53,10 +51,6 @@ func (sess *Session[Subject, rMessage, sMessage]) init() (err error) {
 
 	if sess.AppData == nil {
 		sess.AppData = make(maputil.Data)
-	}
-
-	if sess.notifyAll == nil {
-		sess.notifyAll = make([]chan error, 0)
 	}
 
 	if sess.Context == nil {
@@ -74,8 +68,14 @@ func (sess *Session[Subject, rMessage, sMessage]) Listen() error {
 		return nil
 	}
 	sess.isListen.Store(true)
+	defer sess.Stop()
 
 	err := sess.init()
+	if err != nil {
+		return err
+	}
+
+	err = sess.Lifecycle.Execute(sess)
 	if err != nil {
 		return err
 	}
@@ -83,15 +83,33 @@ func (sess *Session[Subject, rMessage, sMessage]) Listen() error {
 	result := make(chan error, 2)
 
 	go func() {
-		result <- sess.listen()
+		if sess.Fixup == nil {
+			result <- sess.listen()
+		}
+		ReliableTask(sess.listen, sess.IsStop, sess.Fixup)
+		result <- nil
 	}()
 
 	go func() {
-		result <- sess.Pingpong.Run(sess)
+		if !sess.Pingpong.Enable {
+			return
+		}
+
+		if sess.Fixup == nil {
+			result <- sess.Pingpong.Run(sess)
+		}
+
+		waitNotify := sess.Pingpong.registerWaitFunc(sess.Mux)
+		ReliableTask(
+			func() error {
+				return sess.Pingpong.safeRun(sess, waitNotify)
+			},
+			sess.IsStop,
+			sess.Fixup,
+		)
 	}()
 
 	err = <-result
-	sess.Stop()
 	go func() {
 		sess.Mutex.Lock()
 		defer sess.Mutex.Unlock()
@@ -105,36 +123,19 @@ func (sess *Session[Subject, rMessage, sMessage]) Listen() error {
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) listen() error {
-	err := sess.Lifecycle.Execute(sess)
-	if err != nil {
-		return err
-	}
-
 	for !sess.isStop.Load() {
-		err = sess.recvAndHandle()
+		message, err := sess.AdapterRecv()
+
+		if sess.isStop.Load() {
+			return nil
+		}
+
 		if err != nil {
 			return err
 		}
+
+		sess.Mux.HandleMessage(message, nil)
 	}
-	return nil
-}
-
-func (sess *Session[Subject, rMessage, sMessage]) recvAndHandle() error {
-	if sess.isStop.Load() {
-		return ErrorWrapWithMessage(ErrClosed, "Artifex session")
-	}
-
-	message, err := sess.AdapterRecv()
-
-	if sess.isStop.Load() {
-		return nil
-	}
-
-	if err != nil {
-		return err
-	}
-
-	sess.Mux.HandleMessage(message, nil)
 	return nil
 }
 
@@ -142,7 +143,18 @@ func (sess *Session[Subject, rMessage, sMessage]) Send(message sMessage) error {
 	if sess.isStop.Load() {
 		return ErrorWrapWithMessage(ErrClosed, "Artifex session")
 	}
-	return sess.AdapterSend(message)
+	if sess.Fixup == nil {
+		return sess.AdapterSend(message)
+	}
+
+	ReliableTask(
+		func() error {
+			return sess.AdapterSend(message)
+		},
+		sess.IsStop,
+		sess.Fixup,
+	)
+	return nil
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) Stop() {
@@ -181,6 +193,10 @@ func (sess *Session[Subject, rMessage, sMessage]) IsStop() bool {
 func (sess *Session[Subject, rMessage, sMessage]) Notify() <-chan error {
 	sess.Mutex.Lock()
 	defer sess.Mutex.Unlock()
+
+	if sess.notifyAll == nil {
+		sess.notifyAll = make([]chan error, 0)
+	}
 
 	ch := make(chan error, 1)
 	if sess.isStop.Load() {

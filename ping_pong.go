@@ -25,7 +25,6 @@ type PingPong[S constraints.Ordered, rM, sM any] struct {
 	SendFunc           func(sess *Session[S, rM, sM]) error // Must,  when enable Pingpong
 	IsSendPingWaitPong bool                                 // Must,  when enable Pingpong
 	WaitFunc           HandleFunc[rM]                       // Option,  when enable Pingpong
-
 }
 
 func (pingpong PingPong[S, rM, sM]) Run(sess *Session[S, rM, sM]) error {
@@ -33,24 +32,36 @@ func (pingpong PingPong[S, rM, sM]) Run(sess *Session[S, rM, sM]) error {
 		return nil
 	}
 
-	if pingpong.WaitFunc == nil {
-		pingpong.WaitFunc = func(_ rM, _ *RouteParam) error { return nil }
-	}
-
 	mux := sess.Mux
-
-	waitNotify := make(chan error, 1)
-	mux.Handler(pingpong.WaitSubject, func(message rM, route *RouteParam) error {
-		waitNotify <- pingpong.WaitFunc(message, route)
-		return nil
-	})
-
+	waitNotify := pingpong.registerWaitFunc(mux)
 	sendFunc := func() error { return pingpong.SendFunc(sess) }
 
 	if pingpong.IsSendPingWaitPong {
 		return SendPingWaitPong(sendFunc, waitNotify, sess.IsStop, pingpong.WaitSecond)
 	}
 	return WaitPingSendPong(waitNotify, sendFunc, sess.IsStop, pingpong.WaitSecond)
+}
+
+func (pingpong PingPong[S, rM, sM]) safeRun(sess *Session[S, rM, sM], waitNotify chan error) error {
+	sendFunc := func() error { return pingpong.SendFunc(sess) }
+
+	if pingpong.IsSendPingWaitPong {
+		return SendPingWaitPong(sendFunc, waitNotify, sess.IsStop, pingpong.WaitSecond)
+	}
+	return WaitPingSendPong(waitNotify, sendFunc, sess.IsStop, pingpong.WaitSecond)
+}
+
+func (pingpong PingPong[S, rM, sM]) registerWaitFunc(mux *Mux[S, rM]) chan error {
+	waitNotify := make(chan error, 1)
+	mux.Handler(pingpong.WaitSubject, func(message rM, route *RouteParam) error {
+		if pingpong.WaitFunc == nil {
+			waitNotify <- nil
+			return nil
+		}
+		waitNotify <- pingpong.WaitFunc(message, route)
+		return nil
+	})
+	return waitNotify
 }
 
 func WaitPingSendPong(waitPing <-chan error, sendPong func() error, isStop func() bool, pingWaitSecond int) error {

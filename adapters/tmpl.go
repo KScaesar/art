@@ -126,8 +126,7 @@ func NewPigPong() Artifex.PingPong[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMess
 		WaitSecond: 0,
 		// WaitSubject: "PingPong{{.Subject}}",
 		SendFunc: func(session *Session) error {
-			var pingpong *{{.SendMessage}}
-			
+			pingpong := &{{.SendMessage}}{}
 			return session.Send(pingpong)
 		},
 		IsSendPingWaitPong: false,
