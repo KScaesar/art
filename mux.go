@@ -184,9 +184,9 @@ func (mux *Mux[Subject, Message]) PostMiddleware(handleFuncs ...HandleFunc[Messa
 func (mux *Mux[Subject, Message]) Handler(s Subject, h HandleFunc[Message]) *Mux[Subject, Message] {
 	var subject string
 	if mux.delimiterAtLeft {
-		subject = mux.delimiter + CleanSubject(s, mux.isCleanSubject)
+		subject = mux.delimiter + cleanSubject(s, mux.isCleanSubject)
 	} else {
-		subject = CleanSubject(s, mux.isCleanSubject) + mux.delimiter
+		subject = cleanSubject(s, mux.isCleanSubject) + mux.delimiter
 	}
 
 	handler := &routeHandler[Message]{
@@ -212,16 +212,17 @@ func (mux *Mux[Subject, Message]) SetNotFoundHandler(h HandleFunc[Message]) *Mux
 	return mux
 }
 
-func (mux *Mux[Subject, Message]) SetErrorHandler(errorHandler func(Message, *RouteParam, error) error) {
+func (mux *Mux[Subject, Message]) SetErrorHandler(errorHandler func(Message, *RouteParam, error) error) *Mux[Subject, Message] {
 	mux.errorHandler = errorHandler
+	return mux
 }
 
 func (mux *Mux[Subject, Message]) Group(s Subject) *Mux[Subject, Message] {
 	var groupName string
 	if mux.delimiterAtLeft {
-		groupName = mux.delimiter + CleanSubject(s, mux.isCleanSubject)
+		groupName = mux.delimiter + cleanSubject(s, mux.isCleanSubject)
 	} else {
-		groupName = CleanSubject(s, mux.isCleanSubject) + mux.delimiter
+		groupName = cleanSubject(s, mux.isCleanSubject) + mux.delimiter
 	}
 
 	handler := &routeHandler[Message]{}
@@ -250,7 +251,7 @@ func (mux *Mux[Subject, Message]) SetCleanSubject(cleanSubject bool) *Mux[Subjec
 	return mux
 }
 
-func CleanSubject[Subject constraints.Ordered](s Subject, isClean bool) string {
+func cleanSubject[Subject constraints.Ordered](s Subject, isClean bool) string {
 	actions := []func(s string) string{
 		strings.TrimSpace,
 		func(s string) string { return strings.Trim(s, `/.\`) },

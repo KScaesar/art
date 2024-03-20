@@ -1,6 +1,6 @@
 package main
 
-const MuxTmpl = `
+const MsgTmpl = `
 package {{.Package}}
 
 import (
@@ -76,63 +76,58 @@ import (
 	"github.com/KScaesar/Artifex"
 )
 
-type Adapter = Artifex.Adapter[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}]
-type Session = Artifex.Session[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}]
-
-func NewSession(mux *ConsumeMux, factory Artifex.AdapterFactory[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}]) (*Session, error) {
-	// TODO: option
-	return Artifex.NewSession[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}](mux, factory)
-}
-
-//
-
 type Hub = Artifex.Artist[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}]
 
-func NewHub(mux *ConsumeMux) *Hub {
+func NewHub() *Hub {
 	// TODO: option
-	return Artifex.NewArtist[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}](mux)
+	return Artifex.NewArtist[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}]()
 }
 
-//
+type Session = Artifex.Session[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}]
 
-type AdapterFactory struct {
+type SessionFactory struct {
 }
 
-func (f *AdapterFactory) CreateAdapter() (Adapter, error) {
+func (f *SessionFactory) CreateSession() (*Session, error) {
 
 	// TODO: create infra obj
 
-	return Adapter{
-		Recv: func(parent *Session) (*{{.RecvMessage}}, error) {
-			// TODO: must
-			return nil, nil
-		},
-		Send: func(message *{{.SendMessage}}) error {
-			// TODO: must
-			return nil
-		},
-		Stop: func(message *{{.SendMessage}}) {
-			// TODO: must
+	sess := &Session{
+		Identifier: "",
+		Context:    context.Background(),
+		Pingpong: Artifex.PingPong[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}]{
+			Enable:     false,
+			WaitSecond: 0,
+			// WaitSubject: "PingPong{{.Subject}}",
+			SendFunc: func(session *Session) error {
+				return nil
+			},
+			IsSendPingWaitPong: false,
+			WaitFunc: func(message *{{.RecvMessage}}, route *Artifex.RouteParam) error {
+				return nil
+			},
 		},
 		Lifecycle: Artifex.Lifecycle[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}]{
 			SpawnHandlers: []func(sess *Session) error{},
 			ExitHandlers:  []func(sess *Session){},
 		},
-		Identifier: "",
-		Context:    context.Background(),
-		PingPong: Artifex.PingPong[Channel, *{{.RecvMessage}}, *{{.SendMessage}}]{
-			Enable:     false,
-			WaitSecond: 15,
-			// WaitSubject: "PingPong{{.Subject}}",
-			SendFunc: func(sess *Session) error {
-				var pingpong *{{.SendMessage}}
-				return sess.Send(pingpong)
-			},
-			IsSendPingWaitPong: false,
-			WaitFunc: func(_ *{{.RecvMessage}}, _ *Artifex.RouteParam) error {
-				return nil
-			},
-		},
-	}, nil
+	}
+
+	// TODO: must
+	sess.Mux = nil
+	recv := func() (*ConsumeMsg, error) {
+		return nil, nil
+	}
+	send := func(message *ProduceMsg) error {
+		return nil
+	}
+	stop := func(message *ProduceMsg) {
+		return
+	}
+
+	sess.AdapterRecv = recv
+	sess.AdapterSend = send
+	sess.AdapterStop = stop
+	return sess, nil
 }
 `

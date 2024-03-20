@@ -9,121 +9,63 @@ import (
 	"golang.org/x/exp/constraints"
 )
 
-type AdapterFactory[Subject constraints.Ordered, rMessage, sMessage any] interface {
-	CreateAdapter() (Adapter[Subject, rMessage, sMessage], error)
-}
-
-type Adapter[Subject constraints.Ordered, rMessage, sMessage any] struct {
-	Recv func(parent *Session[Subject, rMessage, sMessage]) (rMessage, error) // Must
-	Send func(message sMessage) error                                         // Must
-	Stop func(message sMessage)                                               // Must
-
-	// Lifecycle
-	Lifecycle  Lifecycle[Subject, rMessage, sMessage]
-	Identifier string                                // Option
-	Context    context.Context                       // Option
-	PingPong   PingPong[Subject, rMessage, sMessage] // Option
-}
-
-func NewSession[S constraints.Ordered, rM, sM any](recvMux *Mux[S, rM], factory AdapterFactory[S, rM, sM]) (sess *Session[S, rM, sM], err error) {
-	if recvMux == nil {
-		return nil, ErrorWrapWithMessage(ErrInvalidParameter, "session adapter: mux is nil")
-	}
-
-	adapter, err := factory.CreateAdapter()
-	if err != nil {
-		return nil, err
-	}
-
-	if adapter.Stop == nil {
-		return nil, ErrorWrapWithMessage(ErrInvalidParameter, "session adapter: stop is nil")
-	}
-	var empty sM
-	defer func() {
-		if err != nil {
-			adapter.Stop(empty)
-		}
-	}()
-
-	if adapter.Send == nil && adapter.Recv == nil {
-		return nil, ErrorWrapWithMessage(ErrInvalidParameter, "session adapter: send and recv are empty")
-	}
-
-	ctx := context.Background()
-	if adapter.Context != nil {
-		ctx = adapter.Context
-	}
-
-	session := &Session[S, rM, sM]{
-		AppData: make(map[string]any),
-		// pingpong:  func() error { return nil },
-		notifyAll: make([]chan error, 0),
-
-		recvMux:    recvMux,
-		Identifier: adapter.Identifier,
-		Context:    ctx,
-
-		recv:      adapter.Recv,
-		send:      adapter.Send,
-		stop:      adapter.Stop,
-		lifecycle: adapter.Lifecycle,
-	}
-
-	err = session.lifecycle.Spawn(session)
-	if err != nil {
-		return nil, err
-	}
-
-	go func() {
-		notify := session.Notify()
-		select {
-		case <-notify:
-			session.lifecycle.Exit(session)
-		}
-	}()
-
-	return session, nil
+type SessionFactory[Subject constraints.Ordered, rMessage, sMessage any] interface {
+	CreateSession() (*Session[Subject, rMessage, sMessage], error)
 }
 
 type Session[Subject constraints.Ordered, rMessage, sMessage any] struct {
-	mu        sync.RWMutex
-	AppData   maputil.Data // AppData not concurrency safe
-	pingpong  PingPong[Subject, rMessage, sMessage]
+	Mutex       sync.RWMutex
+	AdapterRecv func() (rMessage, error)     // Must
+	AdapterSend func(message sMessage) error // Must
+	AdapterStop func(message sMessage)       // Must
+	Mux         *Mux[Subject, rMessage]      // Must
+
+	Identifier string
+	Context    context.Context
+	AppData    maputil.Data
+
+	Pingpong  PingPong[Subject, rMessage, sMessage]
+	Lifecycle Lifecycle[Subject, rMessage, sMessage]
+
 	isStop    atomic.Bool
 	isListen  atomic.Bool
 	notifyAll []chan error
-	factory   AdapterFactory[Subject, rMessage, sMessage]
-
-	recvMux    *Mux[Subject, rMessage]
-	Identifier string
-	Context    context.Context
-
-	recv      func(parent *Session[Subject, rMessage, sMessage]) (rMessage, error) // Must
-	send      func(message sMessage) error                                         // Must
-	stop      func(message sMessage)                                               // Must
-	lifecycle Lifecycle[Subject, rMessage, sMessage]
 }
 
-func (sess *Session[Subject, rMessage, sMessage]) SelfRepair() error {
-	sess.mu.Lock()
-	defer sess.mu.Unlock()
-
-	adapter, err := sess.factory.CreateAdapter()
-	if err != nil {
-		return err
+func (sess *Session[Subject, rMessage, sMessage]) init() (err error) {
+	if sess.Mux == nil {
+		return ErrorWrapWithMessage(ErrInvalidParameter, "session: mux is nil")
 	}
 
-	sess.recv = adapter.Recv
-	sess.send = adapter.Send
-	sess.stop = adapter.Stop
-	sess.isStop.Store(false)
+	if sess.AdapterStop == nil {
+		return ErrorWrapWithMessage(ErrInvalidParameter, "session: AdapterStop is nil")
+	}
+	var empty sMessage
+	defer func() {
+		if err != nil {
+			sess.AdapterStop(empty)
+		}
+	}()
+
+	if sess.AdapterSend == nil && sess.AdapterRecv == nil {
+		return ErrorWrapWithMessage(ErrInvalidParameter, "session: AdapterSend and AdapterRecv are nil")
+	}
+
+	if sess.AppData == nil {
+		sess.AppData = make(maputil.Data)
+	}
+
+	if sess.notifyAll == nil {
+		sess.notifyAll = make([]chan error, 0)
+	}
+
+	if sess.Context == nil {
+		sess.Context = context.Background()
+	}
 	return nil
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) Listen() error {
-	sess.mu.RLock()
-	defer sess.mu.RUnlock()
-
 	if sess.isStop.Load() {
 		return ErrorWrapWithMessage(ErrClosed, "Artifex session")
 	}
@@ -133,6 +75,11 @@ func (sess *Session[Subject, rMessage, sMessage]) Listen() error {
 	}
 	sess.isListen.Store(true)
 
+	err := sess.init()
+	if err != nil {
+		return err
+	}
+
 	result := make(chan error, 2)
 
 	go func() {
@@ -140,14 +87,14 @@ func (sess *Session[Subject, rMessage, sMessage]) Listen() error {
 	}()
 
 	go func() {
-		result <- sess.pingpong.Run(sess)
+		result <- sess.Pingpong.Run(sess)
 	}()
 
-	err := <-result
+	err = <-result
 	sess.Stop()
 	go func() {
-		sess.mu.Lock()
-		defer sess.mu.Unlock()
+		sess.Mutex.Lock()
+		defer sess.Mutex.Unlock()
 		for _, notify := range sess.notifyAll {
 			notify <- err
 			close(notify)
@@ -158,8 +105,13 @@ func (sess *Session[Subject, rMessage, sMessage]) Listen() error {
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) listen() error {
+	err := sess.Lifecycle.Execute(sess)
+	if err != nil {
+		return err
+	}
+
 	for !sess.isStop.Load() {
-		err := sess.Recv()
+		err = sess.recvAndHandle()
 		if err != nil {
 			return err
 		}
@@ -167,12 +119,12 @@ func (sess *Session[Subject, rMessage, sMessage]) listen() error {
 	return nil
 }
 
-func (sess *Session[Subject, rMessage, sMessage]) Recv() error {
+func (sess *Session[Subject, rMessage, sMessage]) recvAndHandle() error {
 	if sess.isStop.Load() {
 		return ErrorWrapWithMessage(ErrClosed, "Artifex session")
 	}
 
-	message, err := sess.recv(sess)
+	message, err := sess.AdapterRecv()
 
 	if sess.isStop.Load() {
 		return nil
@@ -182,19 +134,20 @@ func (sess *Session[Subject, rMessage, sMessage]) Recv() error {
 		return err
 	}
 
-	return sess.recvMux.HandleMessage(message, nil)
+	sess.Mux.HandleMessage(message, nil)
+	return nil
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) Send(message sMessage) error {
 	if sess.isStop.Load() {
-		return ErrorWrapWithMessage(ErrClosed, "Artist session")
+		return ErrorWrapWithMessage(ErrClosed, "Artifex session")
 	}
-	return sess.send(message)
+	return sess.AdapterSend(message)
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) Stop() {
-	sess.mu.Lock()
-	defer sess.mu.Unlock()
+	sess.Mutex.Lock()
+	defer sess.Mutex.Unlock()
 
 	if sess.isStop.Load() {
 		return
@@ -202,19 +155,19 @@ func (sess *Session[Subject, rMessage, sMessage]) Stop() {
 	sess.isStop.Store(true)
 	sess.isListen.Store(false)
 	var empty sMessage
-	sess.stop(empty)
+	sess.AdapterStop(empty)
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) StopWithMessage(message sMessage) {
-	sess.mu.Lock()
-	defer sess.mu.Unlock()
+	sess.Mutex.Lock()
+	defer sess.Mutex.Unlock()
 
 	if sess.isStop.Load() {
 		return
 	}
 	sess.isStop.Store(true)
 	sess.isListen.Store(false)
-	sess.stop(message)
+	sess.AdapterStop(message)
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) IsStop() bool {
@@ -226,12 +179,12 @@ func (sess *Session[Subject, rMessage, sMessage]) IsStop() bool {
 // it returns a channel containing an error message indicating the session is closed.
 // Once notified, the channel will be closed immediately.
 func (sess *Session[Subject, rMessage, sMessage]) Notify() <-chan error {
-	sess.mu.Lock()
-	defer sess.mu.Unlock()
+	sess.Mutex.Lock()
+	defer sess.Mutex.Unlock()
 
 	ch := make(chan error, 1)
 	if sess.isStop.Load() {
-		ch <- ErrorWrapWithMessage(ErrClosed, "Artist session")
+		ch <- ErrorWrapWithMessage(ErrClosed, "Artifex session")
 		close(ch)
 		return ch
 	}

@@ -32,7 +32,7 @@ func LoadDataFromCli(tmpl *Template) bool {
 
 	if *help {
 		os.Stdout.WriteString(`help: 
-    aritfex -dir ./kafka -pkg kafka -s Topic -recv SubMsg -send PubMsg
+    aritfex -dir ./ -pkg kafka -s Topic -recv SubMsg -send PubMsg
 `)
 		return false
 	}
@@ -50,8 +50,8 @@ func LoadDataFromCli(tmpl *Template) bool {
 }
 
 func WriteTemplate(tmpl Template) {
-	t1 := template.Must(template.New("template").Parse(MuxTmpl))
-	file1, err := os.Create(tmpl.Dir + "mux.go")
+	t1 := template.Must(template.New("template").Parse(MsgTmpl))
+	file1, err := os.Create(tmpl.Dir + "message.go")
 	if err != nil {
 		panic(err)
 	}

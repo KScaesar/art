@@ -7,25 +7,21 @@ import (
 	"golang.org/x/exp/constraints"
 )
 
-func NewArtist[Subject constraints.Ordered, rMessage, sMessage any](recvMux *Mux[Subject, rMessage]) *Artist[Subject, rMessage, sMessage] {
+func NewArtist[Subject constraints.Ordered, rMessage, sMessage any]() *Artist[Subject, rMessage, sMessage] {
 	return &Artist[Subject, rMessage, sMessage]{
-		recvMux:  recvMux,
 		sessions: make(map[*Session[Subject, rMessage, sMessage]]bool),
 	}
 }
 
-// Artist can manage the lifecycle of multiple Sessions.
+// Artist can manage the Lifecycle of multiple Sessions.
 //
 //   - concurrencyQty controls how many tasks can run simultaneously,
 //     preventing resource usage or avoid frequent context switches.
-//   - recvMux is a multiplexer used for handle messages.
-//   - factory is used to create a new adapter.
 type Artist[Subject constraints.Ordered, rMessage, sMessage any] struct {
 	mu             sync.RWMutex
 	isStop         atomic.Bool
-	recvMux        *Mux[Subject, rMessage]
 	sessions       map[*Session[Subject, rMessage, sMessage]]bool
-	concurrencyQty int // Option
+	concurrencyQty int
 }
 
 func (hub *Artist[Subject, rMessage, sMessage]) Stop() {
@@ -44,14 +40,14 @@ func (hub *Artist[Subject, rMessage, sMessage]) Stop() {
 	}
 }
 
-func (hub *Artist[Subject, rMessage, sMessage]) JoinSession(factory AdapterFactory[Subject, rMessage, sMessage]) (*Session[Subject, rMessage, sMessage], error) {
+func (hub *Artist[Subject, rMessage, sMessage]) JoinSession(factory SessionFactory[Subject, rMessage, sMessage]) (*Session[Subject, rMessage, sMessage], error) {
 	if hub.isStop.Load() {
 		return nil, ErrorWrapWithMessage(ErrClosed, "Artifex hub")
 	}
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
 
-	sess, err := NewSession(hub.recvMux, factory)
+	sess, err := factory.CreateSession()
 	if err != nil {
 		return nil, err
 	}

@@ -16,16 +16,16 @@ type PingPong[S constraints.Ordered, rM, sM any] struct {
 	//
 	// When WaitPingSendPong waits for a ping message and response a corresponding pong message.
 	// SendPeriod = WaitSecond
-	WaitSecond int // Must,  when enable pingpong
+	WaitSecond int // Must,  when enable Pingpong
 
 	// Example:
 	//	custom protocol    -> "ping", "pong"
 	//	websocket protocol -> PingMessage = 9, PongMessage = 10
-	WaitSubject S                                    // Must,  when enable pingpong
-	SendFunc    func(sess *Session[S, rM, sM]) error // Must,  when enable pingpong
+	WaitSubject S                                    // Must,  when enable Pingpong
+	SendFunc    func(sess *Session[S, rM, sM]) error // Must,  when enable Pingpong
 
-	IsSendPingWaitPong bool           // Option,  when enable pingpong
-	WaitFunc           HandleFunc[rM] // Option,  when enable pingpong
+	IsSendPingWaitPong bool           // Option,  when enable Pingpong
+	WaitFunc           HandleFunc[rM] // Option,  when enable Pingpong
 
 }
 
@@ -38,7 +38,7 @@ func (pingpong PingPong[S, rM, sM]) Run(sess *Session[S, rM, sM]) error {
 		pingpong.WaitFunc = func(_ rM, _ *RouteParam) error { return nil }
 	}
 
-	mux := sess.recvMux
+	mux := sess.Mux
 
 	waitNotify := make(chan error, 1)
 	mux.Handler(pingpong.WaitSubject, func(message rM, route *RouteParam) error {
@@ -72,7 +72,7 @@ func WaitPingSendPong(waitPing <-chan error, sendPong func() error, isStop func(
 
 			err = sendPong()
 			if err != nil {
-				return fmt.Errorf("send pong: %v", err)
+				return fmt.Errorf("AdapterSend pong: %v", err)
 			}
 
 			ok := timer.Reset(pingWaitTime)
