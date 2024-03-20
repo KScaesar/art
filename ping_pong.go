@@ -4,7 +4,55 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"golang.org/x/exp/constraints"
 )
+
+type PingPong[S constraints.Ordered, rM, sM any] struct {
+	Enable bool
+
+	// When SendPingWaitPong sends a ping message and waits for a corresponding pong message.
+	// SendPeriod = WaitSecond / 2
+	//
+	// When WaitPingSendPong waits for a ping message and response a corresponding pong message.
+	// SendPeriod = WaitSecond
+	WaitSecond int // Must,  when enable pingpong
+
+	// Example:
+	// 	custom protocol-> "ping" or "pong"
+	//	ws protocol -> PongMessage = 10, PingMessage = 9
+	WaitSubject S                                    // Must,  when enable pingpong
+	SendFunc    func(sess *Session[S, rM, sM]) error // Must,  when enable pingpong
+
+	IsSendPingWaitPong bool           // Option,  when enable pingpong
+	WaitFunc           HandleFunc[rM] // Option,  when enable pingpong
+
+}
+
+func (pingpong PingPong[S, rM, sM]) Run(sess *Session[S, rM, sM]) error {
+	if !pingpong.Enable {
+		return nil
+	}
+
+	if pingpong.WaitFunc == nil {
+		pingpong.WaitFunc = func(_ rM, _ *RouteParam) error { return nil }
+	}
+
+	mux := sess.recvMux
+
+	waitNotify := make(chan error, 1)
+	mux.Handler(pingpong.WaitSubject, func(message rM, route *RouteParam) error {
+		waitNotify <- pingpong.WaitFunc(message, route)
+		return nil
+	})
+
+	sendFunc := func() error { return pingpong.SendFunc(sess) }
+
+	if pingpong.IsSendPingWaitPong {
+		return SendPingWaitPong(sendFunc, waitNotify, sess.IsStop, pingpong.WaitSecond)
+	}
+	return WaitPingSendPong(waitNotify, sendFunc, sess.IsStop, pingpong.WaitSecond)
+}
 
 func WaitPingSendPong(waitPing <-chan error, sendPong func() error, isStop func() bool, pingWaitSecond int) error {
 	pingWaitTime := time.Duration(pingWaitSecond) * time.Second

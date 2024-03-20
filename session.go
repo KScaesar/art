@@ -54,8 +54,8 @@ func NewSession[S constraints.Ordered, rM, sM any](recvMux *Mux[S, rM], factory 
 	}
 
 	session := &Session[S, rM, sM]{
-		Keys:      make(map[string]any),
-		pingpong:  func() error { return nil },
+		Keys: make(map[string]any),
+		// pingpong:  func() error { return nil },
 		notifyAll: make([]chan error, 0),
 
 		recvMux:    recvMux,
@@ -85,14 +85,13 @@ func NewSession[S constraints.Ordered, rM, sM any](recvMux *Mux[S, rM], factory 
 }
 
 type Session[Subject constraints.Ordered, rMessage, sMessage any] struct {
-	mu             sync.RWMutex
-	Keys           maputil.Data // Keys not concurrency safe
-	pingpong       func() error
-	enablePingPong atomic.Bool
-	isStop         atomic.Bool
-	isListen       atomic.Bool
-	notifyAll      []chan error
-	factory        AdapterFactory[Subject, rMessage, sMessage]
+	mu        sync.RWMutex
+	Keys      maputil.Data // Keys not concurrency safe
+	pingpong  PingPong[Subject, rMessage, sMessage]
+	isStop    atomic.Bool
+	isListen  atomic.Bool
+	notifyAll []chan error
+	factory   AdapterFactory[Subject, rMessage, sMessage]
 
 	recvMux    *Mux[Subject, rMessage]
 	Identifier string
@@ -139,11 +138,9 @@ func (sess *Session[Subject, rMessage, sMessage]) Listen() error {
 		result <- sess.listen()
 	}()
 
-	if sess.enablePingPong.Load() {
-		go func() {
-			result <- sess.pingpong()
-		}()
-	}
+	go func() {
+		result <- sess.pingpong.Run(sess)
+	}()
 
 	err := <-result
 	sess.Stop()
@@ -240,38 +237,4 @@ func (sess *Session[Subject, rMessage, sMessage]) Notify() <-chan error {
 
 	sess.notifyAll = append(sess.notifyAll, ch)
 	return ch
-}
-
-// SendPingWaitPong sends a ping message and waits for a corresponding pong message.
-func (sess *Session[Subject, rMessage, sMessage]) SendPingWaitPong(pongSubject Subject, pongWaitSecond int, ping, pong func(sess *Session[Subject, rMessage, sMessage]) error) {
-	sess.enablePingPong.Store(true)
-	waitPong := make(chan error, 1)
-
-	sess.recvMux.Handler(pongSubject, func(message rMessage, _ *RouteParam) error {
-		waitPong <- pong(sess)
-		return nil
-	})
-
-	sendPing := func() error { return ping(sess) }
-
-	sess.pingpong = func() error {
-		return SendPingWaitPong(sendPing, waitPong, sess.IsStop, pongWaitSecond)
-	}
-}
-
-// WaitPingSendPong waits for a ping message and response a corresponding pong message.
-func (sess *Session[Subject, rMessage, sMessage]) WaitPingSendPong(pingSubject Subject, pingWaitSecond int, ping, pong func(sess *Session[Subject, rMessage, sMessage]) error) {
-	sess.enablePingPong.Store(true)
-	waitPing := make(chan error, 1)
-
-	sess.recvMux.Handler(pingSubject, func(message rMessage, _ *RouteParam) error {
-		waitPing <- ping(sess)
-		return nil
-	})
-
-	sendPong := func() error { return pong(sess) }
-
-	sess.pingpong = func() error {
-		return WaitPingSendPong(waitPing, sendPong, sess.IsStop, pingWaitSecond)
-	}
 }
