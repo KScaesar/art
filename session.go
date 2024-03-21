@@ -14,17 +14,17 @@ type SessionFactory[Subject constraints.Ordered, rMessage, sMessage any] interfa
 }
 
 type Session[Subject constraints.Ordered, rMessage, sMessage any] struct {
+	Mux         *Mux[Subject, rMessage]      // Must
 	AdapterRecv func() (rMessage, error)     // Must
 	AdapterSend func(message sMessage) error // Must
 	AdapterStop func(message sMessage)       // Must
-	Mux         *Mux[Subject, rMessage]      // Must
 
 	Identifier string
 	Context    context.Context
 	AppData    maputil.Data
-	Mutex      sync.RWMutex
+	Locker     sync.RWMutex
 
-	Pingpong  func() error
+	PingPong  PingPong
 	Lifecycle Lifecycle[Subject, rMessage, sMessage]
 
 	// When adapter encounters an error, it Fixup error to make things right.
@@ -41,12 +41,13 @@ func (sess *Session[Subject, rMessage, sMessage]) init() (err error) {
 		return ErrorWrapWithMessage(ErrInvalidParameter, "session: mux is nil")
 	}
 
-	if sess.AdapterStop == nil {
-		return ErrorWrapWithMessage(ErrInvalidParameter, "session: AdapterStop is nil")
+	if sess.AdapterStop == nil || sess.AdapterSend == nil || sess.AdapterRecv == nil {
+		return ErrorWrapWithMessage(ErrInvalidParameter, "session: Adapter is nil")
 	}
 
-	if sess.AdapterSend == nil && sess.AdapterRecv == nil {
-		return ErrorWrapWithMessage(ErrInvalidParameter, "session: AdapterSend and AdapterRecv are nil")
+	err = sess.PingPong.validate()
+	if err != nil {
+		return err
 	}
 
 	if sess.AppData == nil {
@@ -70,12 +71,12 @@ func (sess *Session[Subject, rMessage, sMessage]) Listen() error {
 	sess.isListen.Store(true)
 	defer sess.Stop()
 
-	err := sess.init()
+	err := sess.Lifecycle.Execute(sess)
 	if err != nil {
 		return err
 	}
 
-	err = sess.Lifecycle.Execute(sess)
+	err = sess.init()
 	if err != nil {
 		return err
 	}
@@ -91,19 +92,25 @@ func (sess *Session[Subject, rMessage, sMessage]) Listen() error {
 	}()
 
 	go func() {
-		if sess.Pingpong == nil {
+		if !sess.PingPong.Enable {
 			return
 		}
 		if sess.Fixup == nil {
-			result <- sess.Pingpong()
+			result <- sess.PingPong.Execute(sess.IsStop)
 		}
-		ReliableTask(sess.Pingpong, sess.IsStop, sess.Fixup)
+		ReliableTask(
+			func() error {
+				return sess.PingPong.Execute(sess.IsStop)
+			},
+			sess.IsStop,
+			sess.Fixup,
+		)
 	}()
 
 	err = <-result
 	go func() {
-		sess.Mutex.Lock()
-		defer sess.Mutex.Unlock()
+		sess.Locker.Lock()
+		defer sess.Locker.Unlock()
 		for _, notify := range sess.notifyAll {
 			notify <- err
 			close(notify)
@@ -137,7 +144,6 @@ func (sess *Session[Subject, rMessage, sMessage]) Send(message sMessage) error {
 	if sess.Fixup == nil {
 		return sess.AdapterSend(message)
 	}
-
 	ReliableTask(
 		func() error {
 			return sess.AdapterSend(message)
@@ -149,8 +155,8 @@ func (sess *Session[Subject, rMessage, sMessage]) Send(message sMessage) error {
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) Stop() {
-	sess.Mutex.Lock()
-	defer sess.Mutex.Unlock()
+	sess.Locker.Lock()
+	defer sess.Locker.Unlock()
 
 	if sess.isStop.Load() {
 		return
@@ -162,8 +168,8 @@ func (sess *Session[Subject, rMessage, sMessage]) Stop() {
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) StopWithMessage(message sMessage) {
-	sess.Mutex.Lock()
-	defer sess.Mutex.Unlock()
+	sess.Locker.Lock()
+	defer sess.Locker.Unlock()
 
 	if sess.isStop.Load() {
 		return
@@ -178,12 +184,13 @@ func (sess *Session[Subject, rMessage, sMessage]) IsStop() bool {
 }
 
 // Notify returns a channel for receiving the result of the Session.Listen.
-// If the session is already closed,
+// If the Session is already Stop,
 // it returns a channel containing an error message indicating the session is closed.
+//
 // Once notified, the channel will be closed immediately.
 func (sess *Session[Subject, rMessage, sMessage]) Notify() <-chan error {
-	sess.Mutex.Lock()
-	defer sess.Mutex.Unlock()
+	sess.Locker.Lock()
+	defer sess.Locker.Unlock()
 
 	if sess.notifyAll == nil {
 		sess.notifyAll = make([]chan error, 0)

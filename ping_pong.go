@@ -4,36 +4,49 @@ import (
 	"errors"
 	"fmt"
 	"time"
-
-	"golang.org/x/exp/constraints"
 )
 
-type PingPong[S constraints.Ordered, rM, sM any] struct {
+type PingPong struct {
 	Enable             bool
 	IsSendPingWaitPong bool
-	SendFunc           func() error
-	WaitNotify         chan error
+
+	SendFunc   func() error
+	WaitNotify chan error
 
 	// When SendPingWaitPong sends a ping message and waits for a corresponding pong message.
 	// SendPeriod = WaitSecond / 2
 	//
 	// When WaitPingSendPong waits for a ping message and response a corresponding pong message.
 	// SendPeriod = WaitSecond
-	WaitSecond int // Must,  when enable Pingpong
+	WaitSecond int // Must,  when enable PingPong
 }
 
-func (pp PingPong[S, rM, sM]) RunBySession(sess *Session[S, rM, sM]) error {
-	return pp.Run(sess.IsStop)
+func (pp PingPong) Execute(allowStop func() bool) error {
+	err := pp.validate()
+	if err != nil {
+		return err
+	}
+	second := pp.WaitSecond
+	if second <= 0 {
+		second = 30
+	}
+	if pp.IsSendPingWaitPong {
+		return SendPingWaitPong(pp.SendFunc, pp.WaitNotify, allowStop, second)
+	}
+	return WaitPingSendPong(pp.WaitNotify, pp.SendFunc, allowStop, second)
 }
 
-func (pp PingPong[S, rM, sM]) Run(allowStop func() bool) error {
+func (pp PingPong) validate() error {
 	if !pp.Enable {
 		return nil
 	}
-	if pp.IsSendPingWaitPong {
-		return SendPingWaitPong(pp.SendFunc, pp.WaitNotify, allowStop, pp.WaitSecond)
+	if pp.SendFunc == nil {
+		return ErrorWrapWithMessage(ErrInvalidParameter, "pingpong send is nil")
 	}
-	return WaitPingSendPong(pp.WaitNotify, pp.SendFunc, allowStop, pp.WaitSecond)
+	if pp.WaitNotify == nil {
+		return ErrorWrapWithMessage(ErrInvalidParameter, "pingpong wait is nil")
+	}
+	return nil
 }
 
 func WaitPingSendPong(waitPing <-chan error, sendPong func() error, isStop func() bool, pingWaitSecond int) error {

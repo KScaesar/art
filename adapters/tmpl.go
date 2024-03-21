@@ -20,13 +20,13 @@ type {{.SendMessage}} struct {
 
 //
 
-type ConsumeHandleFunc = Artifex.HandleFunc[*{{.RecvMessage}}]
-type ConsumeMiddleware = Artifex.Middleware[*{{.RecvMessage}}]
-type ConsumeMux = Artifex.Mux[{{.Subject}}, *{{.RecvMessage}}]
+type {{.RecvMessage}}HandleFunc = Artifex.HandleFunc[*{{.RecvMessage}}]
+type {{.RecvMessage}}Middleware = Artifex.Middleware[*{{.RecvMessage}}]
+type {{.RecvMessage}}Mux = Artifex.Mux[{{.Subject}}, *{{.RecvMessage}}]
 
-func NewConsumeMux() *ConsumeMux {
+func New{{.RecvMessage}}Mux() *{{.RecvMessage}}Mux {
 	get{{.Subject}} := func(message *{{.RecvMessage}}) (string, error) {
-		// TODO: must
+		// TODO
 		return "", nil
 	}
 
@@ -36,7 +36,7 @@ func NewConsumeMux() *ConsumeMux {
 }
 
 // Example
-func HelloHandler() ConsumeHandleFunc {
+func HelloHandler() {{.RecvMessage}}HandleFunc {
 	return func(message *{{.RecvMessage}}, route *Artifex.RouteParam) error {
 		return nil
 	}
@@ -44,13 +44,13 @@ func HelloHandler() ConsumeHandleFunc {
 
 //
 
-type ProduceHandleFunc = Artifex.HandleFunc[*{{.SendMessage}}]
-type ProduceMiddleware = Artifex.Middleware[*{{.SendMessage}}]
-type ProduceMux = Artifex.Mux[{{.Subject}}, *{{.SendMessage}}]
+type {{.SendMessage}}HandleFunc = Artifex.HandleFunc[*{{.SendMessage}}]
+type {{.SendMessage}}Middleware = Artifex.Middleware[*{{.SendMessage}}]
+type {{.SendMessage}}Mux = Artifex.Mux[{{.Subject}}, *{{.SendMessage}}]
 
-func NewProduceMux() *ProduceMux {
+func New{{.SendMessage}}Mux() *{{.SendMessage}}Mux {
 	get{{.Subject}} := func(message *{{.SendMessage}}) (string, error) {
-		// TODO: must
+		// TODO
 		return "", nil
 	}
 
@@ -60,7 +60,7 @@ func NewProduceMux() *ProduceMux {
 }
 
 // Example
-func WorldHandler() ProduceHandleFunc {
+func WorldHandler() {{.SendMessage}}HandleFunc {
 	return func(message *{{.SendMessage}}, route *Artifex.RouteParam) error {
 		return nil
 	}
@@ -71,7 +71,7 @@ const SessionTmpl = `
 package {{.Package}}
 
 import (
-	"context"
+	"sync"
 
 	"github.com/KScaesar/Artifex"
 )
@@ -79,7 +79,7 @@ import (
 type Hub = Artifex.Artist[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}]
 
 func NewHub() *Hub {
-	// TODO: option
+	// TODO
 	return Artifex.NewArtist[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}]()
 }
 
@@ -89,50 +89,114 @@ type SessionFactory struct {
 }
 
 func (f *SessionFactory) CreateSession() (*Session, error) {
-
-	// TODO: create infra obj
-
-	sess := &Session{
-		Identifier: "",
-		Context:    context.Background(),
-		Pingpong:   NewPigPong(),
-		Lifecycle: Artifex.Lifecycle[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}]{
-			SpawnHandlers: []func(sess *Session) error{},
-			ExitHandlers:  []func(sess *Session){},
+	var mu sync.Mutex
+	life := Artifex.Lifecycle[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}]{
+		SpawnHandlers: []func(sess *Session) error{
+			SetupAdapter(&mu),
+			SetupAdapterWithPingPong(&mu),
+			SetupAdapterWithFixup(&mu),
 		},
+		ExitHandlers: []func(sess *Session){},
 	}
-
-	// TODO: must
-	sess.Mux = nil
-	recv := func() (*{{.RecvMessage}}, error) {
-		return nil, nil
+	sess := &Session{
+		Mux:        nil,
+		Identifier: "",
+		Lifecycle:  life,
 	}
-	send := func(message *{{.SendMessage}}) error {
-		return nil
-	}
-	stop := func(message *{{.SendMessage}}) {
-		
-	}
-
-	sess.AdapterRecv = recv
-	sess.AdapterSend = send
-	sess.AdapterStop = stop
 	return sess, nil
 }
 
-func NewPigPong() Artifex.PingPong[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}] {
-	return Artifex.PingPong[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}]{
-		Enable:     false,
-		WaitSecond: 0,
-		// WaitSubject: "PingPong{{.Subject}}",
-		SendFunc: func(session *Session) error {
-			pingpong := &{{.SendMessage}}{}
-			return session.Send(pingpong)
-		},
+func SetupAdapterWithPingPong(mu *sync.Mutex) func(sess *Session) error {
+	// TODO: create infra obj
+
+	pp := Artifex.PingPong{
+		Enable:             true,
 		IsSendPingWaitPong: false,
-		WaitFunc: func(message *{{.RecvMessage}}, route *Artifex.RouteParam) error {
+		SendFunc: func() error {
+			mu.Lock()
+			defer mu.Unlock()
 			return nil
 		},
+		WaitNotify: make(chan error, 1),
+		WaitSecond: 15,
+	}
+
+	return func(sess *Session) error {
+		recv := func() (*{{.RecvMessage}}, error) {
+			pp.WaitNotify <- nil
+			return nil, nil
+		}
+
+		send := func(message *{{.SendMessage}}) error {
+			mu.Lock()
+			defer mu.Unlock()
+			return nil
+		}
+
+		stop := func(message *{{.SendMessage}}) {
+			return
+		}
+
+		sess.AdapterRecv = recv
+		sess.AdapterSend = send
+		sess.AdapterStop = stop
+		sess.PingPong = pp
+		return nil
+	}
+}
+
+func SetupAdapter(mu *sync.Mutex) func(sess *Session) error {
+	// TODO: create infra obj
+
+	return func(sess *Session) error {
+		recv := func() (*{{.RecvMessage}}, error) {
+			return nil, nil
+		}
+
+		send := func(message *{{.SendMessage}}) error {
+			mu.Lock()
+			defer mu.Unlock()
+			return nil
+		}
+
+		stop := func(message *{{.SendMessage}}) {
+			return
+		}
+
+		sess.AdapterRecv = recv
+		sess.AdapterSend = send
+		sess.AdapterStop = stop
+		return nil
+	}
+}
+
+func SetupAdapterWithFixup(mu *sync.Mutex) func(sess *Session) error {
+	// TODO: create infra obj
+
+	return func(sess *Session) error {
+		recv := func() (*{{.RecvMessage}}, error) {
+			return nil, nil
+		}
+
+		send := func(message *{{.SendMessage}}) error {
+			mu.Lock()
+			defer mu.Unlock()
+			return nil
+		}
+
+		stop := func(message *{{.SendMessage}}) {
+			return
+		}
+
+		fixup := func() error {
+			return nil
+		}
+
+		sess.AdapterRecv = recv
+		sess.AdapterSend = send
+		sess.AdapterStop = stop
+		sess.Fixup = fixup
+		return nil
 	}
 }
 `
