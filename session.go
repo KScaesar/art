@@ -17,7 +17,7 @@ type Session[Subject constraints.Ordered, rMessage, sMessage any] struct {
 	Mux         *Mux[Subject, rMessage]  // Must
 	AdapterRecv func() (rMessage, error) // Must
 	AdapterSend func(sMessage) error     // Must
-	AdapterStop func(sMessage)           // Must
+	AdapterStop func(sMessage) error     // Must
 
 	Identifier string
 	Context    context.Context

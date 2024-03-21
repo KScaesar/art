@@ -1,72 +1,72 @@
-package leaf
+package main
 
 import (
 	"github.com/KScaesar/Artifex"
 )
 
 // TODO
-type LeafId = string
+type Channel = string
 
-func NewWsMessage() *WsMessage {
-	return &WsMessage{}
+func NewConsumeMsg() *ConsumeMsg {
+	return &ConsumeMsg{}
 }
 
-type WsMessage struct {
+type ConsumeMsg struct {
 	// TODO
 }
 
-func NewLeafMessage() *LeafMessage {
-	return &LeafMessage{}
+func NewProduceMsg() *ProduceMsg {
+	return &ProduceMsg{}
 }
 
-type LeafMessage struct {
+type ProduceMsg struct {
 	// TODO
 }
 
 //
 
-type WsMessageHandleFunc = Artifex.HandleFunc[*WsMessage]
-type WsMessageMiddleware = Artifex.Middleware[*WsMessage]
-type WsMessageMux = Artifex.Mux[LeafId, *WsMessage]
+type ConsumeMsgHandleFunc = Artifex.HandleFunc[*ConsumeMsg]
+type ConsumeMsgMiddleware = Artifex.Middleware[*ConsumeMsg]
+type ConsumeMsgMux = Artifex.Mux[Channel, *ConsumeMsg]
 
-func NewWsMessageMux() *WsMessageMux {
-	getLeafId := func(message *WsMessage) (string, error) {
+func NewConsumeMsgMux() *ConsumeMsgMux {
+	getChannel := func(message *ConsumeMsg) (string, error) {
 		// TODO
 		return "", nil
 	}
 
-	mux := Artifex.NewMux[LeafId](getLeafId)
+	mux := Artifex.NewMux[Channel](getChannel)
 	mux.Handler("hello", HelloHandler())
 	return mux
 }
 
 // Example
-func HelloHandler() WsMessageHandleFunc {
-	return func(message *WsMessage, route *Artifex.RouteParam) error {
+func HelloHandler() ConsumeMsgHandleFunc {
+	return func(message *ConsumeMsg, route *Artifex.RouteParam) error {
 		return nil
 	}
 }
 
 //
 
-type LeafMessageHandleFunc = Artifex.HandleFunc[*LeafMessage]
-type LeafMessageMiddleware = Artifex.Middleware[*LeafMessage]
-type LeafMessageMux = Artifex.Mux[LeafId, *LeafMessage]
+type ProduceMsgHandleFunc = Artifex.HandleFunc[*ProduceMsg]
+type ProduceMsgMiddleware = Artifex.Middleware[*ProduceMsg]
+type ProduceMsgMux = Artifex.Mux[Channel, *ProduceMsg]
 
-func NewLeafMessageMux() *LeafMessageMux {
-	getLeafId := func(message *LeafMessage) (string, error) {
+func NewProduceMsgMux() *ProduceMsgMux {
+	getChannel := func(message *ProduceMsg) (string, error) {
 		// TODO
 		return "", nil
 	}
 
-	mux := Artifex.NewMux[LeafId](getLeafId)
+	mux := Artifex.NewMux[Channel](getChannel)
 	mux.Handler("world", WorldHandler())
 	return mux
 }
 
 // Example
-func WorldHandler() LeafMessageHandleFunc {
-	return func(message *LeafMessage, route *Artifex.RouteParam) error {
+func WorldHandler() ProduceMsgHandleFunc {
+	return func(message *ProduceMsg, route *Artifex.RouteParam) error {
 		return nil
 	}
 }

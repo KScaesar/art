@@ -99,13 +99,14 @@ type Case1SessionFactory struct {
 
 func (f *Case1SessionFactory) CreateSession() (*Session, error) {
 	var mu sync.Mutex
+
 	life := Artifex.Lifecycle[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}]{
 		SpawnHandlers: []func(sess *Session) error{
-			SetupAdapter(&mu),
-			SetupAdapterWithPingPong(&mu),
-			SetupAdapterWithFixup(&mu),
+			f.CreateAdapter(&mu),
+			f.CreateAdapterWithPingPong(&mu),
+			f.CreateAdapterWithFixup(&mu),
 		},
-		ExitHandlers: []func(sess *Session){},
+		ExitHandlers: []func(sess *Session) error{},
 	}
 	sess := &Session{
 		Mux:        nil,
@@ -115,7 +116,7 @@ func (f *Case1SessionFactory) CreateSession() (*Session, error) {
 	return sess, nil
 }
 
-func SetupAdapterWithPingPong(mu *sync.Mutex) func(sess *Session) error {
+func (f *Case1SessionFactory) CreateAdapterWithPingPong(mu *sync.Mutex) func(sess *Session) error {
 
 	return func(sess *Session) error {
 		pp := Artifex.PingPong{
@@ -133,62 +134,78 @@ func SetupAdapterWithPingPong(mu *sync.Mutex) func(sess *Session) error {
 
 		sess.AdapterRecv = func() (*{{.RecvMessage}}, error) {
 			pp.WaitNotify <- nil
+
 			return nil, nil
 		}
 
 		sess.AdapterSend = func(message *{{.SendMessage}}) error {
 			mu.Lock()
 			defer mu.Unlock()
+
 			return nil
 		}
 
-		sess.AdapterStop = func(message *{{.SendMessage}}) {
-			return
+		sess.AdapterStop = func(message *{{.SendMessage}}) error {
+			mu.Lock()
+			defer mu.Unlock()
+
+			return nil
 		}
 
 		return nil
 	}
 }
 
-func SetupAdapter(mu *sync.Mutex) func(sess *Session) error {
+func (f *Case1SessionFactory) CreateAdapter(mu *sync.Mutex) func(sess *Session) error {
 
 	return func(sess *Session) error {
 		sess.AdapterRecv = func() (*{{.RecvMessage}}, error) {
+
 			return nil, nil
 		}
 
 		sess.AdapterSend = func(message *{{.SendMessage}}) error {
 			mu.Lock()
 			defer mu.Unlock()
+
 			return nil
 		}
 
-		sess.AdapterStop = func(message *{{.SendMessage}}) {
-			return
+		sess.AdapterStop = func(message *{{.SendMessage}}) error {
+			mu.Lock()
+			defer mu.Unlock()
+
+			return nil
 		}
 
 		return nil
 	}
 }
 
-func SetupAdapterWithFixup(mu *sync.Mutex) func(sess *Session) error {
+func (f *Case1SessionFactory) CreateAdapterWithFixup(mu *sync.Mutex) func(sess *Session) error {
 
 	return func(sess *Session) error {
 		sess.AdapterRecv = func() (*{{.RecvMessage}}, error) {
+
 			return nil, nil
 		}
 
 		sess.AdapterSend = func(message *{{.SendMessage}}) error {
 			mu.Lock()
 			defer mu.Unlock()
+
 			return nil
 		}
 
-		sess.AdapterStop = func(message *{{.SendMessage}}) {
-			return
+		sess.AdapterStop = func(message *{{.SendMessage}}) error {
+			mu.Lock()
+			defer mu.Unlock()
+
+			return nil
 		}
 
 		sess.Fixup = func() error {
+
 			return nil
 		}
 

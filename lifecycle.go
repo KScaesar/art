@@ -10,7 +10,7 @@ type Lifecycle[Subject constraints.Ordered, rMessage, sMessage any] struct {
 	SpawnHandlers []func(sess *Session[Subject, rMessage, sMessage]) error
 
 	// ExitHandlers are used for cleanup operations when the session ends.
-	ExitHandlers []func(sess *Session[Subject, rMessage, sMessage])
+	ExitHandlers []func(sess *Session[Subject, rMessage, sMessage]) error
 }
 
 func (life *Lifecycle[Subject, rMessage, sMessage]) execute(sess *Session[Subject, rMessage, sMessage]) error {

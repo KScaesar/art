@@ -1,4 +1,4 @@
-package leaf
+package main
 
 import (
 	"sync"
@@ -6,27 +6,28 @@ import (
 	"github.com/KScaesar/Artifex"
 )
 
-type Hub = Artifex.Artist[LeafId, *WsMessage, *LeafMessage]
+type Hub = Artifex.Artist[Channel, *ConsumeMsg, *ProduceMsg]
 
 func NewHub() *Hub {
 	// TODO
-	return Artifex.NewArtist[LeafId, *WsMessage, *LeafMessage]()
+	return Artifex.NewArtist[Channel, *ConsumeMsg, *ProduceMsg]()
 }
 
-type Session = Artifex.Session[LeafId, *WsMessage, *LeafMessage]
+type Session = Artifex.Session[Channel, *ConsumeMsg, *ProduceMsg]
 
 type Case1SessionFactory struct {
 }
 
 func (f *Case1SessionFactory) CreateSession() (*Session, error) {
 	var mu sync.Mutex
-	life := Artifex.Lifecycle[LeafId, *WsMessage, *LeafMessage]{
+
+	life := Artifex.Lifecycle[Channel, *ConsumeMsg, *ProduceMsg]{
 		SpawnHandlers: []func(sess *Session) error{
-			SetupAdapter(&mu),
-			SetupAdapterWithPingPong(&mu),
-			SetupAdapterWithFixup(&mu),
+			f.CreateAdapter(&mu),
+			f.CreateAdapterWithPingPong(&mu),
+			f.CreateAdapterWithFixup(&mu),
 		},
-		ExitHandlers: []func(sess *Session){},
+		ExitHandlers: []func(sess *Session) error{},
 	}
 	sess := &Session{
 		Mux:        nil,
@@ -36,7 +37,7 @@ func (f *Case1SessionFactory) CreateSession() (*Session, error) {
 	return sess, nil
 }
 
-func SetupAdapterWithPingPong(mu *sync.Mutex) func(sess *Session) error {
+func (f *Case1SessionFactory) CreateAdapterWithPingPong(mu *sync.Mutex) func(sess *Session) error {
 
 	return func(sess *Session) error {
 		pp := Artifex.PingPong{
@@ -52,64 +53,80 @@ func SetupAdapterWithPingPong(mu *sync.Mutex) func(sess *Session) error {
 		}
 		sess.PingPong = pp
 
-		sess.AdapterRecv = func() (*WsMessage, error) {
+		sess.AdapterRecv = func() (*ConsumeMsg, error) {
 			pp.WaitNotify <- nil
+
 			return nil, nil
 		}
 
-		sess.AdapterSend = func(message *LeafMessage) error {
+		sess.AdapterSend = func(message *ProduceMsg) error {
 			mu.Lock()
 			defer mu.Unlock()
+
 			return nil
 		}
 
-		sess.AdapterStop = func(message *LeafMessage) {
-			return
+		sess.AdapterStop = func(message *ProduceMsg) error {
+			mu.Lock()
+			defer mu.Unlock()
+
+			return nil
 		}
 
 		return nil
 	}
 }
 
-func SetupAdapter(mu *sync.Mutex) func(sess *Session) error {
+func (f *Case1SessionFactory) CreateAdapter(mu *sync.Mutex) func(sess *Session) error {
 
 	return func(sess *Session) error {
-		sess.AdapterRecv = func() (*WsMessage, error) {
+		sess.AdapterRecv = func() (*ConsumeMsg, error) {
+
 			return nil, nil
 		}
 
-		sess.AdapterSend = func(message *LeafMessage) error {
+		sess.AdapterSend = func(message *ProduceMsg) error {
 			mu.Lock()
 			defer mu.Unlock()
+
 			return nil
 		}
 
-		sess.AdapterStop = func(message *LeafMessage) {
-			return
+		sess.AdapterStop = func(message *ProduceMsg) error {
+			mu.Lock()
+			defer mu.Unlock()
+
+			return nil
 		}
 
 		return nil
 	}
 }
 
-func SetupAdapterWithFixup(mu *sync.Mutex) func(sess *Session) error {
+func (f *Case1SessionFactory) CreateAdapterWithFixup(mu *sync.Mutex) func(sess *Session) error {
 
 	return func(sess *Session) error {
-		sess.AdapterRecv = func() (*WsMessage, error) {
+		sess.AdapterRecv = func() (*ConsumeMsg, error) {
+
 			return nil, nil
 		}
 
-		sess.AdapterSend = func(message *LeafMessage) error {
+		sess.AdapterSend = func(message *ProduceMsg) error {
 			mu.Lock()
 			defer mu.Unlock()
+
 			return nil
 		}
 
-		sess.AdapterStop = func(message *LeafMessage) {
-			return
+		sess.AdapterStop = func(message *ProduceMsg) error {
+			mu.Lock()
+			defer mu.Unlock()
+
+			return nil
 		}
 
 		sess.Fixup = func() error {
+
 			return nil
 		}
 
