@@ -32,11 +32,20 @@ type Session[Subject constraints.Ordered, rMessage, sMessage any] struct {
 	Fixup func() error
 
 	isStop    atomic.Bool
-	isListen  atomic.Bool
+	isInit    atomic.Bool
 	notifyAll []chan error
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) init() (err error) {
+	if sess.isInit.Load() {
+		return nil
+	}
+
+	err = sess.Lifecycle.execute(sess)
+	if err != nil {
+		return err
+	}
+
 	if sess.Mux == nil {
 		return ErrorWrapWithMessage(ErrInvalidParameter, "session: mux is nil")
 	}
@@ -57,6 +66,8 @@ func (sess *Session[Subject, rMessage, sMessage]) init() (err error) {
 	if sess.Context == nil {
 		sess.Context = context.Background()
 	}
+
+	sess.isInit.Store(true)
 	return nil
 }
 
@@ -64,21 +75,16 @@ func (sess *Session[Subject, rMessage, sMessage]) Listen() error {
 	if sess.isStop.Load() {
 		return ErrorWrapWithMessage(ErrClosed, "Artifex session")
 	}
-
-	if sess.isListen.Load() {
-		return nil
-	}
-	sess.isListen.Store(true)
 	defer sess.Stop()
 
-	err := sess.Lifecycle.Execute(sess)
-	if err != nil {
-		return err
-	}
-
-	err = sess.init()
-	if err != nil {
-		return err
+	if !sess.isInit.Load() {
+		sess.Locker.Lock()
+		err := sess.init()
+		if err != nil {
+			sess.Locker.Unlock()
+			return err
+		}
+		sess.Locker.Unlock()
 	}
 
 	result := make(chan error, 2)
@@ -107,7 +113,7 @@ func (sess *Session[Subject, rMessage, sMessage]) Listen() error {
 		)
 	}()
 
-	err = <-result
+	err := <-result
 	go func() {
 		sess.Locker.Lock()
 		defer sess.Locker.Unlock()
@@ -138,6 +144,16 @@ func (sess *Session[Subject, rMessage, sMessage]) listen() error {
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) Send(message sMessage) error {
+	if !sess.isInit.Load() {
+		sess.Locker.Lock()
+		err := sess.init()
+		if err != nil {
+			sess.Locker.Unlock()
+			return err
+		}
+		sess.Locker.Unlock()
+	}
+
 	if sess.isStop.Load() {
 		return ErrorWrapWithMessage(ErrClosed, "Artifex session")
 	}
@@ -155,6 +171,16 @@ func (sess *Session[Subject, rMessage, sMessage]) Send(message sMessage) error {
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) Stop() {
+	if !sess.isInit.Load() {
+		sess.Locker.Lock()
+		err := sess.init()
+		if err != nil {
+			sess.Locker.Unlock()
+			return
+		}
+		sess.Locker.Unlock()
+	}
+
 	sess.Locker.Lock()
 	defer sess.Locker.Unlock()
 
@@ -162,12 +188,21 @@ func (sess *Session[Subject, rMessage, sMessage]) Stop() {
 		return
 	}
 	sess.isStop.Store(true)
-	sess.isListen.Store(false)
 	var empty sMessage
 	sess.AdapterStop(empty)
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) StopWithMessage(message sMessage) {
+	if !sess.isInit.Load() {
+		sess.Locker.Lock()
+		err := sess.init()
+		if err != nil {
+			sess.Locker.Unlock()
+			return
+		}
+		sess.Locker.Unlock()
+	}
+
 	sess.Locker.Lock()
 	defer sess.Locker.Unlock()
 
@@ -175,7 +210,6 @@ func (sess *Session[Subject, rMessage, sMessage]) StopWithMessage(message sMessa
 		return
 	}
 	sess.isStop.Store(true)
-	sess.isListen.Store(false)
 	sess.AdapterStop(message)
 }
 

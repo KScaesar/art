@@ -10,8 +10,16 @@ import (
 // TODO
 type {{.Subject}} = string
 
+func New{{.RecvMessage}}() *{{.RecvMessage}} {
+	return &{{.RecvMessage}}{}
+}
+
 type {{.RecvMessage}} struct {
 	// TODO
+}
+
+func New{{.SendMessage}}() *{{.SendMessage}} {
+	return &{{.SendMessage}}{}
 }
 
 type {{.SendMessage}} struct {
@@ -85,10 +93,11 @@ func NewHub() *Hub {
 
 type Session = Artifex.Session[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}]
 
-type SessionFactory struct {
+type Case1SessionFactory struct {
+
 }
 
-func (f *SessionFactory) CreateSession() (*Session, error) {
+func (f *Case1SessionFactory) CreateSession() (*Session, error) {
 	var mu sync.Mutex
 	life := Artifex.Lifecycle[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}]{
 		SpawnHandlers: []func(sess *Session) error{
@@ -107,95 +116,82 @@ func (f *SessionFactory) CreateSession() (*Session, error) {
 }
 
 func SetupAdapterWithPingPong(mu *sync.Mutex) func(sess *Session) error {
-	// TODO: create infra obj
-
-	pp := Artifex.PingPong{
-		Enable:             true,
-		IsSendPingWaitPong: false,
-		SendFunc: func() error {
-			mu.Lock()
-			defer mu.Unlock()
-			return nil
-		},
-		WaitNotify: make(chan error, 1),
-		WaitSecond: 15,
-	}
 
 	return func(sess *Session) error {
-		recv := func() (*{{.RecvMessage}}, error) {
+		pp := Artifex.PingPong{
+			Enable:             true,
+			IsWaitPingSendPong: false,
+			SendFunc: func() error {
+				mu.Lock()
+				defer mu.Unlock()
+				return nil
+			},
+			WaitNotify: make(chan error, 1),
+			WaitSecond: 15,
+		}
+		sess.PingPong = pp
+
+		sess.AdapterRecv = func() (*{{.RecvMessage}}, error) {
 			pp.WaitNotify <- nil
 			return nil, nil
 		}
 
-		send := func(message *{{.SendMessage}}) error {
+		sess.AdapterSend = func(message *{{.SendMessage}}) error {
 			mu.Lock()
 			defer mu.Unlock()
 			return nil
 		}
 
-		stop := func(message *{{.SendMessage}}) {
+		sess.AdapterStop = func(message *{{.SendMessage}}) {
 			return
 		}
 
-		sess.AdapterRecv = recv
-		sess.AdapterSend = send
-		sess.AdapterStop = stop
-		sess.PingPong = pp
 		return nil
 	}
 }
 
 func SetupAdapter(mu *sync.Mutex) func(sess *Session) error {
-	// TODO: create infra obj
 
 	return func(sess *Session) error {
-		recv := func() (*{{.RecvMessage}}, error) {
+		sess.AdapterRecv = func() (*{{.RecvMessage}}, error) {
 			return nil, nil
 		}
 
-		send := func(message *{{.SendMessage}}) error {
+		sess.AdapterSend = func(message *{{.SendMessage}}) error {
 			mu.Lock()
 			defer mu.Unlock()
 			return nil
 		}
 
-		stop := func(message *{{.SendMessage}}) {
+		sess.AdapterStop = func(message *{{.SendMessage}}) {
 			return
 		}
 
-		sess.AdapterRecv = recv
-		sess.AdapterSend = send
-		sess.AdapterStop = stop
 		return nil
 	}
 }
 
 func SetupAdapterWithFixup(mu *sync.Mutex) func(sess *Session) error {
-	// TODO: create infra obj
 
 	return func(sess *Session) error {
-		recv := func() (*{{.RecvMessage}}, error) {
+		sess.AdapterRecv = func() (*{{.RecvMessage}}, error) {
 			return nil, nil
 		}
 
-		send := func(message *{{.SendMessage}}) error {
+		sess.AdapterSend = func(message *{{.SendMessage}}) error {
 			mu.Lock()
 			defer mu.Unlock()
 			return nil
 		}
 
-		stop := func(message *{{.SendMessage}}) {
+		sess.AdapterStop = func(message *{{.SendMessage}}) {
 			return
 		}
 
-		fixup := func() error {
+		sess.Fixup = func() error {
 			return nil
 		}
 
-		sess.AdapterRecv = recv
-		sess.AdapterSend = send
-		sess.AdapterStop = stop
-		sess.Fixup = fixup
 		return nil
 	}
 }

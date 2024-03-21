@@ -8,7 +8,7 @@ import (
 
 type PingPong struct {
 	Enable             bool
-	IsSendPingWaitPong bool
+	IsWaitPingSendPong bool
 
 	SendFunc   func() error
 	WaitNotify chan error
@@ -30,10 +30,10 @@ func (pp PingPong) Execute(allowStop func() bool) error {
 	if second <= 0 {
 		second = 30
 	}
-	if pp.IsSendPingWaitPong {
-		return SendPingWaitPong(pp.SendFunc, pp.WaitNotify, allowStop, second)
+	if pp.IsWaitPingSendPong {
+		return WaitPingSendPong(pp.WaitNotify, pp.SendFunc, allowStop, second)
 	}
-	return WaitPingSendPong(pp.WaitNotify, pp.SendFunc, allowStop, second)
+	return SendPingWaitPong(pp.SendFunc, pp.WaitNotify, allowStop, second)
 }
 
 func (pp PingPong) validate() error {

@@ -124,10 +124,10 @@ func (mux *Mux[Subject, Message]) HandleMessage(message Message, route *RoutePar
 	}()
 
 	if mux.node.transforms != nil {
-		err = mux.node.transform(message, route)
-		if err != nil {
-			return err
+		path := &routeHandler[Message]{
+			middlewares: []Middleware[Message]{},
 		}
+		return mux.node.handleMessage("", 0, path, message, route)
 	}
 
 	subject, err := mux.node.getSubject(message)

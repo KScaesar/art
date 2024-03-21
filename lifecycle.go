@@ -13,10 +13,14 @@ type Lifecycle[Subject constraints.Ordered, rMessage, sMessage any] struct {
 	ExitHandlers  []func(sess *Session[Subject, rMessage, sMessage])
 }
 
-func (life *Lifecycle[Subject, rMessage, sMessage]) Execute(sess *Session[Subject, rMessage, sMessage]) error {
+func (life *Lifecycle[Subject, rMessage, sMessage]) execute(sess *Session[Subject, rMessage, sMessage]) error {
 	err := life.spawn(sess)
 	if err != nil {
 		return err
+	}
+
+	if len(life.ExitHandlers) == 0 {
+		return nil
 	}
 
 	go func() {
@@ -30,7 +34,7 @@ func (life *Lifecycle[Subject, rMessage, sMessage]) Execute(sess *Session[Subjec
 }
 
 func (life *Lifecycle[Subject, rMessage, sMessage]) spawn(sess *Session[Subject, rMessage, sMessage]) error {
-	if life.SpawnHandlers == nil {
+	if len(life.SpawnHandlers) == 0 {
 		return nil
 	}
 	for _, enter := range life.SpawnHandlers {
@@ -44,7 +48,7 @@ func (life *Lifecycle[Subject, rMessage, sMessage]) spawn(sess *Session[Subject,
 }
 
 func (life *Lifecycle[Subject, rMessage, sMessage]) exit(sess *Session[Subject, rMessage, sMessage]) {
-	if life.ExitHandlers == nil {
+	if len(life.ExitHandlers) == 0 {
 		return
 	}
 	for _, action := range life.ExitHandlers {
