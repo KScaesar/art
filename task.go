@@ -25,7 +25,12 @@ Task:
 
 	if fixup == nil {
 		for !allowStop() {
-			err = backoff.Retry(task, backoffCfg)
+			err = backoff.Retry(func() error {
+				if allowStop() {
+					return nil
+				}
+				return task()
+			}, backoffCfg)
 			if err == nil {
 				return
 			}
@@ -34,7 +39,12 @@ Task:
 	}
 
 	for !allowStop() {
-		err = backoff.Retry(fixup, backoffCfg)
+		err = backoff.Retry(func() error {
+			if allowStop() {
+				return nil
+			}
+			return fixup()
+		}, backoffCfg)
 		if err == nil {
 			goto Task
 		}

@@ -5,12 +5,12 @@ import (
 )
 
 // Lifecycle define a management mechanism when session creation and session end.
-//
-// SpawnHandlers are used for additional operations during session creation.
-// ExitHandlers are used for cleanup operations when the session ends.
 type Lifecycle[Subject constraints.Ordered, rMessage, sMessage any] struct {
+	// SpawnHandlers are used for additional operations during session creation.
 	SpawnHandlers []func(sess *Session[Subject, rMessage, sMessage]) error
-	ExitHandlers  []func(sess *Session[Subject, rMessage, sMessage])
+
+	// ExitHandlers are used for cleanup operations when the session ends.
+	ExitHandlers []func(sess *Session[Subject, rMessage, sMessage])
 }
 
 func (life *Lifecycle[Subject, rMessage, sMessage]) execute(sess *Session[Subject, rMessage, sMessage]) error {
