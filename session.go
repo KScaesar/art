@@ -14,7 +14,6 @@ type SessionFactory[Subject constraints.Ordered, rMessage, sMessage any] interfa
 }
 
 type Session[Subject constraints.Ordered, rMessage, sMessage any] struct {
-	Mutex       sync.RWMutex
 	AdapterRecv func() (rMessage, error)     // Must
 	AdapterSend func(message sMessage) error // Must
 	AdapterStop func(message sMessage)       // Must
@@ -23,8 +22,9 @@ type Session[Subject constraints.Ordered, rMessage, sMessage any] struct {
 	Identifier string
 	Context    context.Context
 	AppData    maputil.Data
+	Mutex      sync.RWMutex
 
-	Pingpong  PingPong[Subject, rMessage, sMessage]
+	Pingpong  func() error
 	Lifecycle Lifecycle[Subject, rMessage, sMessage]
 
 	// When adapter encounters an error, it Fixup error to make things right.
@@ -91,22 +91,13 @@ func (sess *Session[Subject, rMessage, sMessage]) Listen() error {
 	}()
 
 	go func() {
-		if !sess.Pingpong.Enable {
+		if sess.Pingpong == nil {
 			return
 		}
-
 		if sess.Fixup == nil {
-			result <- sess.Pingpong.Run(sess)
+			result <- sess.Pingpong()
 		}
-
-		waitNotify := sess.Pingpong.registerWaitFunc(sess.Mux)
-		ReliableTask(
-			func() error {
-				return sess.Pingpong.safeRun(sess, waitNotify)
-			},
-			sess.IsStop,
-			sess.Fixup,
-		)
+		ReliableTask(sess.Pingpong, sess.IsStop, sess.Fixup)
 	}()
 
 	err = <-result
