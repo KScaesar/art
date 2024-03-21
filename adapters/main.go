@@ -32,7 +32,7 @@ func LoadDataFromCli(tmpl *Template) bool {
 
 	if *help {
 		os.Stdout.WriteString(`help: 
-    aritfex -dir ./ -pkg kafka -s Topic -recv SubMsg -send PubMsg
+    artifex -dir ./ -pkg kafka -s Topic -recv SubMsg -send PubMsg
 `)
 		return false
 	}
