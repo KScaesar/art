@@ -104,9 +104,9 @@ func (f *{{.FileName}}SessionFactory) UseCase1() (*{{.FileName}}Session, error) 
 
 	life := Artifex.Lifecycle[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}]{
 		SpawnHandlers: []func(sess *{{.FileName}}Session) error{
-			f.CreateAdapter(&mu),
-			f.CreateAdapterWithPingPong(&mu),
-			f.CreateAdapterWithFixup(&mu),
+			f.BuildAdapter(&mu),
+			f.BuildAdapterWithPingPong(&mu),
+			f.BuildAdapterWithFixup(&mu),
 		},
 		ExitHandlers: []func(sess *{{.FileName}}Session) error{},
 	}
@@ -118,7 +118,7 @@ func (f *{{.FileName}}SessionFactory) UseCase1() (*{{.FileName}}Session, error) 
 	return sess, nil
 }
 
-func (f *{{.FileName}}SessionFactory) CreateAdapterWithPingPong(mu *sync.Mutex) func(sess *{{.FileName}}Session) error {
+func (f *{{.FileName}}SessionFactory) BuildAdapterWithPingPong(mu *sync.Mutex) func(sess *{{.FileName}}Session) error {
 
 	return func(sess *{{.FileName}}Session) error {
 		pp := Artifex.PingPong{
@@ -158,7 +158,7 @@ func (f *{{.FileName}}SessionFactory) CreateAdapterWithPingPong(mu *sync.Mutex) 
 	}
 }
 
-func (f *{{.FileName}}SessionFactory) CreateAdapter(mu *sync.Mutex) func(sess *{{.FileName}}Session) error {
+func (f *{{.FileName}}SessionFactory) BuildAdapter(mu *sync.Mutex) func(sess *{{.FileName}}Session) error {
 
 	return func(sess *{{.FileName}}Session) error {
 		sess.AdapterRecv = func() (*{{.RecvMessage}}, error) {
@@ -184,7 +184,7 @@ func (f *{{.FileName}}SessionFactory) CreateAdapter(mu *sync.Mutex) func(sess *{
 	}
 }
 
-func (f *{{.FileName}}SessionFactory) CreateAdapterWithFixup(mu *sync.Mutex) func(sess *{{.FileName}}Session) error {
+func (f *{{.FileName}}SessionFactory) BuildAdapterWithFixup(mu *sync.Mutex) func(sess *{{.FileName}}Session) error {
 
 	return func(sess *{{.FileName}}Session) error {
 		sess.AdapterRecv = func() (*{{.RecvMessage}}, error) {
