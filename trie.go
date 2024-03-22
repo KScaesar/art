@@ -130,7 +130,16 @@ Loop:
 	}
 
 	if len(subject) == cursor {
-		return LinkMiddlewares(node.handler, path.middlewares...)(msg, route)
+		if node.handler != nil {
+			return LinkMiddlewares(node.handler, path.middlewares...)(msg, route)
+		}
+		if path.defaultHandler != nil {
+			return LinkMiddlewares(path.defaultHandler, path.middlewares...)(msg, route)
+		}
+		if path.notFoundHandler != nil {
+			return path.notFoundHandler(msg, route)
+		}
+		return ErrorWrapWithMessage(ErrNotFound, "mux subject")
 	}
 
 	word := string(subject[cursor])

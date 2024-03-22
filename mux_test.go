@@ -375,3 +375,23 @@ func TestMessageMux_Group(t *testing.T) {
 		}
 	}
 }
+
+func TestMux_SetDefaultHandler(t *testing.T) {
+	type Subject string
+	type testcaseDefaultHandler struct {
+		subject Subject
+		body    string
+	}
+
+	newSubject := func(msg *testcaseDefaultHandler) (string, error) { return string(msg.subject), nil }
+	mux := NewMux[Subject, *testcaseDefaultHandler](newSubject).
+		SetDefaultHandler(func(message *testcaseDefaultHandler, route *RouteParam) error {
+			return nil
+		})
+
+	msg := &testcaseDefaultHandler{}
+	err := mux.HandleMessage(msg, nil)
+	if err != nil {
+		t.Errorf("unexpected error: got %v", err)
+	}
+}
