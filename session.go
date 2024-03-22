@@ -219,12 +219,12 @@ func (sess *Session[Subject, rMessage, sMessage]) IsStop() bool {
 	return sess.isStop.Load()
 }
 
-// Notify returns a channel for receiving the result of the Session.Listen.
+// NotifyStop returns a channel for receiving the result of the Session.Listen.
 // If the Session is already Stop,
 // it returns a channel containing an error message indicating the session is closed.
 //
 // Once notified, the channel will be closed immediately.
-func (sess *Session[Subject, rMessage, sMessage]) Notify() <-chan error {
+func (sess *Session[Subject, rMessage, sMessage]) NotifyStop() <-chan error {
 	sess.Locker.Lock()
 	defer sess.Locker.Unlock()
 

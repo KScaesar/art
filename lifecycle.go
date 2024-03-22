@@ -24,7 +24,7 @@ func (life *Lifecycle[Subject, rMessage, sMessage]) execute(sess *Session[Subjec
 	}
 
 	go func() {
-		notify := sess.Notify()
+		notify := sess.NotifyStop()
 		select {
 		case <-notify:
 			life.exit(sess)
