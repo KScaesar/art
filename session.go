@@ -24,10 +24,12 @@ type Session[Subject constraints.Ordered, rMessage, sMessage any] struct {
 	AppData    maputil.Data
 	Locker     sync.RWMutex
 
-	PingPong  PingPong
+	PingPong PingPong
+
+	// Lifecycle define a management mechanism when session creation and session end.
 	Lifecycle Lifecycle[Subject, rMessage, sMessage]
 
-	// When adapter encounters an error, it Fixup error to make things right.
+	// Use ReliableTask, when adapter encounters an error, it can Fixup error.
 	// This makes sure that the Session keeps going without any problems until we decide to Stop it.
 	Fixup func() error
 

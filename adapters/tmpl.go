@@ -7,26 +7,17 @@ import (
 	"github.com/KScaesar/Artifex"
 )
 
-// TODO
 type {{.Subject}} = string
+
+//
 
 func New{{.RecvMessage}}() *{{.RecvMessage}} {
 	return &{{.RecvMessage}}{}
 }
 
 type {{.RecvMessage}} struct {
-	// TODO
-}
 
-func New{{.SendMessage}}() *{{.SendMessage}} {
-	return &{{.SendMessage}}{}
 }
-
-type {{.SendMessage}} struct {
-	// TODO
-}
-
-//
 
 type {{.RecvMessage}}HandleFunc = Artifex.HandleFunc[*{{.RecvMessage}}]
 type {{.RecvMessage}}Middleware = Artifex.Middleware[*{{.RecvMessage}}]
@@ -39,18 +30,25 @@ func New{{.RecvMessage}}Mux() *{{.RecvMessage}}Mux {
 	}
 
 	mux := Artifex.NewMux[{{.Subject}}](get{{.Subject}})
-	mux.Handler("hello", HelloHandler())
+	mux.Handler("hello", {{.RecvMessage}}Handler())
 	return mux
 }
 
-// Example
-func HelloHandler() {{.RecvMessage}}HandleFunc {
-	return func(message *{{.RecvMessage}}, route *Artifex.RouteParam) error {
+func {{.RecvMessage}}Handler() {{.RecvMessage}}HandleFunc {
+	return func(message *{{.RecvMessage}}, _ *Artifex.RouteParam) error {
 		return nil
 	}
 }
 
 //
+
+func New{{.SendMessage}}() *{{.SendMessage}} {
+	return &{{.SendMessage}}{}
+}
+
+type {{.SendMessage}} struct {
+
+}
 
 type {{.SendMessage}}HandleFunc = Artifex.HandleFunc[*{{.SendMessage}}]
 type {{.SendMessage}}Middleware = Artifex.Middleware[*{{.SendMessage}}]
@@ -63,13 +61,12 @@ func New{{.SendMessage}}Mux() *{{.SendMessage}}Mux {
 	}
 
 	mux := Artifex.NewMux[{{.Subject}}](get{{.Subject}})
-	mux.Handler("world", WorldHandler())
+	mux.Handler("world", {{.SendMessage}}Handler())
 	return mux
 }
 
-// Example
-func WorldHandler() {{.SendMessage}}HandleFunc {
-	return func(message *{{.SendMessage}}, route *Artifex.RouteParam) error {
+func {{.SendMessage}}Handler() {{.SendMessage}}HandleFunc {
+	return func(message *{{.SendMessage}}, _ *Artifex.RouteParam) error {
 		return nil
 	}
 }
@@ -84,31 +81,36 @@ import (
 	"github.com/KScaesar/Artifex"
 )
 
-type Hub = Artifex.Artist[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}]
+type {{.RecvMessage}}Hub = Artifex.Artist[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}]
 
-func NewHub() *Hub {
-	// TODO
+func New{{.RecvMessage}}Hub() *{{.RecvMessage}}Hub {
 	return Artifex.NewArtist[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}]()
 }
 
-type Session = Artifex.Session[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}]
+type {{.FileName}}Session = Artifex.Session[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}]
 
-type Case1SessionFactory struct {
-
+type {{.FileName}}SessionFactory struct {
+	ApplyCase func() (*{{.FileName}}Session, error)
 }
 
-func (f *Case1SessionFactory) CreateSession() (*Session, error) {
+func (f *{{.FileName}}SessionFactory) CreateSession() (*{{.FileName}}Session, error) {
+	return f.ApplyCase()
+}
+
+func (f *{{.FileName}}SessionFactory) UseCase1() (*{{.FileName}}Session, error) {
 	var mu sync.Mutex
 
+	// TODO
+
 	life := Artifex.Lifecycle[{{.Subject}}, *{{.RecvMessage}}, *{{.SendMessage}}]{
-		SpawnHandlers: []func(sess *Session) error{
+		SpawnHandlers: []func(sess *{{.FileName}}Session) error{
 			f.CreateAdapter(&mu),
 			f.CreateAdapterWithPingPong(&mu),
 			f.CreateAdapterWithFixup(&mu),
 		},
-		ExitHandlers: []func(sess *Session) error{},
+		ExitHandlers: []func(sess *{{.FileName}}Session) error{},
 	}
-	sess := &Session{
+	sess := &{{.FileName}}Session{
 		Mux:        nil,
 		Identifier: "",
 		Lifecycle:  life,
@@ -116,9 +118,9 @@ func (f *Case1SessionFactory) CreateSession() (*Session, error) {
 	return sess, nil
 }
 
-func (f *Case1SessionFactory) CreateAdapterWithPingPong(mu *sync.Mutex) func(sess *Session) error {
+func (f *{{.FileName}}SessionFactory) CreateAdapterWithPingPong(mu *sync.Mutex) func(sess *{{.FileName}}Session) error {
 
-	return func(sess *Session) error {
+	return func(sess *{{.FileName}}Session) error {
 		pp := Artifex.PingPong{
 			Enable:             true,
 			IsWaitPingSendPong: false,
@@ -156,9 +158,9 @@ func (f *Case1SessionFactory) CreateAdapterWithPingPong(mu *sync.Mutex) func(ses
 	}
 }
 
-func (f *Case1SessionFactory) CreateAdapter(mu *sync.Mutex) func(sess *Session) error {
+func (f *{{.FileName}}SessionFactory) CreateAdapter(mu *sync.Mutex) func(sess *{{.FileName}}Session) error {
 
-	return func(sess *Session) error {
+	return func(sess *{{.FileName}}Session) error {
 		sess.AdapterRecv = func() (*{{.RecvMessage}}, error) {
 
 			return nil, nil
@@ -182,9 +184,9 @@ func (f *Case1SessionFactory) CreateAdapter(mu *sync.Mutex) func(sess *Session) 
 	}
 }
 
-func (f *Case1SessionFactory) CreateAdapterWithFixup(mu *sync.Mutex) func(sess *Session) error {
+func (f *{{.FileName}}SessionFactory) CreateAdapterWithFixup(mu *sync.Mutex) func(sess *{{.FileName}}Session) error {
 
-	return func(sess *Session) error {
+	return func(sess *{{.FileName}}Session) error {
 		sess.AdapterRecv = func() (*{{.RecvMessage}}, error) {
 
 			return nil, nil

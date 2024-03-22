@@ -9,74 +9,143 @@ import (
 func main() {
 	tmpl := Template{}
 	ok := LoadDataFromCli(&tmpl)
-	if ok {
-		WriteTemplate(tmpl)
+	if !ok {
+		return
 	}
+	OpenFileAndRenderTemplate(tmpl, "message", MsgTmpl)
+	OpenFileAndRenderTemplate(tmpl, "session", SessionTmpl)
+}
+
+func PrintHelp(detail bool) {
+	const example = `help: 
+    artifex gen -dir ./ -pkg infra -f kafka -s Topic -recv SubMsg -send PubMsg
+`
+	const text = `
+-dir  Generate code to dir
+-f    File prefix name
+-pkg  Package name
+-s    Subject name
+-recv RecvMessage name
+-send SendMessage name
+`
+
+	if !detail {
+		os.Stdout.WriteString(example)
+		return
+	}
+
+	os.Stdout.WriteString(example + text)
 }
 
 func LoadDataFromCli(tmpl *Template) bool {
-	var dir string
-	var pkg string
-	var subject string
-	var recv string
-	var send string
+	cmdHelp := flag.NewFlagSet("help", flag.ExitOnError)
+	cmdGen := flag.NewFlagSet("gen", flag.ExitOnError)
 
-	flag.StringVar(&dir, "dir", "./", "generate code to dir")
-	flag.StringVar(&pkg, "pkg", "main", "Package")
-	flag.StringVar(&subject, "s", "Channel", "Subject")
-	flag.StringVar(&recv, "recv", "ConsumeMsg", "RecvMessage Name")
-	flag.StringVar(&send, "send", "ProduceMsg", "SendMessage Name")
-
-	help := flag.Bool("h", false, "help")
-	flag.Parse()
-
-	if *help {
-		os.Stdout.WriteString(`help: 
-    artifex -dir ./ -pkg kafka -s Topic -recv SubMsg -send PubMsg
-`)
+	args := os.Args
+	if len(args) < 2 {
+		PrintHelp(false)
 		return false
 	}
 
-	if dir[len(dir)-1] != '/' {
-		dir += "/"
-	}
+	switch os.Args[1] {
+	case "gen":
+		var dir string
+		var pkg string
+		var file string
+		var subject string
+		var recv string
+		var send string
 
-	tmpl.Dir = dir
-	tmpl.Package = pkg
-	tmpl.Subject = subject
-	tmpl.RecvMessage = recv
-	tmpl.SendMessage = send
-	return true
+		cmdGen.StringVar(&dir, "dir", "./", "Generate code to dir")
+		cmdGen.StringVar(&pkg, "pkg", "main", "Package name")
+		cmdGen.StringVar(&file, "f", "", "File prefix name")
+		cmdGen.StringVar(&subject, "s", "Channel", "Subject name")
+		cmdGen.StringVar(&recv, "recv", "ConsumeMsg", "RecvMessage name")
+		cmdGen.StringVar(&send, "send", "ProduceMsg", "SendMessage name")
+		help := cmdGen.Bool("h", false, "Help")
+
+		if cmdGen.Parse(os.Args[2:]) != nil {
+			return false
+		}
+
+		if *help {
+			PrintHelp(true)
+			return false
+		}
+
+		tmpl.FileDir = dir
+		tmpl.FileName = file
+		tmpl.Package = pkg
+		tmpl.Subject = subject
+		tmpl.RecvMessage = recv
+		tmpl.SendMessage = send
+		return true
+
+	default:
+		help := cmdHelp.Bool("h", false, "Help")
+		cmdHelp.Parse(os.Args[1:])
+		if *help {
+			PrintHelp(true)
+			return false
+		}
+		PrintHelp(false)
+		return false
+	}
 }
 
-func WriteTemplate(tmpl Template) {
-	t1 := template.Must(template.New("template").Parse(MsgTmpl))
-	file1, err := os.Create(tmpl.Dir + "message.go")
+func OpenFileAndRenderTemplate(tmpl Template, postfix string, text string) (err error) {
+	defer func() {
+		if err != nil {
+			panic(err)
+		}
+	}()
+
+	err = os.MkdirAll(tmpl.Dir(), 0755)
 	if err != nil {
-		panic(err)
-	}
-	defer file1.Close()
-	err = t1.Execute(file1, tmpl)
-	if err != nil {
-		panic(err)
+		return err
 	}
 
-	t2 := template.Must(template.New("template").Parse(SessionTmpl))
-	file2, err := os.Create(tmpl.Dir + "session.go")
+	path := tmpl.Path(postfix)
+
+	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
-		panic(err)
+		if !os.IsNotExist(err) {
+			return err
+		}
+
+		file, err = os.Create(path)
+		if err != nil {
+			return err
+		}
 	}
-	defer file2.Close()
-	err = t2.Execute(file2, tmpl)
-	if err != nil {
-		panic(err)
-	}
+	defer file.Close()
+
+	t := template.Must(template.New(path).Parse(text))
+	return t.Execute(file, tmpl)
 }
 
 type Template struct {
-	Dir         string
+	FileDir     string
+	FileName    string
 	Package     string
 	Subject     string
 	RecvMessage string
 	SendMessage string
+}
+
+func (t *Template) Path(postfix string) string {
+	dir := t.Dir()
+	name := t.FileName
+	if name != "" {
+		name += "_"
+	}
+	return dir + name + postfix + ".go"
+}
+
+func (t *Template) Dir() string {
+	dir := t.FileDir
+	if dir[len(dir)-1] != '/' {
+		dir += "/"
+	}
+	return dir
 }
