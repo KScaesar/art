@@ -31,7 +31,8 @@ type Session[Subject constraints.Ordered, rMessage, sMessage any] struct {
 
 	// Use ReliableTask, when adapter encounters an error, it can Fixup error.
 	// This makes sure that the Session keeps going without any problems until we decide to Stop it.
-	Fixup func() error
+	Fixup          func() error
+	RetryMaxMinute int
 
 	isStop    atomic.Bool
 	isInit    atomic.Bool
@@ -95,7 +96,7 @@ func (sess *Session[Subject, rMessage, sMessage]) Listen() error {
 		if sess.Fixup == nil {
 			result <- sess.listen()
 		}
-		ReliableTask(sess.listen, sess.IsStop, sess.Fixup)
+		ReliableTask(sess.listen, sess.IsStop, sess.Fixup, sess.RetryMaxMinute)
 		result <- nil
 	}()
 
@@ -112,6 +113,7 @@ func (sess *Session[Subject, rMessage, sMessage]) Listen() error {
 			},
 			sess.IsStop,
 			sess.Fixup,
+			sess.RetryMaxMinute,
 		)
 	}()
 
@@ -159,17 +161,7 @@ func (sess *Session[Subject, rMessage, sMessage]) Send(message sMessage) error {
 	if sess.isStop.Load() {
 		return ErrorWrapWithMessage(ErrClosed, "Artifex session")
 	}
-	if sess.Fixup == nil {
-		return sess.AdapterSend(message)
-	}
-	ReliableTask(
-		func() error {
-			return sess.AdapterSend(message)
-		},
-		sess.IsStop,
-		sess.Fixup,
-	)
-	return nil
+	return sess.AdapterSend(message)
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) Stop() {

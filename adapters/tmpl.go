@@ -206,6 +206,7 @@ func (f *{{.FileName}}SessionFactory) BuildAdapterWithFixup(mu *sync.Mutex) func
 			return nil
 		}
 
+		sess.RetryMaxMinute = 1
 		sess.Fixup = func() error {
 
 			return nil
