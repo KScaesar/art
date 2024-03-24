@@ -7,7 +7,7 @@ import (
 	"github.com/cenkalti/backoff/v4"
 )
 
-func ReliableTask(task func() error, allowStop func() bool, fixup func() error, maxElapsedMinute int) {
+func ReliableTask(task func() error, allowStop func() bool, retryMaxSecond int, fixup func() error) error {
 	if task == nil || allowStop == nil {
 		panic("ReliableTask: task or allowStop is nil")
 	}
@@ -17,31 +17,31 @@ func ReliableTask(task func() error, allowStop func() bool, fixup func() error, 
 	param.RandomizationFactor = 0.5
 	param.Multiplier = 1.5
 	param.MaxInterval = 2 * time.Minute
-	param.MaxElapsedTime = time.Duration(maxElapsedMinute) * time.Minute
+	param.MaxElapsedTime = time.Duration(retryMaxSecond) * time.Second
 
 Task:
 	err := task()
 	if err == nil {
-		return
+		return nil
 	}
 
 	if fixup == nil {
-		backoff.Retry(func() error {
+		return backoff.Retry(func() error {
 			if allowStop() {
-				return backoff.Permanent(errors.New("recv stop command"))
+				return backoff.Permanent(errors.New("stop reliable task"))
 			}
 			return task()
 		}, param)
-		return
 	}
 
 	err = backoff.Retry(func() error {
 		if allowStop() {
-			return backoff.Permanent(errors.New("recv stop command"))
+			return backoff.Permanent(errors.New("stop reliable task"))
 		}
 		return fixup()
 	}, param)
 	if err == nil {
 		goto Task
 	}
+	return err
 }

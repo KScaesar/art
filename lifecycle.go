@@ -15,7 +15,7 @@ func (life *Lifecycle) AddExitHandler(exitHandlers ...func() error) {
 	life.exitHandlers = append(life.exitHandlers, exitHandlers...)
 }
 
-func (life *Lifecycle) NotifyExit() {
+func (life *Lifecycle) notifyExit() {
 	if life.exitNotify == nil {
 		return
 	}
@@ -30,9 +30,6 @@ func (life *Lifecycle) Execute() error {
 
 	if len(life.exitHandlers) == 0 {
 		return nil
-	}
-	if life.exitNotify == nil {
-		life.exitNotify = make(chan struct{})
 	}
 
 	go func() {
