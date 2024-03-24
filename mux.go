@@ -31,11 +31,11 @@ func (r *RouteParam) Reset() {
 	}
 }
 
-type HandleFunc[Message any] func(message Message, route *RouteParam) error
+type HandleFunc[Message any] func(message *Message, route *RouteParam) error
 
 func (h HandleFunc[Message]) PreMiddleware() Middleware[Message] {
 	return func(next HandleFunc[Message]) HandleFunc[Message] {
-		return func(message Message, route *RouteParam) error {
+		return func(message *Message, route *RouteParam) error {
 			err := h(message, route)
 			if err != nil {
 				return err
@@ -47,7 +47,7 @@ func (h HandleFunc[Message]) PreMiddleware() Middleware[Message] {
 
 func (h HandleFunc[Message]) PostMiddleware() Middleware[Message] {
 	return func(next HandleFunc[Message]) HandleFunc[Message] {
-		return func(message Message, route *RouteParam) error {
+		return func(message *Message, route *RouteParam) error {
 			err := next(message, route)
 			if err != nil {
 				return err
@@ -74,7 +74,7 @@ func LinkMiddlewares[Message any](handler HandleFunc[Message], middlewares ...Mi
 
 //
 
-type NewSubjectFunc[Message any] func(Message) (string, error)
+type NewSubjectFunc[Message any] func(*Message) (string, error)
 
 func NewMux[Subject constraints.Ordered, Message any](getSubject NewSubjectFunc[Message]) *Mux[Subject, Message] {
 	handler := &routeHandler[Message]{
@@ -89,7 +89,7 @@ func NewMux[Subject constraints.Ordered, Message any](getSubject NewSubjectFunc[
 		delimiter:       "",
 		delimiterAtLeft: true,
 		isCleanSubject:  false,
-		errorHandler: func(_ Message, _ *RouteParam, err error) error {
+		errorHandler: func(_ *Message, _ *RouteParam, err error) error {
 			return err
 		},
 	}
@@ -104,13 +104,13 @@ type Mux[Subject constraints.Ordered, Message any] struct {
 	delimiter       string
 	delimiterAtLeft bool
 	isCleanSubject  bool
-	errorHandler    func(Message, *RouteParam, error) error
+	errorHandler    func(*Message, *RouteParam, error) error
 }
 
 // HandleMessage to handle various messages coming from the adapter
 //
 // - route parameter can nil
-func (mux *Mux[Subject, Message]) HandleMessage(message Message, route *RouteParam) (err error) {
+func (mux *Mux[Subject, Message]) HandleMessage(message *Message, route *RouteParam) (err error) {
 	if route == nil {
 		route = routeParamPool.Get()
 		defer func() {
@@ -214,7 +214,7 @@ func (mux *Mux[Subject, Message]) SetNotFoundHandler(h HandleFunc[Message]) *Mux
 	return mux
 }
 
-func (mux *Mux[Subject, Message]) SetErrorHandler(errorHandler func(Message, *RouteParam, error) error) *Mux[Subject, Message] {
+func (mux *Mux[Subject, Message]) SetErrorHandler(errorHandler func(*Message, *RouteParam, error) error) *Mux[Subject, Message] {
 	mux.errorHandler = errorHandler
 	return mux
 }

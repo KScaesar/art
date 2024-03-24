@@ -112,7 +112,7 @@ func (node *trie[M]) addRoute(subject string, cursor int, handler *routeHandler[
 	return next.addRoute(subject, cursor+1, handler)
 }
 
-func (node *trie[M]) handleMessage(subject string, cursor int, path *routeHandler[M], msg M, route *RouteParam) (err error) {
+func (node *trie[M]) handleMessage(subject string, cursor int, path *routeHandler[M], msg *M, route *RouteParam) (err error) {
 Loop:
 	path.collect(node)
 
@@ -152,7 +152,7 @@ Loop:
 	return ErrorWrapWithMessage(ErrNotFound, "mux subject")
 }
 
-func (node *trie[M]) transform(message M, route *RouteParam) error {
+func (node *trie[M]) transform(message *M, route *RouteParam) error {
 	for _, transform := range node.transforms {
 		err := transform(message, route)
 		if err != nil {

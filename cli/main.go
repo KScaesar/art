@@ -13,20 +13,18 @@ func main() {
 		return
 	}
 	OpenFileAndRenderTemplate(tmpl, "message", MsgTmpl)
-	OpenFileAndRenderTemplate(tmpl, "session", SessionTmpl)
+	OpenFileAndRenderTemplate(tmpl, "pubsub", PubSubTmpl)
 }
 
 func PrintHelp(detail bool) {
 	const example = `help: 
-    artifex gen -dir ./ -pkg infra -f kafka -s Topic -recv SubMsg -send PubMsg
+    artifex gen -dir ./ -pkg infra -f kafka -s Topic
 `
 	const text = `
 -dir  Generate code to dir
 -f    File prefix name
 -pkg  Package name
 -s    Subject name
--recv RecvMessage name
--send SendMessage name
 `
 
 	if !detail {
@@ -53,15 +51,11 @@ func LoadDataFromCli(tmpl *Template) bool {
 		var pkg string
 		var file string
 		var subject string
-		var recv string
-		var send string
 
 		cmdGen.StringVar(&dir, "dir", "./", "Generate code to dir")
 		cmdGen.StringVar(&pkg, "pkg", "main", "Package name")
 		cmdGen.StringVar(&file, "f", "", "File prefix name")
-		cmdGen.StringVar(&subject, "s", "Channel", "Subject name")
-		cmdGen.StringVar(&recv, "recv", "ConsumeMsg", "RecvMessage name")
-		cmdGen.StringVar(&send, "send", "ProduceMsg", "SendMessage name")
+		cmdGen.StringVar(&subject, "s", "Subject", "Subject name")
 		help := cmdGen.Bool("h", false, "Help")
 
 		if cmdGen.Parse(os.Args[2:]) != nil {
@@ -77,8 +71,6 @@ func LoadDataFromCli(tmpl *Template) bool {
 		tmpl.FileName = file
 		tmpl.Package = pkg
 		tmpl.Subject = subject
-		tmpl.RecvMessage = recv
-		tmpl.SendMessage = send
 		return true
 
 	default:
@@ -125,18 +117,20 @@ func OpenFileAndRenderTemplate(tmpl Template, postfix string, text string) (err 
 }
 
 type Template struct {
-	FileDir     string
-	FileName    string
-	Package     string
-	Subject     string
-	RecvMessage string
-	SendMessage string
+	FileDir  string
+	FileName string
+	Package  string
+	Subject  string
 }
 
 func (t *Template) Path(postfix string) string {
 	dir := t.Dir()
 	name := t.FileName
 	if name != "" {
+		const toUpper = 'a' - 'A'
+		if 'a' <= name[0] && name[0] <= 'z' {
+			t.FileName = string(name[0]-toUpper) + name[1:]
+		}
 		name += "_"
 	}
 	return dir + name + postfix + ".go"

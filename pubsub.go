@@ -12,10 +12,10 @@ type PubSubFactory[rMessage, sMessage any] interface {
 }
 
 type PubSub[rMessage, sMessage any] struct {
-	HandleRecv          HandleFunc[rMessage]     // Must
-	AdapterRecv         func() (rMessage, error) // Must
-	AdapterSend         func(sMessage) error     // Must
-	AdapterStop         func(sMessage) error     // Must
+	HandleRecv          HandleFunc[rMessage]      // Must
+	AdapterRecv         func() (*rMessage, error) // Must
+	AdapterSend         func(*sMessage) error     // Must
+	AdapterStop         func(*sMessage) error     // Must
 	Fixup               func() error
 	FixupMaxRetrySecond int
 
@@ -84,7 +84,7 @@ func (pubsub *PubSub[rMessage, sMessage]) listen() error {
 	return nil
 }
 
-func (pubsub *PubSub[rMessage, sMessage]) Send(message sMessage) error {
+func (pubsub *PubSub[rMessage, sMessage]) Send(message *sMessage) error {
 	if !pubsub.isInit.Load() {
 		pubsub.Mutex.Lock()
 		err := pubsub.init()
@@ -103,11 +103,11 @@ func (pubsub *PubSub[rMessage, sMessage]) IsStop() bool {
 }
 
 func (pubsub *PubSub[rMessage, sMessage]) Stop() error {
-	var empty sMessage
+	var empty *sMessage
 	return pubsub.StopWithMessage(empty)
 }
 
-func (pubsub *PubSub[rMessage, sMessage]) StopWithMessage(message sMessage) error {
+func (pubsub *PubSub[rMessage, sMessage]) StopWithMessage(message *sMessage) error {
 	if !pubsub.isInit.Load() {
 		pubsub.Mutex.Lock()
 		err := pubsub.init()

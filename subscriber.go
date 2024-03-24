@@ -12,9 +12,9 @@ type SubscriberFactory[rMessage any] interface {
 }
 
 type Subscriber[rMessage any] struct {
-	HandleRecv          HandleFunc[rMessage]     // Must
-	AdapterRecv         func() (rMessage, error) // Must
-	AdapterStop         func() error             // Must
+	HandleRecv          HandleFunc[rMessage]      // Must
+	AdapterRecv         func() (*rMessage, error) // Must
+	AdapterStop         func() error              // Must
 	Fixup               func() error
 	FixupMaxRetrySecond int
 

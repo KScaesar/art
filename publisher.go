@@ -12,8 +12,8 @@ type PublisherFactory[sMessage any] interface {
 }
 
 type Publisher[sMessage any] struct {
-	AdapterSend         func(sMessage) error // Must
-	AdapterStop         func() error         // Must
+	AdapterSend         func(*sMessage) error // Must
+	AdapterStop         func() error          // Must
 	Fixup               func() error
 	FixupMaxRetrySecond int
 
@@ -48,7 +48,7 @@ func (pub *Publisher[sMessage]) init() error {
 	return nil
 }
 
-func (pub *Publisher[sMessage]) Send(message sMessage) error {
+func (pub *Publisher[sMessage]) Send(message *sMessage) error {
 	if !pub.isInit.Load() {
 		pub.Mutex.Lock()
 		err := pub.init()
