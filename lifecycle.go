@@ -3,10 +3,8 @@ package Artifex
 // Lifecycle define a management mechanism when obj creation and obj end.
 type Lifecycle struct {
 	spawnHandlers []func() error
-
-	exitHandlers []func() error
-
-	exitNotify chan struct{}
+	exitHandlers  []func() error
+	exitNotify    chan struct{}
 }
 
 func (life *Lifecycle) AddSpawnHandler(spawnHandlers ...func() error) {
