@@ -43,8 +43,7 @@ type Logger interface {
 	Copy() Logger
 	SetLogLevel(level LogLevel)
 	WithCallDepth(externalDepth uint) Logger
-	WithMessageId(msgId string) Logger
-	WithSessionId(sessId string) Logger
+	WithKeyValue(key string, v string) Logger
 }
 
 var (
@@ -77,10 +76,7 @@ func NewLogger(printPath bool, level LogLevel) Logger {
 		internalCallDepth: internalDepth,
 		logLevel:          &level,
 
-		contextKey: []string{
-			"sess_id",
-			"msg_id",
-		},
+		contextKey:  []string{},
 		contextInfo: newContextInfo(),
 	}
 }
@@ -176,21 +172,15 @@ func (l stdLogger) processPreformat(format string) string {
 	return b.String()
 }
 
-func (l stdLogger) WithMessageId(msgId string) Logger {
-	if msgId == "" {
+func (l stdLogger) WithKeyValue(key string, v string) Logger {
+	if key == "" {
 		return l
 	}
 
-	l.contextInfo = l.contextInfo.copyAndSet("msg_id", msgId)
-	return l
-}
-
-func (l stdLogger) WithSessionId(sessId string) Logger {
-	if sessId == "" {
-		return l
-	}
-
-	l.contextInfo = l.contextInfo.copyAndSet("sess_id", sessId)
+	keys := make([]string, len(l.contextKey))
+	copy(keys, l.contextKey)
+	l.contextKey = append(keys, key)
+	l.contextInfo = l.contextInfo.copyAndSet(key, v)
 	return l
 }
 
@@ -234,7 +224,7 @@ func SilentLogger() Logger {
 
 type silentLogger struct{}
 
-func (l silentLogger) WithSessionId(string) Logger {
+func (l silentLogger) WithKeyValue(key string, v string) Logger {
 	return l
 }
 
@@ -267,9 +257,5 @@ func (silentLogger) SetLogLevel(level LogLevel) {
 }
 
 func (l silentLogger) WithCallDepth(externalDepth uint) Logger {
-	return l
-}
-
-func (l silentLogger) WithMessageId(msgId string) Logger {
 	return l
 }

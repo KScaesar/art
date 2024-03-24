@@ -40,7 +40,7 @@ func SetupShutdown(ctx1 context.Context, stopActions ...func() (serviceName stri
 	ctx2, cancel := context.WithCancelCause(ctx1)
 
 	done := make(chan struct{})
-	logger := DefaultLogger().WithMessageId(GenerateRandomCode(4))
+	logger := DefaultLogger().WithKeyValue("shutdown", GenerateRandomCode(4))
 
 	go func() {
 		defer close(done)
