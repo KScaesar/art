@@ -14,7 +14,7 @@ type SessionFactory[Subject constraints.Ordered, rMessage, sMessage any] interfa
 }
 
 type Session[Subject constraints.Ordered, rMessage, sMessage any] struct {
-	Mux         *Mux[Subject, rMessage]  // Must
+	HandleRecv  HandleFunc[rMessage]     // Must
 	AdapterRecv func() (rMessage, error) // Must
 	AdapterSend func(sMessage) error     // Must
 	AdapterStop func(sMessage) error     // Must
@@ -31,7 +31,8 @@ type Session[Subject constraints.Ordered, rMessage, sMessage any] struct {
 
 	// Use ReliableTask, when adapter encounters an error, it can Fixup error.
 	// This makes sure that the Session keeps going without any problems until we decide to Stop it.
-	Fixup func() error
+	Fixup            func() error
+	MaxElapsedMinute int
 
 	isStop    atomic.Bool
 	isInit    atomic.Bool
@@ -48,7 +49,7 @@ func (sess *Session[Subject, rMessage, sMessage]) init() (err error) {
 		return err
 	}
 
-	if sess.Mux == nil {
+	if sess.HandleRecv == nil {
 		return ErrorWrapWithMessage(ErrInvalidParameter, "session: mux is nil")
 	}
 
@@ -95,7 +96,7 @@ func (sess *Session[Subject, rMessage, sMessage]) Listen() error {
 		if sess.Fixup == nil {
 			result <- sess.listen()
 		}
-		ReliableTask(sess.listen, sess.IsStop, sess.Fixup)
+		ReliableTask(sess.listen, sess.IsStop, sess.Fixup, sess.MaxElapsedMinute)
 		result <- nil
 	}()
 
@@ -112,6 +113,7 @@ func (sess *Session[Subject, rMessage, sMessage]) Listen() error {
 			},
 			sess.IsStop,
 			sess.Fixup,
+			sess.MaxElapsedMinute,
 		)
 	}()
 
@@ -140,7 +142,7 @@ func (sess *Session[Subject, rMessage, sMessage]) listen() error {
 			return err
 		}
 
-		sess.Mux.HandleMessage(message, nil)
+		sess.HandleRecv(message, nil)
 	}
 	return nil
 }
@@ -168,6 +170,7 @@ func (sess *Session[Subject, rMessage, sMessage]) Send(message sMessage) error {
 		},
 		sess.IsStop,
 		sess.Fixup,
+		sess.MaxElapsedMinute,
 	)
 	return nil
 }

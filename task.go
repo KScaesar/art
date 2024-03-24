@@ -1,21 +1,23 @@
 package Artifex
 
 import (
+	"errors"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
 )
 
-func ReliableTask(task func() error, allowStop func() bool, fixup func() error) {
+func ReliableTask(task func() error, allowStop func() bool, fixup func() error, maxElapsedMinute int) {
 	if task == nil || allowStop == nil {
 		panic("ReliableTask: task or allowStop is nil")
 	}
 
-	backoffCfg := backoff.NewExponentialBackOff()
-	backoffCfg.InitialInterval = 500 * time.Millisecond
-	backoffCfg.Multiplier = 1.5
-	backoffCfg.RandomizationFactor = 0.5
-	backoffCfg.MaxElapsedTime = time.Duration(30) * time.Minute
+	param := backoff.NewExponentialBackOff()
+	param.InitialInterval = time.Second
+	param.RandomizationFactor = 0.5
+	param.Multiplier = 1.5
+	param.MaxInterval = 2 * time.Minute
+	param.MaxElapsedTime = time.Duration(maxElapsedMinute) * time.Minute
 
 Task:
 	err := task()
@@ -24,29 +26,22 @@ Task:
 	}
 
 	if fixup == nil {
-		for !allowStop() {
-			err = backoff.Retry(func() error {
-				if allowStop() {
-					return nil
-				}
-				return task()
-			}, backoffCfg)
-			if err == nil {
-				return
+		backoff.Retry(func() error {
+			if allowStop() {
+				return backoff.Permanent(errors.New("recv stop command"))
 			}
-		}
+			return task()
+		}, param)
 		return
 	}
 
-	for !allowStop() {
-		err = backoff.Retry(func() error {
-			if allowStop() {
-				return nil
-			}
-			return fixup()
-		}, backoffCfg)
-		if err == nil {
-			goto Task
+	err = backoff.Retry(func() error {
+		if allowStop() {
+			return backoff.Permanent(errors.New("recv stop command"))
 		}
+		return fixup()
+	}, param)
+	if err == nil {
+		goto Task
 	}
 }
