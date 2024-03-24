@@ -30,11 +30,21 @@ func (hub *Artist[Adapter]) JoinAdapter(name string, adapter *Adapter) error {
 	if hub.isStop.Load() {
 		return ErrorWrapWithMessage(ErrClosed, "Artifex hub")
 	}
+	_, found := hub.adapters[name]
+	if found {
+		return ErrorWrapWithMessage(ErrInvalidParameter, "duplicated adapter=%v", name)
+	}
 	hub.adapters[name] = adapter
 	return nil
 }
 
-func (hub *Artist[Adapter]) ModifyAdapterName(old, fresh string) error {
+func (hub *Artist[Adapter]) RemoveAdapter(name string) {
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+	delete(hub.adapters, name)
+}
+
+func (hub *Artist[Adapter]) UpdateAdapterName(oldName string, updateName func(*Adapter) (freshName string)) error {
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
 
@@ -42,12 +52,13 @@ func (hub *Artist[Adapter]) ModifyAdapterName(old, fresh string) error {
 		return ErrorWrapWithMessage(ErrClosed, "Artifex hub")
 	}
 
-	adapter, found := hub.adapters[old]
+	adapter, found := hub.adapters[oldName]
 	if !found {
-		return ErrorWrapWithMessage(ErrNotFound, "adapter=%v not exist in hub", old)
+		return ErrorWrapWithMessage(ErrNotFound, "adapter=%v not exist in hub", oldName)
 	}
-	delete(hub.adapters, old)
-	hub.adapters[fresh] = adapter
+	freshName := updateName(adapter)
+	hub.adapters[freshName] = adapter
+	delete(hub.adapters, oldName)
 	return nil
 }
 
