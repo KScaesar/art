@@ -13,7 +13,7 @@ func NewArtist[Subject constraints.Ordered, rMessage, sMessage any]() *Artist[Su
 	}
 }
 
-// Artist can manage the Lifecycle of multiple Sessions.
+// Artist can manage multiple Sessions.
 //
 //   - concurrencyQty controls how many tasks can run simultaneously,
 //     preventing resource usage or avoid frequent context switches.

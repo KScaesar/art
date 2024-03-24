@@ -1,58 +1,67 @@
 package Artifex
 
-import (
-	"golang.org/x/exp/constraints"
-)
+// Lifecycle define a management mechanism when obj creation and obj end.
+type Lifecycle struct {
+	spawnHandlers []func() error
 
-// Lifecycle define a management mechanism when session creation and session end.
-type Lifecycle[Subject constraints.Ordered, rMessage, sMessage any] struct {
-	// SpawnHandlers are used for additional operations during session creation.
-	SpawnHandlers []func(sess *Session[Subject, rMessage, sMessage]) error
+	exitHandlers []func() error
 
-	// ExitHandlers are used for cleanup operations when the session ends.
-	ExitHandlers []func(sess *Session[Subject, rMessage, sMessage]) error
+	exitNotify chan struct{}
 }
 
-func (life *Lifecycle[Subject, rMessage, sMessage]) execute(sess *Session[Subject, rMessage, sMessage]) error {
-	err := life.spawn(sess)
+func (life *Lifecycle) AddSpawnHandler(spawnHandlers ...func() error) {
+	life.spawnHandlers = append(life.spawnHandlers, spawnHandlers...)
+}
+
+func (life *Lifecycle) AddExitHandler(exitHandlers ...func() error) {
+	life.exitHandlers = append(life.exitHandlers, exitHandlers...)
+}
+
+func (life *Lifecycle) NotifyExit() {
+	close(life.exitNotify)
+}
+
+func (life *Lifecycle) Execute() error {
+	err := life.spawn()
 	if err != nil {
 		return err
 	}
 
-	if len(life.ExitHandlers) == 0 {
+	if len(life.exitHandlers) == 0 {
 		return nil
+	}
+	if life.exitNotify == nil {
+		life.exitNotify = make(chan struct{})
 	}
 
 	go func() {
-		notify := sess.NotifyStop()
-		select {
-		case <-notify:
-			life.exit(sess)
-		}
+		<-life.exitNotify
+		life.exit()
 	}()
+
 	return nil
 }
 
-func (life *Lifecycle[Subject, rMessage, sMessage]) spawn(sess *Session[Subject, rMessage, sMessage]) error {
-	if len(life.SpawnHandlers) == 0 {
+func (life *Lifecycle) spawn() error {
+	if len(life.spawnHandlers) == 0 {
 		return nil
 	}
-	for _, enter := range life.SpawnHandlers {
-		err := enter(sess)
+	for _, enter := range life.spawnHandlers {
+		err := enter()
 		if err != nil {
-			life.exit(sess)
+			life.exit()
 			return err
 		}
 	}
 	return nil
 }
 
-func (life *Lifecycle[Subject, rMessage, sMessage]) exit(sess *Session[Subject, rMessage, sMessage]) {
-	if len(life.ExitHandlers) == 0 {
+func (life *Lifecycle) exit() {
+	if len(life.exitHandlers) == 0 {
 		return
 	}
-	for _, action := range life.ExitHandlers {
-		action(sess)
+	for _, action := range life.exitHandlers {
+		action()
 	}
 	return
 }

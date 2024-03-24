@@ -27,7 +27,7 @@ type Session[Subject constraints.Ordered, rMessage, sMessage any] struct {
 	PingPong PingPong
 
 	// Lifecycle define a management mechanism when session creation and session end.
-	Lifecycle Lifecycle[Subject, rMessage, sMessage]
+	Lifecycle Lifecycle
 
 	// Use ReliableTask, when adapter encounters an error, it can Fixup error.
 	// This makes sure that the Session keeps going without any problems until we decide to Stop it.
@@ -43,7 +43,7 @@ func (sess *Session[Subject, rMessage, sMessage]) init() (err error) {
 		return nil
 	}
 
-	err = sess.Lifecycle.execute(sess)
+	err = sess.Lifecycle.Execute()
 	if err != nil {
 		return err
 	}
@@ -192,6 +192,7 @@ func (sess *Session[Subject, rMessage, sMessage]) Stop() {
 	sess.isStop.Store(true)
 	var empty sMessage
 	sess.AdapterStop(empty)
+	sess.Lifecycle.NotifyExit()
 }
 
 func (sess *Session[Subject, rMessage, sMessage]) StopWithMessage(message sMessage) {
