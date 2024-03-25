@@ -16,7 +16,7 @@ func ReliableTask(task func() error, allowStop func() bool, retryMaxSecond int, 
 	param.InitialInterval = time.Second
 	param.RandomizationFactor = 0.5
 	param.Multiplier = 1.5
-	param.MaxInterval = 2 * time.Minute
+	param.MaxInterval = 1 * time.Minute
 	param.MaxElapsedTime = time.Duration(retryMaxSecond) * time.Second
 
 Task:

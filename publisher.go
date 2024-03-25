@@ -80,12 +80,12 @@ func (pub *Publisher[sMessage]) Stop() error {
 	if pub.isStop.Load() {
 		return nil
 	}
+	pub.isStop.Store(true)
+	pub.Lifecycle.notifyExit()
 	err := pub.AdapterStop()
 	if err != nil {
 		return err
 	}
-	pub.isStop.Store(true)
-	pub.Lifecycle.notifyExit()
 	return nil
 }
 

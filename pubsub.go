@@ -121,12 +121,12 @@ func (pubsub *PubSub[rMessage, sMessage]) StopWithMessage(message *sMessage) err
 	if pubsub.isStop.Load() {
 		return nil
 	}
+	pubsub.isStop.Store(true)
+	pubsub.Lifecycle.notifyExit()
 	err := pubsub.AdapterStop(message)
 	if err != nil {
 		return err
 	}
-	pubsub.isStop.Store(true)
-	pubsub.Lifecycle.notifyExit()
 	return nil
 }
 

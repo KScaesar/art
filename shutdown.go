@@ -20,7 +20,7 @@ func (s Shutdown) Stop(cause error) Shutdown {
 	return s
 }
 
-func (s Shutdown) Wait(waitSecond int) {
+func (s Shutdown) WaitAfter(waitSecond int) {
 	timer := time.NewTimer(time.Duration(waitSecond) * time.Second)
 	defer timer.Stop()
 
@@ -28,6 +28,10 @@ func (s Shutdown) Wait(waitSecond int) {
 	case <-timer.C:
 	case <-s.done:
 	}
+}
+
+func (s Shutdown) Wait() {
+	<-s.done
 }
 
 func SetupShutdown(ctx1 context.Context, stopActions ...func() (serviceName string)) Shutdown {

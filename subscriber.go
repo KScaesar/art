@@ -101,12 +101,12 @@ func (sub *Subscriber[rMessage]) Stop() error {
 	if sub.isStop.Load() {
 		return nil
 	}
+	sub.isStop.Store(true)
+	sub.Lifecycle.notifyExit()
 	err := sub.AdapterStop()
 	if err != nil {
 		return err
 	}
-	sub.isStop.Store(true)
-	sub.Lifecycle.notifyExit()
 	return nil
 }
 
