@@ -15,8 +15,8 @@ func NewWsIngress() *WsIngress {
 }
 
 type WsIngress struct {
-	LeafId         LeafId
-	IngressByteMsg []byte
+	LeafId     LeafId
+	IngressMsg []byte
 
 	ParentInfra any
 }
@@ -56,8 +56,8 @@ func NewWsEgress() *WsEgress {
 }
 
 type WsEgress struct {
-	LeafId        LeafId
-	EgressByteMsg []byte
+	LeafId    LeafId
+	EgressMsg []byte
 
 	Metadata maputil.Data
 	AppMsg   any
