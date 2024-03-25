@@ -24,41 +24,35 @@ type PubSub[rMessage, sMessage any] struct {
 	Mutex      sync.RWMutex
 	Lifecycle  Lifecycle
 
-	isStop atomic.Bool
-	isInit atomic.Bool
+	isStop   atomic.Bool
+	onceInit sync.Once
 }
 
 func (pubsub *PubSub[rMessage, sMessage]) init() error {
-	if pubsub.isInit.Load() {
-		return nil
-	}
+	var err error
+	pubsub.onceInit.Do(func() {
+		err = pubsub.Lifecycle.Execute()
+		if err != nil {
+			return
+		}
 
-	err := pubsub.Lifecycle.Execute()
-	if err != nil {
-		return err
-	}
+		if pubsub.HandleRecv == nil || pubsub.AdapterStop == nil || pubsub.AdapterRecv == nil || pubsub.AdapterSend == nil {
+			err = ErrorWrapWithMessage(ErrInvalidParameter, "pubsub")
+			return
+		}
 
-	if pubsub.HandleRecv == nil || pubsub.AdapterStop == nil || pubsub.AdapterRecv == nil || pubsub.AdapterSend == nil {
-		return ErrorWrapWithMessage(ErrInvalidParameter, "pubsub")
-	}
-
-	if pubsub.AppData == nil {
-		pubsub.AppData = make(maputil.Data)
-	}
-
-	pubsub.isInit.Store(true)
-	return nil
+		if pubsub.AppData == nil {
+			pubsub.AppData = make(maputil.Data)
+		}
+	})
+	return err
 }
 
 func (pubsub *PubSub[rMessage, sMessage]) Listen() error {
-	if !pubsub.isInit.Load() {
-		pubsub.Mutex.Lock()
-		err := pubsub.init()
-		if err != nil {
-			pubsub.Mutex.Unlock()
-			return err
-		}
-		pubsub.Mutex.Unlock()
+	pubsub.Mutex.Lock()
+	err := pubsub.init()
+	if err != nil {
+		return err
 	}
 
 	if pubsub.Fixup == nil {
@@ -85,14 +79,9 @@ func (pubsub *PubSub[rMessage, sMessage]) listen() error {
 }
 
 func (pubsub *PubSub[rMessage, sMessage]) Send(message *sMessage) error {
-	if !pubsub.isInit.Load() {
-		pubsub.Mutex.Lock()
-		err := pubsub.init()
-		if err != nil {
-			pubsub.Mutex.Unlock()
-			return err
-		}
-		pubsub.Mutex.Unlock()
+	err := pubsub.init()
+	if err != nil {
+		return err
 	}
 
 	return pubsub.AdapterSend(message)
@@ -108,14 +97,9 @@ func (pubsub *PubSub[rMessage, sMessage]) Stop() error {
 }
 
 func (pubsub *PubSub[rMessage, sMessage]) StopWithMessage(message *sMessage) error {
-	if !pubsub.isInit.Load() {
-		pubsub.Mutex.Lock()
-		err := pubsub.init()
-		if err != nil {
-			pubsub.Mutex.Unlock()
-			return err
-		}
-		pubsub.Mutex.Unlock()
+	err := pubsub.init()
+	if err != nil {
+		return err
 	}
 
 	if pubsub.isStop.Load() {
@@ -123,7 +107,7 @@ func (pubsub *PubSub[rMessage, sMessage]) StopWithMessage(message *sMessage) err
 	}
 	pubsub.isStop.Store(true)
 	pubsub.Lifecycle.NotifyExit()
-	err := pubsub.AdapterStop(message)
+	err = pubsub.AdapterStop(message)
 	if err != nil {
 		return err
 	}
@@ -131,17 +115,12 @@ func (pubsub *PubSub[rMessage, sMessage]) StopWithMessage(message *sMessage) err
 }
 
 func (pubsub *PubSub[rMessage, sMessage]) PingPong(pp PingPong) error {
-	if !pubsub.isInit.Load() {
-		pubsub.Mutex.Lock()
-		err := pubsub.init()
-		if err != nil {
-			pubsub.Mutex.Unlock()
-			return err
-		}
-		pubsub.Mutex.Unlock()
+	err := pubsub.init()
+	if err != nil {
+		return err
 	}
 
-	err := pp.validate()
+	err = pp.validate()
 	if err != nil {
 		return err
 	}

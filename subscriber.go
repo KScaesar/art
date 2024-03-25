@@ -23,41 +23,34 @@ type Subscriber[rMessage any] struct {
 	Mutex      sync.RWMutex
 	Lifecycle  Lifecycle
 
-	isStop atomic.Bool
-	isInit atomic.Bool
+	isStop   atomic.Bool
+	onceInit sync.Once
 }
 
 func (sub *Subscriber[rMessage]) init() error {
-	if sub.isInit.Load() {
-		return nil
-	}
+	var err error
+	sub.onceInit.Do(func() {
+		err = sub.Lifecycle.Execute()
+		if err != nil {
+			return
+		}
 
-	err := sub.Lifecycle.Execute()
-	if err != nil {
-		return err
-	}
+		if sub.HandleRecv == nil || sub.AdapterStop == nil || sub.AdapterRecv == nil {
+			err = ErrorWrapWithMessage(ErrInvalidParameter, "subscriber")
+			return
+		}
 
-	if sub.HandleRecv == nil || sub.AdapterStop == nil || sub.AdapterRecv == nil {
-		return ErrorWrapWithMessage(ErrInvalidParameter, "subscriber")
-	}
-
-	if sub.AppData == nil {
-		sub.AppData = make(maputil.Data)
-	}
-
-	sub.isInit.Store(true)
-	return nil
+		if sub.AppData == nil {
+			sub.AppData = make(maputil.Data)
+		}
+	})
+	return err
 }
 
 func (sub *Subscriber[rMessage]) Listen() error {
-	if !sub.isInit.Load() {
-		sub.Mutex.Lock()
-		err := sub.init()
-		if err != nil {
-			sub.Mutex.Unlock()
-			return err
-		}
-		sub.Mutex.Unlock()
+	err := sub.init()
+	if err != nil {
+		return err
 	}
 
 	if sub.Fixup == nil {
@@ -88,14 +81,9 @@ func (sub *Subscriber[rMessage]) IsStop() bool {
 }
 
 func (sub *Subscriber[rMessage]) Stop() error {
-	if !sub.isInit.Load() {
-		sub.Mutex.Lock()
-		err := sub.init()
-		if err != nil {
-			sub.Mutex.Unlock()
-			return err
-		}
-		sub.Mutex.Unlock()
+	err := sub.init()
+	if err != nil {
+		return err
 	}
 
 	if sub.isStop.Load() {
@@ -103,7 +91,7 @@ func (sub *Subscriber[rMessage]) Stop() error {
 	}
 	sub.isStop.Store(true)
 	sub.Lifecycle.NotifyExit()
-	err := sub.AdapterStop()
+	err = sub.AdapterStop()
 	if err != nil {
 		return err
 	}
@@ -111,17 +99,12 @@ func (sub *Subscriber[rMessage]) Stop() error {
 }
 
 func (sub *Subscriber[rMessage]) PingPong(pp PingPong) error {
-	if !sub.isInit.Load() {
-		sub.Mutex.Lock()
-		err := sub.init()
-		if err != nil {
-			sub.Mutex.Unlock()
-			return err
-		}
-		sub.Mutex.Unlock()
+	err := sub.init()
+	if err != nil {
+		return err
 	}
 
-	err := pp.validate()
+	err = pp.validate()
 	if err != nil {
 		return err
 	}

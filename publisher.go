@@ -22,41 +22,34 @@ type Publisher[sMessage any] struct {
 	Mutex      sync.RWMutex
 	Lifecycle  Lifecycle
 
-	isStop atomic.Bool
-	isInit atomic.Bool
+	isStop   atomic.Bool
+	onceInit sync.Once
 }
 
 func (pub *Publisher[sMessage]) init() error {
-	if pub.isInit.Load() {
-		return nil
-	}
+	var err error
+	pub.onceInit.Do(func() {
+		err = pub.Lifecycle.Execute()
+		if err != nil {
+			return
+		}
 
-	err := pub.Lifecycle.Execute()
-	if err != nil {
-		return err
-	}
+		if pub.AdapterStop == nil || pub.AdapterSend == nil {
+			err = ErrorWrapWithMessage(ErrInvalidParameter, "publisher")
+			return
+		}
 
-	if pub.AdapterStop == nil || pub.AdapterSend == nil {
-		return ErrorWrapWithMessage(ErrInvalidParameter, "publisher")
-	}
-
-	if pub.AppData == nil {
-		pub.AppData = make(maputil.Data)
-	}
-
-	pub.isInit.Store(true)
-	return nil
+		if pub.AppData == nil {
+			pub.AppData = make(maputil.Data)
+		}
+	})
+	return err
 }
 
 func (pub *Publisher[sMessage]) Send(message *sMessage) error {
-	if !pub.isInit.Load() {
-		pub.Mutex.Lock()
-		err := pub.init()
-		if err != nil {
-			pub.Mutex.Unlock()
-			return err
-		}
-		pub.Mutex.Unlock()
+	err := pub.init()
+	if err != nil {
+		return err
 	}
 
 	return pub.AdapterSend(message)
@@ -67,14 +60,9 @@ func (pub *Publisher[sMessage]) IsStop() bool {
 }
 
 func (pub *Publisher[sMessage]) Stop() error {
-	if !pub.isInit.Load() {
-		pub.Mutex.Lock()
-		err := pub.init()
-		if err != nil {
-			pub.Mutex.Unlock()
-			return err
-		}
-		pub.Mutex.Unlock()
+	err := pub.init()
+	if err != nil {
+		return err
 	}
 
 	if pub.isStop.Load() {
@@ -82,7 +70,7 @@ func (pub *Publisher[sMessage]) Stop() error {
 	}
 	pub.isStop.Store(true)
 	pub.Lifecycle.NotifyExit()
-	err := pub.AdapterStop()
+	err = pub.AdapterStop()
 	if err != nil {
 		return err
 	}
@@ -90,17 +78,12 @@ func (pub *Publisher[sMessage]) Stop() error {
 }
 
 func (pub *Publisher[sMessage]) PingPong(pp PingPong) error {
-	if !pub.isInit.Load() {
-		pub.Mutex.Lock()
-		err := pub.init()
-		if err != nil {
-			pub.Mutex.Unlock()
-			return err
-		}
-		pub.Mutex.Unlock()
+	err := pub.init()
+	if err != nil {
+		return err
 	}
 
-	err := pp.validate()
+	err = pp.validate()
 	if err != nil {
 		return err
 	}
