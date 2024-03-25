@@ -81,7 +81,7 @@ func (pub *Publisher[sMessage]) Stop() error {
 		return nil
 	}
 	pub.isStop.Store(true)
-	pub.Lifecycle.notifyExit()
+	pub.Lifecycle.NotifyExit()
 	err := pub.AdapterStop()
 	if err != nil {
 		return err

@@ -15,7 +15,7 @@ func (life *Lifecycle) AddExitHandler(exitHandlers ...func() error) {
 	life.exitHandlers = append(life.exitHandlers, exitHandlers...)
 }
 
-func (life *Lifecycle) notifyExit() {
+func (life *Lifecycle) NotifyExit() {
 	if life.exitNotify == nil {
 		return
 	}

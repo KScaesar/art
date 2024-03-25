@@ -102,7 +102,7 @@ func (sub *Subscriber[rMessage]) Stop() error {
 		return nil
 	}
 	sub.isStop.Store(true)
-	sub.Lifecycle.notifyExit()
+	sub.Lifecycle.NotifyExit()
 	err := sub.AdapterStop()
 	if err != nil {
 		return err

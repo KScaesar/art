@@ -122,7 +122,7 @@ func (pubsub *PubSub[rMessage, sMessage]) StopWithMessage(message *sMessage) err
 		return nil
 	}
 	pubsub.isStop.Store(true)
-	pubsub.Lifecycle.notifyExit()
+	pubsub.Lifecycle.NotifyExit()
 	err := pubsub.AdapterStop(message)
 	if err != nil {
 		return err
