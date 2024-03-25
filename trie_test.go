@@ -6,10 +6,10 @@ import (
 
 func Test_trie_endpoint(t *testing.T) {
 	node := newTrie[string]()
-	handler1 := func(_ string, _ *RouteParam) error {
+	handler1 := func(_ *string, _ *RouteParam) error {
 		return nil
 	}
-	handler2 := func(_ string, _ *RouteParam) error {
+	handler2 := func(_ *string, _ *RouteParam) error {
 		return nil
 	}
 	param1 := &routeHandler[string]{

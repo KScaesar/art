@@ -3,28 +3,71 @@ package Artifex
 import (
 	"sync"
 	"sync/atomic"
-
-	"golang.org/x/exp/constraints"
 )
 
-func NewArtist[Subject constraints.Ordered, rMessage, sMessage any]() *Artist[Subject, rMessage, sMessage] {
-	return &Artist[Subject, rMessage, sMessage]{
-		sessions: make(map[*Session[Subject, rMessage, sMessage]]bool),
+func NewAdapterHub[Adapter any](stop func(*Adapter) error) *AdapterHub[Adapter] {
+	return &AdapterHub[Adapter]{
+		adapters:    make(map[string]*Adapter),
+		stopAdapter: stop,
 	}
 }
 
-// Artist can manage the Lifecycle of multiple Sessions.
+// AdapterHub can manage multiple adapters.
 //
-//   - concurrencyQty controls how many tasks can run simultaneously,
-//     preventing resource usage or avoid frequent context switches.
-type Artist[Subject constraints.Ordered, rMessage, sMessage any] struct {
+//	concurrencyQty controls how many tasks can run simultaneously,
+//	preventing resource usage or avoid frequent context switches.
+type AdapterHub[Adapter any] struct {
+	adapters       map[string]*Adapter // Identifier:Adapter
+	stopAdapter    func(*Adapter) error
+	concurrencyQty int
 	mu             sync.RWMutex
 	isStop         atomic.Bool
-	sessions       map[*Session[Subject, rMessage, sMessage]]bool
-	concurrencyQty int
 }
 
-func (hub *Artist[Subject, rMessage, sMessage]) Stop() {
+func (hub *AdapterHub[Adapter]) JoinAdapter(name string, adapter *Adapter) error {
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+	if hub.isStop.Load() {
+		return ErrorWrapWithMessage(ErrClosed, "Artifex hub")
+	}
+	_, found := hub.adapters[name]
+	if found {
+		return ErrorWrapWithMessage(ErrInvalidParameter, "duplicated adapter=%v", name)
+	}
+	hub.adapters[name] = adapter
+	return nil
+}
+
+func (hub *AdapterHub[Adapter]) RemoveAdapter(name string) {
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+	adapter, found := hub.adapters[name]
+	if !found {
+		return
+	}
+	delete(hub.adapters, name)
+	hub.stopAdapter(adapter)
+}
+
+func (hub *AdapterHub[Adapter]) UpdateAdapterName(oldName string, updateName func(*Adapter) (freshName string)) error {
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+
+	if hub.isStop.Load() {
+		return ErrorWrapWithMessage(ErrClosed, "Artifex hub")
+	}
+
+	adapter, found := hub.adapters[oldName]
+	if !found {
+		return ErrorWrapWithMessage(ErrNotFound, "adapter=%v not exist in hub", oldName)
+	}
+	freshName := updateName(adapter)
+	hub.adapters[freshName] = adapter
+	delete(hub.adapters, oldName)
+	return nil
+}
+
+func (hub *AdapterHub[Adapter]) Stop() {
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
 
@@ -33,82 +76,28 @@ func (hub *Artist[Subject, rMessage, sMessage]) Stop() {
 	}
 	hub.isStop.Store(true)
 
-	for sess := range hub.sessions {
-		session := sess
-		session.Stop()
-		delete(hub.sessions, session)
+	for name, adapter := range hub.adapters {
+		delete(hub.adapters, name)
+		hub.stopAdapter(adapter)
 	}
 }
 
-func (hub *Artist[Subject, rMessage, sMessage]) JoinSession(factory SessionFactory[Subject, rMessage, sMessage]) (*Session[Subject, rMessage, sMessage], error) {
-	if hub.isStop.Load() {
-		return nil, ErrorWrapWithMessage(ErrClosed, "Artifex hub")
-	}
-	hub.mu.Lock()
-	defer hub.mu.Unlock()
-
-	sess, err := factory.CreateSession()
-	if err != nil {
-		return nil, err
-	}
-
-	hub.sessions[sess] = true
-	if err != nil {
-		delete(hub.sessions, sess)
-		return nil, err
-	}
-
-	go func() {
-		defer func() {
-			hub.mu.Lock()
-			delete(hub.sessions, sess)
-			hub.mu.Unlock()
-		}()
-		sess.Listen()
-	}()
-
-	return sess, nil
-}
-
-func (hub *Artist[Subject, rMessage, sMessage]) FindSession(filter func(*Session[Subject, rMessage, sMessage]) bool) (session *Session[Subject, rMessage, sMessage], found bool) {
-	var target *Session[Subject, rMessage, sMessage]
-	hub.DoSync(func(sess *Session[Subject, rMessage, sMessage]) (stop bool) {
-		if filter(sess) {
-			target = sess
-			return true
-		}
-		return false
-	})
-	return target, target != nil
-}
-
-func (hub *Artist[Subject, rMessage, sMessage]) FindSessions(filter func(*Session[Subject, rMessage, sMessage]) bool) (sessions []*Session[Subject, rMessage, sMessage], found bool) {
-	sessions = make([]*Session[Subject, rMessage, sMessage], 0)
-	hub.DoSync(func(sess *Session[Subject, rMessage, sMessage]) bool {
-		if filter(sess) {
-			sessions = append(sessions, sess)
-		}
-		return false
-	})
-	return sessions, len(sessions) > 0
-}
-
-func (hub *Artist[Subject, rMessage, sMessage]) DoSync(action func(*Session[Subject, rMessage, sMessage]) (stop bool)) {
+func (hub *AdapterHub[Adapter]) DoSync(action func(*Adapter) (stop bool)) {
 	if hub.isStop.Load() {
 		return
 	}
 	hub.mu.RLock()
 	defer hub.mu.RUnlock()
 
-	for sess := range hub.sessions {
-		stop := action(sess)
+	for _, adapter := range hub.adapters {
+		stop := action(adapter)
 		if stop {
 			break
 		}
 	}
 }
 
-func (hub *Artist[Subject, rMessage, sMessage]) DoAsync(action func(*Session[Subject, rMessage, sMessage])) {
+func (hub *AdapterHub[Adapter]) DoAsync(action func(*Adapter)) {
 	if hub.isStop.Load() {
 		return
 	}
@@ -116,10 +105,10 @@ func (hub *Artist[Subject, rMessage, sMessage]) DoAsync(action func(*Session[Sub
 	defer hub.mu.RUnlock()
 
 	var bucket chan struct{}
-	for sess := range hub.sessions {
-		session := sess
+	for _, adp := range hub.adapters {
+		adapter := adp
 		if hub.concurrencyQty <= 0 {
-			go action(session)
+			go action(adapter)
 			continue
 		}
 
@@ -129,35 +118,59 @@ func (hub *Artist[Subject, rMessage, sMessage]) DoAsync(action func(*Session[Sub
 			defer func() {
 				<-bucket
 			}()
-			action(session)
+			action(adapter)
 		}()
 	}
 }
 
-func (hub *Artist[Subject, rMessage, sMessage]) BroadcastFilter(msg sMessage, filter func(*Session[Subject, rMessage, sMessage]) bool) {
-	hub.DoAsync(func(sess *Session[Subject, rMessage, sMessage]) {
-		if filter(sess) {
-			sess.Send(msg)
+func (hub *AdapterHub[Adapter]) FindAdapter(filter func(*Adapter) bool) (adapter *Adapter, found bool) {
+	var target *Adapter
+	hub.DoSync(func(adapter *Adapter) (stop bool) {
+		if filter(adapter) {
+			target = adapter
+			return true
 		}
+		return false
 	})
+	return target, target != nil
 }
 
-func (hub *Artist[Subject, rMessage, sMessage]) Broadcast(msg sMessage) {
-	hub.BroadcastFilter(msg, func(*Session[Subject, rMessage, sMessage]) bool {
-		return true
-	})
+func (hub *AdapterHub[Adapter]) FindAdapterByName(name string) (adapter *Adapter, found bool) {
+	hub.mu.RLock()
+	defer hub.mu.RUnlock()
+	adapter, found = hub.adapters[name]
+	return
 }
 
-func (hub *Artist[Subject, rMessage, sMessage]) BroadcastOther(msg sMessage, self *Session[Subject, rMessage, sMessage]) {
-	hub.BroadcastFilter(msg, func(other *Session[Subject, rMessage, sMessage]) bool {
-		return other != self
+func (hub *AdapterHub[Adapter]) FindAdapters(filter func(*Adapter) bool) (adapters []*Adapter, found bool) {
+	adapters = make([]*Adapter, 0)
+	hub.DoSync(func(adapter *Adapter) bool {
+		if filter(adapter) {
+			adapters = append(adapters, adapter)
+		}
+		return false
 	})
+	return adapters, len(adapters) > 0
 }
 
-func (hub *Artist[Subject, rMessage, sMessage]) Count(filter func(*Session[Subject, rMessage, sMessage]) bool) int {
+func (hub *AdapterHub[Adapter]) FindAdaptersByName(names []string) (adapters []*Adapter, found bool) {
+	hub.mu.RLock()
+	defer hub.mu.RUnlock()
+
+	adapters = make([]*Adapter, 0)
+	for i := 0; i < len(names); i++ {
+		adapter, ok := hub.adapters[names[i]]
+		if ok {
+			adapters = append(adapters, adapter)
+		}
+	}
+	return adapters, len(adapters) > 0
+}
+
+func (hub *AdapterHub[Adapter]) Count(filter func(*Adapter) bool) int {
 	cnt := 0
-	hub.DoSync(func(sess *Session[Subject, rMessage, sMessage]) bool {
-		if filter(sess) {
+	hub.DoSync(func(adapter *Adapter) bool {
+		if filter(adapter) {
 			cnt++
 		}
 		return false
@@ -165,18 +178,17 @@ func (hub *Artist[Subject, rMessage, sMessage]) Count(filter func(*Session[Subje
 	return cnt
 }
 
-func (hub *Artist[Subject, rMessage, sMessage]) Total() int {
+func (hub *AdapterHub[Adapter]) Total() int {
 	hub.mu.RLock()
 	defer hub.mu.RUnlock()
-	return len(hub.sessions)
+	return len(hub.adapters)
 }
 
-func (hub *Artist[Subject, rMessage, sMessage]) SetConcurrencyQty(concurrencyQty int) {
+func (hub *AdapterHub[Adapter]) SetConcurrencyQty(concurrencyQty int) {
 	if hub.isStop.Load() {
 		return
 	}
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
-
 	hub.concurrencyQty = concurrencyQty
 }

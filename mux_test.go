@@ -21,7 +21,7 @@ func TestMessageMux_HandleMessage(t *testing.T) {
 		return message.channel, nil
 	}
 
-	mux := NewMux[string, *redisMessage](getSubject).
+	mux := NewMux[string, redisMessage](getSubject).
 		Handler("hello", func(dto *redisMessage, route *RouteParam) error {
 			fmt.Fprintf(recorder, "topic=%v, payload=%v", dto.channel, string(dto.body))
 			return nil
@@ -56,43 +56,43 @@ func TestLinkMiddlewares(t *testing.T) {
 	buf.WriteString("\n")
 
 	decorator1 := func(next HandleFunc[string]) HandleFunc[string] {
-		return func(dto string, route *RouteParam) error {
-			fmt.Fprintf(buf, "%s_decorator1\n", dto)
+		return func(dto *string, route *RouteParam) error {
+			fmt.Fprintf(buf, "%s_decorator1\n", *dto)
 
 			err := next(dto, route)
 			if err != nil {
 				return err
 			}
 
-			fmt.Fprintf(buf, "%s_decoratorA\n", dto)
+			fmt.Fprintf(buf, "%s_decoratorA\n", *dto)
 			return nil
 		}
 	}
 
 	decorator2 := func(next HandleFunc[string]) HandleFunc[string] {
-		return func(dto string, route *RouteParam) error {
-			fmt.Fprintf(buf, "%s_decorator2\n", dto)
+		return func(dto *string, route *RouteParam) error {
+			fmt.Fprintf(buf, "%s_decorator2\n", *dto)
 
 			err := next(dto, route)
 			if err != nil {
 				return err
 			}
 
-			fmt.Fprintf(buf, "%s_decoratorB\n", dto)
+			fmt.Fprintf(buf, "%s_decoratorB\n", *dto)
 			return nil
 		}
 	}
 
 	decorator3 := func(next HandleFunc[string]) HandleFunc[string] {
-		return func(dto string, route *RouteParam) error {
-			fmt.Fprintf(buf, "%s_decorator3\n", dto)
+		return func(dto *string, route *RouteParam) error {
+			fmt.Fprintf(buf, "%s_decorator3\n", *dto)
 
 			err := next(dto, route)
 			if err != nil {
 				return err
 			}
 
-			fmt.Fprintf(buf, "%s_decoratorC\n", dto)
+			fmt.Fprintf(buf, "%s_decoratorC\n", *dto)
 			return nil
 		}
 	}
@@ -122,13 +122,13 @@ hello_world_decoratorA
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			baseFunc := func(msg string, route *RouteParam) error {
-				fmt.Fprintf(buf, "%s_base\n", msg)
+			baseFunc := func(msg *string, route *RouteParam) error {
+				fmt.Fprintf(buf, "%s_base\n", *msg)
 				return nil
 			}
 
 			handler := LinkMiddlewares(baseFunc, tt.middlewares...)
-			err := handler(tt.msg, nil)
+			err := handler(&tt.msg, nil)
 			if err != nil {
 				t.Errorf("unexpected error: got %v", err)
 			}
@@ -149,7 +149,7 @@ func TestMessageMux_Transform(t *testing.T) {
 	newSubject := func(msg *testcaseTransformMessage) (string, error) {
 		return "/" + strconv.Itoa(msg.level0TypeId), nil
 	}
-	mux := NewMux[int, *testcaseTransformMessage](newSubject).
+	mux := NewMux[int, testcaseTransformMessage](newSubject).
 		SetDelimiter('/', true)
 
 	mux.Handler(2, record)
@@ -260,7 +260,7 @@ func TestMessageMux_Group(t *testing.T) {
 	}
 
 	newSubject := func(msg *testcaseGroupMessage) (string, error) { return string(msg.subject), nil }
-	mux := NewMux[Subject, *testcaseGroupMessage](newSubject).
+	mux := NewMux[Subject, testcaseGroupMessage](newSubject).
 		SetCleanSubject(true).
 		SetDelimiter('/', false)
 
