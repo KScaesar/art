@@ -30,11 +30,11 @@ type WsFactory struct {
 
 //
 
-func NewWsPubSubHub() *Artifex.AdapterHub[WsPubSub] {
+func NewWsPubSubHub() *Artifex.Hub[WsPubSub] {
 	stop := func(adapter *WsPubSub) error {
 		return adapter.Stop()
 	}
-	return Artifex.NewAdapterHub(stop)
+	return Artifex.NewHub(stop)
 }
 
 type WsPubSub = Artifex.PubSub[WsIngress, WsEgress]
@@ -84,11 +84,11 @@ func (f *WsFactory) CreatePubSub() (*WsPubSub, error) {
 
 //
 
-func NewWsPublisherHub() *Artifex.AdapterHub[WsPublisher] {
+func NewWsPublisherHub() *Artifex.Hub[WsPublisher] {
 	stop := func(adapter *WsPublisher) error {
 		return adapter.Stop()
 	}
-	return Artifex.NewAdapterHub(stop)
+	return Artifex.NewHub(stop)
 }
 
 type WsPublisher = Artifex.Publisher[WsEgress]
@@ -125,11 +125,11 @@ func (f *WsFactory) CreatePublisher() (*WsPublisher, error) {
 
 //
 
-func NewWsSubscriberHub() *Artifex.AdapterHub[WsSubscriber] {
+func NewWsSubscriberHub() *Artifex.Hub[WsSubscriber] {
 	stop := func(adapter *WsSubscriber) error {
 		return adapter.Stop()
 	}
-	return Artifex.NewAdapterHub(stop)
+	return Artifex.NewHub(stop)
 }
 
 type WsSubscriber = Artifex.Subscriber[WsIngress]

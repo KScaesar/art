@@ -5,18 +5,18 @@ import (
 	"sync/atomic"
 )
 
-func NewAdapterHub[Adapter any](stop func(*Adapter) error) *AdapterHub[Adapter] {
-	return &AdapterHub[Adapter]{
+func NewHub[Adapter any](stop func(*Adapter) error) *Hub[Adapter] {
+	return &Hub[Adapter]{
 		adapters:    make(map[string]*Adapter),
 		stopAdapter: stop,
 	}
 }
 
-// AdapterHub can manage multiple adapters.
+// Hub can manage multiple adapters.
 //
 //	concurrencyQty controls how many tasks can run simultaneously,
 //	preventing resource usage or avoid frequent context switches.
-type AdapterHub[Adapter any] struct {
+type Hub[Adapter any] struct {
 	adapters       map[string]*Adapter // Identifier:Adapter
 	stopAdapter    func(*Adapter) error
 	concurrencyQty int
@@ -24,7 +24,7 @@ type AdapterHub[Adapter any] struct {
 	isStop         atomic.Bool
 }
 
-func (hub *AdapterHub[Adapter]) JoinAdapter(name string, adapter *Adapter) error {
+func (hub *Hub[Adapter]) JoinAdapter(name string, adapter *Adapter) error {
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
 	if hub.isStop.Load() {
@@ -38,7 +38,7 @@ func (hub *AdapterHub[Adapter]) JoinAdapter(name string, adapter *Adapter) error
 	return nil
 }
 
-func (hub *AdapterHub[Adapter]) RemoveAdapter(name string) {
+func (hub *Hub[Adapter]) RemoveAdapter(name string) {
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
 	adapter, found := hub.adapters[name]
@@ -49,7 +49,7 @@ func (hub *AdapterHub[Adapter]) RemoveAdapter(name string) {
 	hub.stopAdapter(adapter)
 }
 
-func (hub *AdapterHub[Adapter]) UpdateAdapterName(oldName string, updateName func(*Adapter) (freshName string)) error {
+func (hub *Hub[Adapter]) UpdateAdapterName(oldName string, updateName func(*Adapter) (freshName string)) error {
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
 
@@ -67,7 +67,7 @@ func (hub *AdapterHub[Adapter]) UpdateAdapterName(oldName string, updateName fun
 	return nil
 }
 
-func (hub *AdapterHub[Adapter]) Stop() {
+func (hub *Hub[Adapter]) Stop() {
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
 
@@ -82,7 +82,7 @@ func (hub *AdapterHub[Adapter]) Stop() {
 	}
 }
 
-func (hub *AdapterHub[Adapter]) DoSync(action func(*Adapter) (stop bool)) {
+func (hub *Hub[Adapter]) DoSync(action func(*Adapter) (stop bool)) {
 	if hub.isStop.Load() {
 		return
 	}
@@ -97,7 +97,7 @@ func (hub *AdapterHub[Adapter]) DoSync(action func(*Adapter) (stop bool)) {
 	}
 }
 
-func (hub *AdapterHub[Adapter]) DoAsync(action func(*Adapter)) {
+func (hub *Hub[Adapter]) DoAsync(action func(*Adapter)) {
 	if hub.isStop.Load() {
 		return
 	}
@@ -123,7 +123,7 @@ func (hub *AdapterHub[Adapter]) DoAsync(action func(*Adapter)) {
 	}
 }
 
-func (hub *AdapterHub[Adapter]) FindAdapter(filter func(*Adapter) bool) (adapter *Adapter, found bool) {
+func (hub *Hub[Adapter]) FindAdapter(filter func(*Adapter) bool) (adapter *Adapter, found bool) {
 	var target *Adapter
 	hub.DoSync(func(adapter *Adapter) (stop bool) {
 		if filter(adapter) {
@@ -135,14 +135,14 @@ func (hub *AdapterHub[Adapter]) FindAdapter(filter func(*Adapter) bool) (adapter
 	return target, target != nil
 }
 
-func (hub *AdapterHub[Adapter]) FindAdapterByName(name string) (adapter *Adapter, found bool) {
+func (hub *Hub[Adapter]) FindAdapterByName(name string) (adapter *Adapter, found bool) {
 	hub.mu.RLock()
 	defer hub.mu.RUnlock()
 	adapter, found = hub.adapters[name]
 	return
 }
 
-func (hub *AdapterHub[Adapter]) FindAdapters(filter func(*Adapter) bool) (adapters []*Adapter, found bool) {
+func (hub *Hub[Adapter]) FindAdapters(filter func(*Adapter) bool) (adapters []*Adapter, found bool) {
 	adapters = make([]*Adapter, 0)
 	hub.DoSync(func(adapter *Adapter) bool {
 		if filter(adapter) {
@@ -153,7 +153,7 @@ func (hub *AdapterHub[Adapter]) FindAdapters(filter func(*Adapter) bool) (adapte
 	return adapters, len(adapters) > 0
 }
 
-func (hub *AdapterHub[Adapter]) FindAdaptersByName(names []string) (adapters []*Adapter, found bool) {
+func (hub *Hub[Adapter]) FindAdaptersByName(names []string) (adapters []*Adapter, found bool) {
 	hub.mu.RLock()
 	defer hub.mu.RUnlock()
 
@@ -167,7 +167,7 @@ func (hub *AdapterHub[Adapter]) FindAdaptersByName(names []string) (adapters []*
 	return adapters, len(adapters) > 0
 }
 
-func (hub *AdapterHub[Adapter]) Count(filter func(*Adapter) bool) int {
+func (hub *Hub[Adapter]) Count(filter func(*Adapter) bool) int {
 	cnt := 0
 	hub.DoSync(func(adapter *Adapter) bool {
 		if filter(adapter) {
@@ -178,13 +178,13 @@ func (hub *AdapterHub[Adapter]) Count(filter func(*Adapter) bool) int {
 	return cnt
 }
 
-func (hub *AdapterHub[Adapter]) Total() int {
+func (hub *Hub[Adapter]) Total() int {
 	hub.mu.RLock()
 	defer hub.mu.RUnlock()
 	return len(hub.adapters)
 }
 
-func (hub *AdapterHub[Adapter]) SetConcurrencyQty(concurrencyQty int) {
+func (hub *Hub[Adapter]) SetConcurrencyQty(concurrencyQty int) {
 	if hub.isStop.Load() {
 		return
 	}

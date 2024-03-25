@@ -18,7 +18,7 @@ func New{{.FileName}}Ingress() *{{.FileName}}Ingress {
 }
 
 type {{.FileName}}Ingress struct {
-	{{.Subject}}          {{.Subject}}
+	{{.Subject}} {{.Subject}}
 	IngressMsg []byte
 
 	ParentInfra any
@@ -59,7 +59,7 @@ func New{{.FileName}}Egress() *{{.FileName}}Egress {
 }
 
 type {{.FileName}}Egress struct {
-	{{.Subject}}       {{.Subject}}
+	{{.Subject}} {{.Subject}}
 	EgressMsg []byte
 
 	Metadata maputil.Data
@@ -128,11 +128,11 @@ type {{.FileName}}Factory struct {
 
 //
 
-func New{{.FileName}}PubSubHub() *Artifex.AdapterHub[{{.FileName}}PubSub] {
+func New{{.FileName}}PubSubHub() *Artifex.Hub[{{.FileName}}PubSub] {
 	stop := func(adapter *{{.FileName}}PubSub) error {
 		return adapter.Stop()
 	}
-	return Artifex.NewAdapterHub(stop)
+	return Artifex.NewHub(stop)
 }
 
 type {{.FileName}}PubSub = Artifex.PubSub[{{.FileName}}Ingress, {{.FileName}}Egress]
@@ -182,11 +182,11 @@ func (f *{{.FileName}}Factory) CreatePubSub() (*{{.FileName}}PubSub, error) {
 
 //
 
-func New{{.FileName}}PublisherHub() *Artifex.AdapterHub[{{.FileName}}Publisher] {
+func New{{.FileName}}PublisherHub() *Artifex.Hub[{{.FileName}}Publisher] {
 	stop := func(adapter *{{.FileName}}Publisher) error {
 		return adapter.Stop()
 	}
-	return Artifex.NewAdapterHub(stop)
+	return Artifex.NewHub(stop)
 }
 
 type {{.FileName}}Publisher = Artifex.Publisher[{{.FileName}}Egress]
@@ -223,11 +223,11 @@ func (f *{{.FileName}}Factory) CreatePublisher() (*{{.FileName}}Publisher, error
 
 //
 
-func New{{.FileName}}SubscriberHub() *Artifex.AdapterHub[{{.FileName}}Subscriber] {
+func New{{.FileName}}SubscriberHub() *Artifex.Hub[{{.FileName}}Subscriber] {
 	stop := func(adapter *{{.FileName}}Subscriber) error {
 		return adapter.Stop()
 	}
-	return Artifex.NewAdapterHub(stop)
+	return Artifex.NewHub(stop)
 }
 
 type {{.FileName}}Subscriber = Artifex.Subscriber[{{.FileName}}Ingress]
