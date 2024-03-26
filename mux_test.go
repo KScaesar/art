@@ -383,15 +383,17 @@ func TestMux_SetDefaultHandler(t *testing.T) {
 		body    string
 	}
 
+	isCalled := false
 	newSubject := func(msg *testcaseDefaultHandler) (string, error) { return string(msg.subject), nil }
-	mux := NewMux[Subject, *testcaseDefaultHandler](newSubject).
+	mux := NewMux[Subject, testcaseDefaultHandler](newSubject).
 		SetDefaultHandler(func(message *testcaseDefaultHandler, route *RouteParam) error {
+			isCalled = true
 			return nil
 		})
 
 	msg := &testcaseDefaultHandler{}
 	err := mux.HandleMessage(msg, nil)
-	if err != nil {
+	if err != nil || isCalled != true {
 		t.Errorf("unexpected error: got %v", err)
 	}
 }
