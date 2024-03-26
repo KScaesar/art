@@ -12,17 +12,18 @@ type RoutingKey = string
 
 func NewIngress(amqpMsg amqp.Delivery, logger Artifex.Logger) *Ingress {
 	return &Ingress{
-		RoutingKey: amqpMsg.RoutingKey,
-		IngressMsg: amqpMsg.Body,
-		AmqpMsg:    amqpMsg,
-		Logger:     logger,
+		RoutingKey:     amqpMsg.RoutingKey,
+		IngressByteMsg: amqpMsg.Body,
+		AmqpMsg:        amqpMsg,
+		Logger:         logger,
 	}
 }
 
 type Ingress struct {
-	RoutingKey RoutingKey
-	IngressMsg []byte
+	RoutingKey     RoutingKey
+	IngressByteMsg []byte
 
+	MsgId   string
 	AmqpMsg amqp.Delivery
 	Logger  Artifex.Logger
 }
@@ -47,9 +48,10 @@ func NewEgress() *Egress {
 }
 
 type Egress struct {
-	RoutingKey RoutingKey
-	EgressMsg  []byte
+	RoutingKey    RoutingKey
+	EgressByteMsg []byte
 
+	MsgId    string
 	Metadata maputil.Data
 	AppMsg   any
 }

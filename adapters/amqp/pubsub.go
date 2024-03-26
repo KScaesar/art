@@ -8,10 +8,6 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-func NewConnection(url string) (*amqp.Connection, error) {
-	return amqp.Dial(url)
-}
-
 type Factory struct {
 	// connection
 	AmqpUri         string
@@ -27,17 +23,15 @@ type Factory struct {
 	RecvMux     *IngressMux
 
 	SendMux *EgressMux
-
-	Logger Artifex.Logger
 }
 
 //
 
-func NewSubscriberHub() *Artifex.AdapterHub[Subscriber] {
+func NewSubscriberHub() *Artifex.Hub[Subscriber] {
 	stop := func(Artifex *Subscriber) error {
 		return Artifex.Stop()
 	}
-	return Artifex.NewAdapterHub(stop)
+	return Artifex.NewHub(stop)
 }
 
 type Subscriber = Artifex.Subscriber[Ingress]
@@ -55,116 +49,71 @@ func (f *Factory) CreateSubscriber() (*Subscriber, error) {
 		return nil, err
 	}
 
-	logger := f.Logger.
+	logger := Artifex.DefaultLogger().
 		WithKeyValue("amqp_id", Artifex.GenerateRandomCode(6)).
 		WithKeyValue("amqp_sub", consumerName)
 	logger.Info("create amqp subscriber success!")
 
-	connCloseNotify := (*f.Connection).NotifyClose(make(chan *amqp.Error, 1))
-	chCloseNotify := channel.NotifyClose(make(chan *amqp.Error, 1))
-	consumerIsClose := false
-	retryCnt := 0
 	sub := &Subscriber{
 		HandleRecv: f.RecvMux.HandleMessage,
-		AdapterRecv: func() (*Ingress, error) {
-			amqpMsg, ok := <-consumer
-			if !ok {
-				consumerIsClose = true
-				err := errors.New("amqp consumer close")
-				logger.Error("%v", err)
-				return nil, err
-			}
-			logger.Info("receive msg: msgType=%q: key=%q: body=%q",
-				amqpMsg.Type, amqpMsg.RoutingKey, string(amqpMsg.Body))
-			return NewIngress(amqpMsg, logger), nil
-		},
 		AdapterStop: func() error {
 			logger.Info("active stop")
 			return channel.Close()
 		},
-		Fixup: func() error {
-			select {
-			case Err := <-connCloseNotify:
-				if Err != nil {
-					logger.Error("amqp connection close: %v", Err)
-				}
-			case Err := <-chCloseNotify:
-				if Err != nil {
-					logger.Error("amqp channel close: %v", Err)
-				}
-			default:
-			}
-
-			retryCnt++
-			logger.Info("retry %v times", retryCnt)
-
-			if (*f.Connection).IsClosed() {
-				err := f.concurrencySafe(func() (err error) {
-					if !(*f.Connection).IsClosed() {
-						return nil
-					}
-					logger.Info("retry amqp connection start")
-					connection, err := NewConnection(f.AmqpUri)
-					if err != nil {
-						logger.Error("retry amqp connection fail: %v", err)
-						return err
-					}
-					logger.Info("retry amqp connection success")
-					(*f.Connection) = connection
-					connCloseNotify = (*f.Connection).NotifyClose(make(chan *amqp.Error, 1))
-					return nil
-				})
-				if err != nil {
-					return err
-				}
-			}
-
-			if channel.IsClosed() {
-				logger.Info("retry amqp channel start")
-				channel, err = (*f.Connection).Channel()
-				if err != nil {
-					logger.Error("retry amqp channel fail: %v", err)
-					return err
-				}
-				logger.Info("retry amqp channel success")
-				chCloseNotify = channel.NotifyClose(make(chan *amqp.Error, 1))
-			}
-
-			if consumerIsClose {
-				logger.Info("retry amqp consumer start")
-				if err := f.setupAmqp(channel); err != nil {
-					logger.Error("retry setup amqp fail: %v", err)
-					return err
-				}
-				_, freshConsumer, err := f.NewConsumer(channel)
-				if err != nil {
-					logger.Error("retry amqp consumer fail: %v", err)
-					return err
-				}
-				logger.Info("retry amqp consumer success")
-				consumerIsClose = false
-				consumer = freshConsumer
-				retryCnt = 0
-				return nil
-			}
-
-			logger.Info("'%v' retry ???")
-			return nil
-		},
-		FixupMaxRetrySecond: 0,
-		Identifier:          consumerName,
+		Identifier: consumerName,
 	}
+
+	consumerIsClose := false
+	sub.AdapterRecv = func() (*Ingress, error) {
+		amqpMsg, ok := <-consumer
+		if !ok {
+			consumerIsClose = true
+			err := errors.New("amqp consumer close")
+			logger.Error("%v", err)
+			return nil, err
+		}
+		logger.Info("receive msg: msgType=%q: key=%q: body=%q",
+			amqpMsg.Type, amqpMsg.RoutingKey, string(amqpMsg.Body))
+		return NewIngress(amqpMsg, logger), nil
+	}
+
+	fixup := fixupAmqp(f.ConnectionMutex, f.AmqpUri, f.Connection, &channel, logger, f.setupAmqp)
+	sub.Fixup = func() error {
+		if err := fixup(); err != nil {
+			return err
+		}
+
+		if consumerIsClose {
+			logger.Info("retry amqp consumer start")
+			if err := f.setupAmqp(channel); err != nil {
+				logger.Error("retry setup amqp fail: %v", err)
+				return err
+			}
+			_, freshConsumer, err := f.NewConsumer(channel)
+			if err != nil {
+				logger.Error("retry amqp consumer fail: %v", err)
+				return err
+			}
+			logger.Info("retry amqp consumer success")
+			consumerIsClose = false
+			consumer = freshConsumer
+			return nil
+		}
+
+		return nil
+	}
+	sub.FixupMaxRetrySecond = 0
 
 	return sub, nil
 }
 
 //
 
-func NewPublisherHub() *Artifex.AdapterHub[Publisher] {
+func NewPublisherHub() *Artifex.Hub[Publisher] {
 	stop := func(Artifex *Publisher) error {
 		return Artifex.Stop()
 	}
-	return Artifex.NewAdapterHub(stop)
+	return Artifex.NewHub(stop)
 }
 
 type Publisher = Artifex.Publisher[Egress]
@@ -213,8 +162,82 @@ func (f *Factory) setupAmqp(channel *amqp.Channel) error {
 	return nil
 }
 
-func (f *Factory) concurrencySafe(action func() error) error {
-	f.ConnectionMutex.Lock()
-	defer f.ConnectionMutex.Unlock()
-	return action()
+func fixupAmqp(
+	mu *sync.Mutex,
+	amqpUrl string,
+	connection **amqp.Connection,
+	channel **amqp.Channel,
+	logger Artifex.Logger,
+	setupAmqp func(*amqp.Channel) error,
+) func() error {
+	concurrencySafe := func(action func() error) error {
+		mu.Lock()
+		defer mu.Unlock()
+		return action()
+	}
+
+	connCloseNotify := (*connection).NotifyClose(make(chan *amqp.Error, 1))
+	chCloseNotify := (*channel).NotifyClose(make(chan *amqp.Error, 1))
+	retryCnt := 0
+
+	return func() error {
+
+		select {
+		case Err := <-connCloseNotify:
+			if Err != nil {
+				logger.Error("amqp connection close: %v", Err)
+			}
+		case Err := <-chCloseNotify:
+			if Err != nil {
+				logger.Error("amqp channel close: %v", Err)
+			}
+		default:
+		}
+
+		retryCnt++
+		logger.Info("retry %v times", retryCnt)
+
+		if (*connection).IsClosed() {
+			err := concurrencySafe(func() (err error) {
+				if !(*connection).IsClosed() {
+					return nil
+				}
+				logger.Info("retry amqp conn start")
+				conn, err := NewConnection(amqpUrl)
+				if err != nil {
+					logger.Error("retry amqp conn fail: %v", err)
+					return err
+				}
+				logger.Info("retry amqp conn success")
+				(*connection) = conn
+				connCloseNotify = (*connection).NotifyClose(make(chan *amqp.Error, 1))
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+		}
+
+		if (*channel).IsClosed() {
+			logger.Info("retry amqp channel start")
+			ch, err := (*connection).Channel()
+			if err != nil {
+				logger.Error("retry amqp channel fail: %v", err)
+				return err
+			}
+			(*channel) = ch
+			logger.Info("retry amqp channel success")
+			chCloseNotify = (*channel).NotifyClose(make(chan *amqp.Error, 1))
+		}
+
+		logger.Info("retry setup amqp start")
+		err := setupAmqp(*channel)
+		if err != nil {
+			logger.Error("retry setup amqp fail: %v", err)
+			return err
+		}
+		logger.Info("retry setup amqp success")
+		retryCnt = 0
+		return nil
+	}
 }

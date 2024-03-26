@@ -4,8 +4,7 @@ package Artifex
 type Lifecycle struct {
 	spawnHandlers []func() error
 	exitHandlers  []func() error
-
-	exitNotify chan struct{}
+	exitNotify    chan struct{}
 }
 
 func (life *Lifecycle) AddSpawnHandler(spawnHandlers ...func() error) {

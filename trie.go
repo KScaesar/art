@@ -13,7 +13,7 @@ import (
 //
 // https://hackmd.io/@fieliapm/BkHvJjYq3#/5/2
 //
-// hande message 執行路徑, 依照欄位的順序, 從上到下
+// handle message 執行路徑, 依照欄位的順序, 從上到下
 type routeHandler[M any] struct {
 	transforms  []HandleFunc[M]
 	getSubject  NewSubjectFunc[M]
