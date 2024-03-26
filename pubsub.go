@@ -22,7 +22,7 @@ type PubSub[rMessage, sMessage any] struct {
 	Identifier string
 	AppData    maputil.Data
 	Mutex      sync.RWMutex
-	Lifecycle  Lifecycle
+	Lifecycle  *Lifecycle
 
 	isStop   atomic.Bool
 	onceInit sync.Once
@@ -31,9 +31,11 @@ type PubSub[rMessage, sMessage any] struct {
 func (pubsub *PubSub[rMessage, sMessage]) init() error {
 	var err error
 	pubsub.onceInit.Do(func() {
-		err = pubsub.Lifecycle.Execute()
-		if err != nil {
-			return
+		if pubsub.Lifecycle != nil {
+			err = pubsub.Lifecycle.Execute()
+			if err != nil {
+				return
+			}
 		}
 
 		if pubsub.HandleRecv == nil || pubsub.AdapterStop == nil || pubsub.AdapterRecv == nil || pubsub.AdapterSend == nil {

@@ -20,7 +20,7 @@ type Publisher[sMessage any] struct {
 	Identifier string
 	AppData    maputil.Data
 	Mutex      sync.RWMutex
-	Lifecycle  Lifecycle
+	Lifecycle  *Lifecycle
 
 	isStop   atomic.Bool
 	onceInit sync.Once
@@ -29,9 +29,11 @@ type Publisher[sMessage any] struct {
 func (pub *Publisher[sMessage]) init() error {
 	var err error
 	pub.onceInit.Do(func() {
-		err = pub.Lifecycle.Execute()
-		if err != nil {
-			return
+		if pub.Lifecycle != nil {
+			err = pub.Lifecycle.Execute()
+			if err != nil {
+				return
+			}
 		}
 
 		if pub.AdapterStop == nil || pub.AdapterSend == nil {
