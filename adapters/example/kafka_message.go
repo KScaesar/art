@@ -18,6 +18,7 @@ type KafkaIngress struct {
 	Topic      Topic
 	IngressMsg []byte
 
+	MsgId       string
 	ParentInfra any
 }
 
