@@ -21,7 +21,7 @@ type Subscriber[rMessage any] struct {
 	Identifier string
 	AppData    maputil.Data
 	Mutex      sync.RWMutex
-	Lifecycle  *Lifecycle
+	Lifecycle  Lifecycle
 
 	isStop   atomic.Bool
 	onceInit sync.Once
@@ -30,11 +30,9 @@ type Subscriber[rMessage any] struct {
 func (sub *Subscriber[rMessage]) init() error {
 	var err error
 	sub.onceInit.Do(func() {
-		if sub.Lifecycle != nil {
-			err = sub.Lifecycle.Execute()
-			if err != nil {
-				return
-			}
+		err = sub.Lifecycle.Execute()
+		if err != nil {
+			return
 		}
 
 		if sub.HandleRecv == nil || sub.AdapterStop == nil || sub.AdapterRecv == nil {

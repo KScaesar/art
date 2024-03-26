@@ -1,16 +1,11 @@
 package Artifex
 
-import (
-	"sync"
-)
-
 // Lifecycle define a management mechanism when obj creation and obj end.
 type Lifecycle struct {
 	spawnHandlers []func() error
 	exitHandlers  []func() error
 
 	exitNotify chan struct{}
-	onceClose  sync.Once
 }
 
 func (life *Lifecycle) AddSpawnHandler(spawnHandlers ...func() error) {
@@ -25,9 +20,13 @@ func (life *Lifecycle) NotifyExit() {
 	if life.exitNotify == nil {
 		return
 	}
-	life.onceClose.Do(func() {
+
+	select {
+	case <-life.exitNotify:
+		return
+	default:
 		close(life.exitNotify)
-	})
+	}
 }
 
 func (life *Lifecycle) Execute() error {
@@ -40,11 +39,11 @@ func (life *Lifecycle) Execute() error {
 		return nil
 	}
 
-	life.exitNotify = make(chan struct{})
-	life.onceClose = sync.Once{}
+	exitNotify := make(chan struct{})
+	life.exitNotify = exitNotify
 
 	go func() {
-		<-life.exitNotify
+		<-exitNotify
 		life.exit()
 	}()
 

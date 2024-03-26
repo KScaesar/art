@@ -72,7 +72,7 @@ func (f *KafkaFactory) CreatePubSub() (*KafkaPubSub, error) {
 		return nil
 	}
 
-	life := &Artifex.Lifecycle{}
+	life := Artifex.Lifecycle{}
 	pubsub.Lifecycle = life
 
 	pp := NewKafkaPingPong()
@@ -105,10 +105,6 @@ func (f *KafkaFactory) CreatePublisher() (*KafkaPublisher, error) {
 	}
 
 	pub.AdapterSend = func(message *KafkaEgress) error {
-		err := f.SendMux.HandleMessage(message, nil)
-		if err != nil {
-			return err
-		}
 		mu.Lock()
 		defer mu.Unlock()
 		return nil
@@ -125,7 +121,7 @@ func (f *KafkaFactory) CreatePublisher() (*KafkaPublisher, error) {
 		return nil
 	}
 
-	life := &Artifex.Lifecycle{}
+	life := Artifex.Lifecycle{}
 	pub.Lifecycle = life
 
 	return pub, nil
@@ -162,7 +158,7 @@ func (f *KafkaFactory) CreateSubscriber() (*KafkaSubscriber, error) {
 		return nil
 	}
 
-	life := &Artifex.Lifecycle{}
+	life := Artifex.Lifecycle{}
 	sub.Lifecycle = life
 
 	return sub, nil

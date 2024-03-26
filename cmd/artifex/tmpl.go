@@ -170,7 +170,7 @@ func (f *{{.FileName}}Factory) CreatePubSub() (*{{.FileName}}PubSub, error) {
 		return nil
 	}
 
-	life := &Artifex.Lifecycle{}
+	life := Artifex.Lifecycle{}
 	pubsub.Lifecycle = life
 
 	pp := New{{.FileName}}PingPong()
@@ -219,7 +219,7 @@ func (f *{{.FileName}}Factory) CreatePublisher() (*{{.FileName}}Publisher, error
 		return nil
 	}
 
-	life := &Artifex.Lifecycle{}
+	life := Artifex.Lifecycle{}
 	pub.Lifecycle = life
 
 	return pub, nil
@@ -256,7 +256,7 @@ func (f *{{.FileName}}Factory) CreateSubscriber() (*{{.FileName}}Subscriber, err
 		return nil
 	}
 
-	life := &Artifex.Lifecycle{}
+	life := Artifex.Lifecycle{}
 	sub.Lifecycle = life
 
 	return sub, nil
