@@ -18,6 +18,7 @@ type KafkaIngress struct {
 	Topic      Topic
 	IngressMsg []byte
 
+	MsgId       string
 	ParentInfra any
 }
 
@@ -59,6 +60,7 @@ type KafkaEgress struct {
 	Topic     Topic
 	EgressMsg []byte
 
+	MsgId    string
 	Metadata maputil.Data
 	AppMsg   any
 }

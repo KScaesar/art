@@ -21,6 +21,7 @@ type {{.FileName}}Ingress struct {
 	{{.Subject}} {{.Subject}}
 	IngressMsg []byte
 
+	MsgId       string
 	ParentInfra any
 }
 
@@ -62,6 +63,7 @@ type {{.FileName}}Egress struct {
 	{{.Subject}} {{.Subject}}
 	EgressMsg []byte
 
+	MsgId    string
 	Metadata maputil.Data
 	AppMsg   any
 }
