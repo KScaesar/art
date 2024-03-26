@@ -150,9 +150,13 @@ func (f *{{.FileName}}Factory) CreatePubSub() (*{{.FileName}}PubSub, error) {
 	}
 
 	pubsub.AdapterSend = func(message *{{.FileName}}Egress) error {
+		err := f.SendMux.HandleMessage(message, nil)
+		if err != nil {
+			return err
+		}
 		mu.Lock()
 		defer mu.Unlock()
-		return f.SendMux.HandleMessage(message, nil)
+		return nil
 	}
 
 	pubsub.AdapterStop = func(message *{{.FileName}}Egress) error {
@@ -201,7 +205,7 @@ func (f *{{.FileName}}Factory) CreatePublisher() (*{{.FileName}}Publisher, error
 	pub.AdapterSend = func(message *{{.FileName}}Egress) error {
 		mu.Lock()
 		defer mu.Unlock()
-		return f.SendMux.HandleMessage(message, nil)
+		return nil
 	}
 
 	pub.AdapterStop = func() error {
