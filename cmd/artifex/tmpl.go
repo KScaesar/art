@@ -135,26 +135,29 @@ func New{{.FileName}}PingPong() Artifex.PingPong {
 }
 
 type {{.FileName}}Factory struct {
-	RecvMux *{{.FileName}}IngressMux
-	SendMux *{{.FileName}}EgressMux
+	NewIngressMux func() *{{.FileName}}IngressMux
+
+	NewEgressMux  func() *{{.FileName}}EgressMux
 }
 
 //
 
-func New{{.FileName}}PubSubHub() *Artifex.Hub[{{.FileName}}PubSub] {
+type {{.FileName}}PubSub    = Artifex.PubSub[{{.FileName}}Ingress, {{.FileName}}Egress]
+type {{.FileName}}PubSubHub = Artifex.Hub[{{.FileName}}PubSub]
+
+func New{{.FileName}}PubSubHub() *{{.FileName}}PubSubHub {
 	stop := func(adapter *{{.FileName}}PubSub) error {
 		return adapter.Stop()
 	}
 	return Artifex.NewHub(stop)
 }
 
-type {{.FileName}}PubSub = Artifex.PubSub[{{.FileName}}Ingress, {{.FileName}}Egress]
-
 func (f *{{.FileName}}Factory) CreatePubSub() (*{{.FileName}}PubSub, error) {
 	var mu sync.Mutex
 
+	ingressMux := f.NewIngressMux()
 	pubsub := &{{.FileName}}PubSub{
-		HandleRecv: f.RecvMux.HandleMessage,
+		HandleRecv: ingressMux.HandleMessage,
 		Identifier: "",
 	}
 
@@ -162,8 +165,9 @@ func (f *{{.FileName}}Factory) CreatePubSub() (*{{.FileName}}PubSub, error) {
 		return New{{.FileName}}Ingress(), nil
 	}
 
+	egressMux := f.NewEgressMux()
 	pubsub.AdapterSend = func(message *{{.FileName}}Egress) error {
-		err := f.SendMux.HandleMessage(message, nil)
+		err := egressMux.HandleMessage(message, nil)
 		if err != nil {
 			return err
 		}
@@ -199,31 +203,32 @@ func (f *{{.FileName}}Factory) CreatePubSub() (*{{.FileName}}PubSub, error) {
 
 //
 
-func New{{.FileName}}PublisherHub() *Artifex.Hub[{{.FileName}}Publisher] {
+type {{.FileName}}Publisher = Artifex.Publisher[{{.FileName}}Egress]
+type {{.FileName}}PublisherHub = Artifex.Hub[{{.FileName}}Publisher]
+
+func New{{.FileName}}PublisherHub() *{{.FileName}}PublisherHub {
 	stop := func(adapter *{{.FileName}}Publisher) error {
 		return adapter.Stop()
 	}
 	return Artifex.NewHub(stop)
 }
 
-type {{.FileName}}Publisher = Artifex.Publisher[{{.FileName}}Egress]
-
 func (f *{{.FileName}}Factory) CreatePublisher() (*{{.FileName}}Publisher, error) {
-	var mu sync.Mutex
 
 	pub := &{{.FileName}}Publisher{
 		Identifier: "",
 	}
 
+	egressMux := f.NewEgressMux()
 	pub.AdapterSend = func(message *{{.FileName}}Egress) error {
-		mu.Lock()
-		defer mu.Unlock()
+		err := egressMux.HandleMessage(message, nil)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 
 	pub.AdapterStop = func() error {
-		mu.Lock()
-		defer mu.Unlock()
 		return nil
 	}
 
@@ -240,19 +245,21 @@ func (f *{{.FileName}}Factory) CreatePublisher() (*{{.FileName}}Publisher, error
 
 //
 
-func New{{.FileName}}SubscriberHub() *Artifex.Hub[{{.FileName}}Subscriber] {
+type {{.FileName}}Subscriber = Artifex.Subscriber[{{.FileName}}Ingress]
+type {{.FileName}}SubscriberHub = Artifex.Hub[{{.FileName}}Subscriber]
+
+func New{{.FileName}}SubscriberHub() *{{.FileName}}SubscriberHub {
 	stop := func(adapter *{{.FileName}}Subscriber) error {
 		return adapter.Stop()
 	}
 	return Artifex.NewHub(stop)
 }
 
-type {{.FileName}}Subscriber = Artifex.Subscriber[{{.FileName}}Ingress]
-
 func (f *{{.FileName}}Factory) CreateSubscriber() (*{{.FileName}}Subscriber, error) {
 
+	ingressMux := f.NewIngressMux()
 	sub := &{{.FileName}}Subscriber{
-		HandleRecv: f.RecvMux.HandleMessage,
+		HandleRecv: ingressMux.HandleMessage,
 		Identifier: "",
 	}
 
