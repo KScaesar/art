@@ -10,10 +10,10 @@ import (
 	"time"
 )
 
-func NewShutdown() Shutdown {
+func NewShutdown() *Shutdown {
 	notify := make(chan os.Signal, 2)
 	signal.Notify(notify, syscall.SIGINT, syscall.SIGTERM)
-	return Shutdown{
+	return &Shutdown{
 		done:      make(chan struct{}),
 		sysSignal: notify,
 		Logger:    DefaultLogger(),
