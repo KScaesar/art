@@ -10,19 +10,49 @@ import (
 	"time"
 )
 
-type Shutdown struct {
-	done   chan struct{}
-	cancel context.CancelCauseFunc
+func NewShutdown() Shutdown {
+	notify := make(chan os.Signal, 2)
+	signal.Notify(notify, syscall.SIGINT, syscall.SIGTERM)
+	return Shutdown{
+		done:      make(chan struct{}),
+		sysSignal: notify,
+		Logger:    DefaultLogger(),
+	}
 }
 
-func (s Shutdown) Stop(cause error) Shutdown {
-	s.cancel(cause)
+type Shutdown struct {
+	done      chan struct{}
+	cancel    context.CancelCauseFunc
+	sysSignal chan os.Signal
+	Logger    Logger
+
+	stopQty     int
+	names       []string
+	stopActions []func()
+}
+
+func (s *Shutdown) SetStopAction(name string, action func()) *Shutdown {
+	s.stopQty++
+	s.names = append(s.names, name)
+	s.stopActions = append(s.stopActions, action)
 	return s
 }
 
-func (s Shutdown) WaitAfter(waitSecond int) {
+func (s *Shutdown) NotifyStop(cause error) {
+	s.cancel(cause)
+}
+
+func (s *Shutdown) WaitAfter(waitSecond int) {
+	s.WaitAfterWithContext(context.Background(), waitSecond)
+}
+
+func (s *Shutdown) WaitAfterWithContext(ctx context.Context, waitSecond int) {
 	timer := time.NewTimer(time.Duration(waitSecond) * time.Second)
 	defer timer.Stop()
+
+	ctx, cancel := context.WithCancelCause(ctx)
+	s.cancel = cancel
+	go s.listen(ctx)
 
 	select {
 	case <-timer.C:
@@ -30,57 +60,45 @@ func (s Shutdown) WaitAfter(waitSecond int) {
 	}
 }
 
-func (s Shutdown) Wait() {
+func (s *Shutdown) Wait() {
+	s.WaitWithContext(context.Background())
+}
+
+func (s *Shutdown) WaitWithContext(ctx context.Context) {
+	ctx, cancel := context.WithCancelCause(ctx)
+	s.cancel = cancel
+	go s.listen(ctx)
 	<-s.done
 }
 
-func SetupShutdown(ctx1 context.Context, stopActions ...func() (serviceName string)) Shutdown {
-	notify := make(chan os.Signal, 2)
-	signal.Notify(notify, syscall.SIGINT, syscall.SIGTERM)
+func (s *Shutdown) listen(ctx context.Context) {
+	defer close(s.done)
 
-	if ctx1 == nil {
-		ctx1 = context.Background()
-	}
-	ctx2, cancel := context.WithCancelCause(ctx1)
+	select {
+	case sig := <-s.sysSignal:
+		s.Logger.Info("receive signal: %v", sig)
 
-	done := make(chan struct{})
-	logger := DefaultLogger().WithKeyValue("shutdown", GenerateRandomCode(4))
-
-	go func() {
-		defer close(done)
-
-		select {
-		case sig := <-notify:
-			logger.Info("receive signal: %v", sig)
-
-		case <-ctx2.Done():
-			err := context.Cause(ctx2)
-			if errors.Is(err, context.Canceled) {
-				logger.Info("receive context channel")
-			} else {
-				logger.Error("receive context channel: %v", err)
-			}
+	case <-ctx.Done():
+		err := context.Cause(ctx)
+		if errors.Is(err, context.Canceled) {
+			s.Logger.Info("receive go context")
+		} else {
+			s.Logger.Error("receive go context: %v", err)
 		}
-
-		total := len(stopActions)
-		logger.Info("total service count=%v, shutdown start", total)
-		wg := sync.WaitGroup{}
-		for i, stop := range stopActions {
-			number := i + 1
-			stop := stop
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				name := stop()
-				logger.Info("number %v service %v shutdown finish", number, name)
-			}()
-		}
-		wg.Wait()
-		logger.Info("shutdown finish")
-	}()
-
-	return Shutdown{
-		done:   done,
-		cancel: cancel,
 	}
+
+	s.Logger.Info("shutdown total service qty=%v", s.stopQty)
+	wg := sync.WaitGroup{}
+	for i := 0; i < s.stopQty; i++ {
+		number := i + 1
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.Logger.Info("number %v service %v shutdown start", number, s.names[number-1])
+			s.stopActions[number-1]()
+			s.Logger.Info("number %v service %v shutdown finish", number, s.names[number-1])
+		}()
+	}
+	wg.Wait()
+	s.Logger.Info("shutdown finish")
 }
