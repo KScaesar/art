@@ -49,7 +49,6 @@ func (pubsub *PubSub[rMessage, sMessage]) init() error {
 }
 
 func (pubsub *PubSub[rMessage, sMessage]) Listen() error {
-	pubsub.Mutex.Lock()
 	err := pubsub.init()
 	if err != nil {
 		return err
