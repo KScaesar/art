@@ -15,10 +15,10 @@ func NewKafkaIngress() *KafkaIngress {
 }
 
 type KafkaIngress struct {
-	Topic      Topic
+	MsgId      string
 	IngressMsg []byte
 
-	MsgId       string
+	Topic       Topic
 	ParentInfra any
 }
 
@@ -57,12 +57,23 @@ func NewKafkaEgress() *KafkaEgress {
 }
 
 type KafkaEgress struct {
-	Topic     Topic
+	msgId     string
 	EgressMsg []byte
 
-	MsgId    string
+	Topic    Topic
 	Metadata maputil.Data
 	AppMsg   any
+}
+
+func (e *KafkaEgress) MsgId() string {
+	if e.msgId == "" {
+		return ""
+	}
+	return e.msgId
+}
+
+func (e *KafkaEgress) SetMsgId(msgId string) {
+	e.msgId = msgId
 }
 
 type KafkaEgressHandleFunc = Artifex.HandleFunc[KafkaEgress]

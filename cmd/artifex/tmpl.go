@@ -18,10 +18,10 @@ func New{{.FileName}}Ingress() *{{.FileName}}Ingress {
 }
 
 type {{.FileName}}Ingress struct {
-	{{.Subject}} {{.Subject}}
+	MsgId       string
 	IngressMsg []byte
 
-	MsgId       string
+	{{.Subject}} {{.Subject}}
 	ParentInfra any
 }
 
@@ -60,12 +60,23 @@ func New{{.FileName}}Egress() *{{.FileName}}Egress {
 }
 
 type {{.FileName}}Egress struct {
-	{{.Subject}} {{.Subject}}
+	msgId     string
 	EgressMsg []byte
 
-	MsgId    string
+	{{.Subject}} {{.Subject}}
 	Metadata maputil.Data
 	AppMsg   any
+}
+
+func (e *{{.FileName}}Egress) MsgId() string {
+	if e.msgId == "" {
+		return ""
+	}
+	return e.msgId
+}
+
+func (e *{{.FileName}}Egress) SetMsgId(msgId string) {
+	e.msgId = msgId
 }
 
 type {{.FileName}}EgressHandleFunc = Artifex.HandleFunc[{{.FileName}}Egress]
