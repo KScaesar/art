@@ -197,7 +197,7 @@ func (node *trie[M]) handleMessage(subject string, cursor int, path *routeHandle
 	}
 
 	idx := cursor
-	for idx < len(subject) && subject[idx:idx+1] != node.delimiter {
+	for idx < len(subject) && subject[idx] != node.delimiter[0] {
 		idx++
 	}
 	route.Set(node.wildcardChildWord, subject[cursor:idx])
