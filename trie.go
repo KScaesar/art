@@ -1,6 +1,7 @@
 package Artifex
 
 import (
+	"errors"
 	"reflect"
 	"runtime"
 	"sort"
@@ -45,7 +46,7 @@ func (route *routeHandler[M]) register(subject string, node *trie[M]) {
 	}
 	if route.getSubject != nil {
 		if node.routeHandler.getSubject != nil {
-			panic("assign duplicated getSubject: " + subject)
+			panic(subject + ": assign duplicated getSubject")
 		}
 		node.routeHandler.getSubject = route.getSubject
 	}
@@ -54,19 +55,19 @@ func (route *routeHandler[M]) register(subject string, node *trie[M]) {
 	}
 	if route.handler != nil {
 		if node.routeHandler.handler != nil {
-			panic("assign duplicated handler: " + subject)
+			panic(subject + ": assign duplicated handler")
 		}
 		node.routeHandler.handler = route.handler
 	}
 	if route.defaultHandler != nil {
 		if node.routeHandler.defaultHandler != nil {
-			panic("assign duplicated defaultHandler: " + subject)
+			panic(subject + ": assign duplicated defaultHandler")
 		}
 		node.routeHandler.defaultHandler = route.defaultHandler
 	}
 	if route.notFoundHandler != nil {
 		if node.routeHandler.notFoundHandler != nil {
-			panic("assign duplicated notFoundHandler: " + subject)
+			panic(subject + ": assign duplicated notFoundHandler")
 		}
 		node.routeHandler.notFoundHandler = route.notFoundHandler
 	}
@@ -81,17 +82,21 @@ func (handler *routeHandler[M]) reset() {
 	handler.notFoundHandler = nil
 }
 
-type trie[M any] struct {
-	child       map[string]*trie[M]
-	part        string
-	fullSubject string
-	routeHandler[M]
+func newTrie[M any](delimiter string) *trie[M] {
+	return &trie[M]{
+		staticChild: make(map[string]*trie[M]),
+		delimiter:   delimiter,
+	}
 }
 
-func newTrie[M any]() *trie[M] {
-	return &trie[M]{
-		child: make(map[string]*trie[M]),
-	}
+type trie[M any] struct {
+	staticChild       map[string]*trie[M]
+	wildcardChildWord string
+	wildcardChild     *trie[M]
+
+	delimiter   string
+	fullSubject string
+	routeHandler[M]
 }
 
 func (node *trie[M]) addRoute(subject string, cursor int, handler *routeHandler[M]) *trie[M] {
@@ -100,20 +105,44 @@ func (node *trie[M]) addRoute(subject string, cursor int, handler *routeHandler[
 		return node
 	}
 
-	part := string(subject[cursor])
-	next, exist := node.child[part]
-	if !exist {
-		next = newTrie[M]()
-		next.part = part
-		next.fullSubject = node.fullSubject + part
-		node.child[part] = next
+	char := subject[cursor]
+	if char != '{' {
+		word := string(char)
+		next, exist := node.staticChild[word]
+		if !exist {
+			next = newTrie[M](node.delimiter)
+			next.fullSubject = node.fullSubject + word
+			node.staticChild[word] = next
+		}
+		return next.addRoute(subject, cursor+1, handler)
 	}
 
-	return next.addRoute(subject, cursor+1, handler)
+	if node.delimiter == "" {
+		panic(subject + ": route delimiter is empty: not support wildcard")
+	}
+
+	idx := cursor
+	for idx < len(subject) && subject[idx] != '}' {
+		idx++
+	}
+
+	if subject[idx] != '}' {
+		panic(subject + ": lack wildcard '}'")
+	}
+
+	if node.wildcardChild != nil {
+		panic(subject + ": assign duplicated wildcard")
+	}
+
+	word := subject[cursor+1 : idx]
+	next := newTrie[M](node.delimiter)
+	next.fullSubject = node.fullSubject + subject[cursor:idx+1]
+	node.wildcardChildWord = word
+	node.wildcardChild = next
+	return next.addRoute(subject, idx+1, handler)
 }
 
 func (node *trie[M]) handleMessage(subject string, cursor int, path *routeHandler[M], msg *M, route *RouteParam) (err error) {
-Loop:
 	path.collect(node)
 
 	if node.transforms != nil {
@@ -139,26 +168,40 @@ Loop:
 		if path.notFoundHandler != nil {
 			return path.notFoundHandler(msg, route)
 		}
-		return ErrorWrapWithMessage(ErrNotFound, "mux subject")
+		return ErrNotFoundSubjectOfMux
 	}
 
 	word := string(subject[cursor])
-	next, exist := node.child[word]
+	next, exist := node.staticChild[word]
 	if exist {
-		node = next
-		cursor++
-		goto Loop
+		err := next.handleMessage(subject, cursor+1, path, msg, route)
+		if err == nil {
+			return nil
+		}
+
+		if !errors.Is(err, ErrNotFoundSubjectOfMux) {
+			return err
+		}
 	}
 
-	if path.defaultHandler != nil {
-		return LinkMiddlewares(path.defaultHandler, path.middlewares...)(msg, route)
+	if node.wildcardChild == nil {
+		if path.defaultHandler != nil {
+			return LinkMiddlewares(path.defaultHandler, path.middlewares...)(msg, route)
+		}
+
+		if path.notFoundHandler != nil {
+			return path.notFoundHandler(msg, route)
+		}
+
+		return ErrorWrapWithMessage(ErrNotFoundSubjectOfMux, "mux subject")
 	}
 
-	if path.notFoundHandler != nil {
-		return path.notFoundHandler(msg, route)
+	idx := cursor
+	for idx < len(subject) && subject[idx:idx+1] != node.delimiter {
+		idx++
 	}
-
-	return ErrorWrapWithMessage(ErrNotFound, "mux subject")
+	route.Set(node.wildcardChildWord, subject[cursor:idx])
+	return node.wildcardChild.handleMessage(subject, idx, path, msg, route)
 }
 
 func (node *trie[M]) transform(message *M, route *RouteParam) error {
@@ -195,7 +238,7 @@ func (node *trie[M]) _subjects_(r map[string]string) {
 	if node.handler != nil {
 		r[node.fullSubject] = functionName(node.handler)
 	}
-	for _, next := range node.child {
+	for _, next := range node.staticChild {
 		next._subjects_(r)
 	}
 }
