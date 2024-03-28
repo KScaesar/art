@@ -143,9 +143,6 @@ func (node *trie[M]) handleMessage(subject string, cursor int, path *routeHandle
 	idx := cursor
 	current := node
 
-	var wildcardStart int
-	var wildcardParent *trie[M]
-
 	path.collect(current)
 	if current.transforms != nil {
 		idx = 0
@@ -159,10 +156,20 @@ func (node *trie[M]) handleMessage(subject string, cursor int, path *routeHandle
 		}
 	}
 
+	var wildcardStart int
+	var wildcardParent *trie[M]
+	var wildcardPath *routeHandler[M]
+
 	for idx < len(subject) {
 		if current.wildcardChild != nil {
 			wildcardStart = idx
 			wildcardParent = current
+			wildcardPath = &routeHandler[M]{
+				getSubject:      path.getSubject,
+				middlewares:     append([]Middleware[M]{}, path.middlewares...),
+				defaultHandler:  path.defaultHandler,
+				notFoundHandler: path.notFoundHandler,
+			}
 		}
 
 		child, exist := current.staticChild[subject[idx]]
@@ -209,7 +216,7 @@ func (node *trie[M]) handleMessage(subject string, cursor int, path *routeHandle
 	}
 
 	route.Set(wildcardParent.wildcardChildWord, subject[wildcardStart:wildcardFinish])
-	return wildcardParent.wildcardChild.handleMessage(subject, wildcardFinish, path, msg, route)
+	return wildcardParent.wildcardChild.handleMessage(subject, wildcardFinish, wildcardPath, msg, route)
 }
 
 func (node *trie[M]) transform(message *M, route *RouteParam) error {
