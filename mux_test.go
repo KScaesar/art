@@ -189,21 +189,6 @@ func TestMessageMux_Transform(t *testing.T) {
 		}
 	}
 
-	messages := []*testcaseTransformMessage{
-		{2, -1, "msg 2/"},
-		{3, 1, "msg 3/1/"},
-		{3, 5, "1"},
-		{4, 2, "msg 4/2/"},
-	}
-
-	for _, message := range messages {
-		err := mux.HandleMessage(message, nil)
-		if err != nil {
-			t.Errorf("%#v :unexpected error: got %v", message, err)
-			break
-		}
-	}
-
 	expectedRecords := []string{
 		"msg 2/",
 		"msg 3/1/",
@@ -211,9 +196,22 @@ func TestMessageMux_Transform(t *testing.T) {
 		"_msg 4/2/_",
 	}
 
-	for i, gotRecord := range recorder {
-		if gotRecord != expectedRecords[i] {
-			t.Errorf("unexpected output: got %s, want %s", gotRecord, expectedRecords[i])
+	messages := []*testcaseTransformMessage{
+		{2, -1, "msg 2/"},
+		{3, 1, "msg 3/1/"},
+		{3, 5, "1"},
+		{4, 2, "msg 4/2/"},
+	}
+
+	for i, message := range messages {
+		err := mux.HandleMessage(message, nil)
+		if err != nil {
+			t.Errorf("%#v :unexpected error: got %v", message, err)
+			break
+		}
+		if recorder[i] != expectedRecords[i] {
+			t.Errorf("%#v :unexpected output: got %s, want %s", message, recorder[i], expectedRecords[i])
+			break
 		}
 	}
 }
@@ -436,7 +434,24 @@ func TestMux_RouteParam_when_wildcard_subject(t *testing.T) {
 			return nil
 		})
 
-	expected := []string{
+	expectedSubjects := []string{
+		"/get/test/abc/",
+		"/get/{param}/abc/",
+		"dev/book/{book_id}",
+		"dev/ebook/{book_id}",
+		"order/kind/game",
+		"order/{user_id}",
+		"{kind}/book/{book_id}",
+	}
+
+	gotSubjects := mux.Subjects()
+	for i, gotSubject := range gotSubjects {
+		if gotSubject != expectedSubjects[i] {
+			t.Errorf("unexpected output: got %s, want %s", gotSubject, expectedSubjects[i])
+		}
+	}
+
+	expectedResponse := []string{
 		"order/kind/game",
 		"qaz1017",
 		"/get/test/abc/",
@@ -458,17 +473,15 @@ func TestMux_RouteParam_when_wildcard_subject(t *testing.T) {
 		{subject: "dev/ebook/1492052205"},
 	}
 
-	for _, message := range messages {
+	for i, message := range messages {
 		err := mux.HandleMessage(message, nil)
 		if err != nil {
 			t.Errorf("%v: unexpected error: got %v", message.subject, err)
 			break
 		}
-	}
-
-	for i := 0; i < len(actual); i++ {
-		if actual[i] != expected[i] {
-			t.Errorf("unexpected output: got %s, want %s", actual[i], expected[i])
+		if actual[i] != expectedResponse[i] {
+			t.Errorf("%v: unexpected output: got %s, want %s", message.subject, actual[i], expectedResponse[i])
+			break
 		}
 	}
 }
