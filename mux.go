@@ -2,7 +2,6 @@ package Artifex
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/gookit/goutil/maputil"
 	"golang.org/x/exp/constraints"
@@ -11,11 +10,9 @@ import (
 // RouteParam are used to capture values from subject.
 // These parameters represent resources or identifiers.
 //
-// TODO: not implement
-//
 // Example:
 //
-//	define subject = "/users/:id"
+//	define subject = "/users/{id}"
 //	ingress message subject = /users/1017
 //
 //	route:
@@ -76,22 +73,27 @@ func LinkMiddlewares[Message any](handler HandleFunc[Message], middlewares ...Mi
 
 type NewSubjectFunc[Message any] func(*Message) (string, error)
 
-func NewMux[Subject constraints.Ordered, Message any](getSubject NewSubjectFunc[Message]) *Mux[Subject, Message] {
+func NewMux[Subject constraints.Ordered, Message any](routeDelimiter string, getSubject NewSubjectFunc[Message]) *Mux[Subject, Message] {
 	handler := &routeHandler[Message]{
 		getSubject: getSubject,
 	}
 
-	node := newTrie[Message]()
+	node := newTrie[Message](routeDelimiter)
+
 	node.addRoute("", 0, handler)
 
 	return &Mux[Subject, Message]{
-		node:            node,
-		delimiter:       "",
-		delimiterAtLeft: true,
-		isCleanSubject:  false,
-		errorHandler: func(_ *Message, _ *RouteParam, err error) error {
+		node: node,
+		errorAndRecover: func(_ *Message, _ *RouteParam, err error) error {
+			if r := recover(); r != nil {
+				return fmt.Errorf("%v", r)
+			}
 			return err
 		},
+
+		enableAutoDelimiter: false,
+		routeDelimiter:      routeDelimiter,
+		delimiterAtLeft:     true,
 	}
 }
 
@@ -101,13 +103,14 @@ func NewMux[Subject constraints.Ordered, Message any](getSubject NewSubjectFunc[
 // Message represents a high-level abstraction data structure containing metadata (e.g. header) + body
 type Mux[Subject constraints.Ordered, Message any] struct {
 	node            *trie[Message]
-	delimiter       string
-	delimiterAtLeft bool
-	isCleanSubject  bool
-	errorHandler    func(*Message, *RouteParam, error) error
+	errorAndRecover func(*Message, *RouteParam, error) error
+
+	enableAutoDelimiter bool
+	delimiterAtLeft     bool
+	routeDelimiter      string
 }
 
-// HandleMessage to handle various messages coming from the adapter
+// HandleMessage to handle various messages
 //
 // - route parameter can nil
 func (mux *Mux[Subject, Message]) HandleMessage(message *Message, route *RouteParam) (err error) {
@@ -120,7 +123,7 @@ func (mux *Mux[Subject, Message]) HandleMessage(message *Message, route *RoutePa
 	}
 
 	defer func() {
-		err = mux.errorHandler(message, route, err)
+		err = mux.errorAndRecover(message, route, err)
 	}()
 
 	if mux.node.transforms != nil {
@@ -141,6 +144,29 @@ func (mux *Mux[Subject, Message]) HandleMessage(message *Message, route *RoutePa
 	return mux.node.handleMessage(subject, 0, path, message, route)
 }
 
+func (mux *Mux[Subject, Message]) Handler(s Subject, h HandleFunc[Message]) *Mux[Subject, Message] {
+	subject := mux.calcuSubject(s)
+	handler := &routeHandler[Message]{
+		handler: h,
+	}
+	mux.node.addRoute(subject, 0, handler)
+	return mux
+}
+
+func (mux *Mux[Subject, Message]) Group(s Subject) *Mux[Subject, Message] {
+	groupName := mux.calcuSubject(s)
+	handler := &routeHandler[Message]{}
+	groupNode := mux.node.addRoute(groupName, 0, handler)
+	return &Mux[Subject, Message]{
+		node:            groupNode,
+		errorAndRecover: mux.errorAndRecover,
+
+		enableAutoDelimiter: mux.enableAutoDelimiter,
+		delimiterAtLeft:     mux.delimiterAtLeft,
+		routeDelimiter:      mux.routeDelimiter,
+	}
+}
+
 func (mux *Mux[Subject, Message]) Transform(transforms ...HandleFunc[Message]) *Mux[Subject, Message] {
 	handler := &routeHandler[Message]{
 		transforms: transforms,
@@ -149,7 +175,7 @@ func (mux *Mux[Subject, Message]) Transform(transforms ...HandleFunc[Message]) *
 	return mux
 }
 
-func (mux *Mux[Subject, Message]) SubjectFunc(getSubject NewSubjectFunc[Message]) *Mux[Subject, Message] {
+func (mux *Mux[Subject, Message]) SetSubjectFunc(getSubject NewSubjectFunc[Message]) *Mux[Subject, Message] {
 	handler := &routeHandler[Message]{
 		getSubject: getSubject,
 	}
@@ -183,21 +209,6 @@ func (mux *Mux[Subject, Message]) PostMiddleware(handleFuncs ...HandleFunc[Messa
 	return mux
 }
 
-func (mux *Mux[Subject, Message]) Handler(s Subject, h HandleFunc[Message]) *Mux[Subject, Message] {
-	var subject string
-	if mux.delimiterAtLeft {
-		subject = mux.delimiter + cleanSubject(s, mux.isCleanSubject)
-	} else {
-		subject = cleanSubject(s, mux.isCleanSubject) + mux.delimiter
-	}
-
-	handler := &routeHandler[Message]{
-		handler: h,
-	}
-	mux.node.addRoute(subject, 0, handler)
-	return mux
-}
-
 func (mux *Mux[Subject, Message]) SetDefaultHandler(h HandleFunc[Message]) *Mux[Subject, Message] {
 	handler := &routeHandler[Message]{
 		defaultHandler: h,
@@ -214,32 +225,8 @@ func (mux *Mux[Subject, Message]) SetNotFoundHandler(h HandleFunc[Message]) *Mux
 	return mux
 }
 
-func (mux *Mux[Subject, Message]) SetErrorHandler(errorHandler func(*Message, *RouteParam, error) error) *Mux[Subject, Message] {
-	mux.errorHandler = errorHandler
-	return mux
-}
-
-func (mux *Mux[Subject, Message]) Group(s Subject) *Mux[Subject, Message] {
-	var groupName string
-	if mux.delimiterAtLeft {
-		groupName = mux.delimiter + cleanSubject(s, mux.isCleanSubject)
-	} else {
-		groupName = cleanSubject(s, mux.isCleanSubject) + mux.delimiter
-	}
-
-	handler := &routeHandler[Message]{}
-	groupNode := mux.node.addRoute(groupName, 0, handler)
-	return &Mux[Subject, Message]{
-		node:            groupNode,
-		delimiter:       mux.delimiter,
-		delimiterAtLeft: mux.delimiterAtLeft,
-		isCleanSubject:  mux.isCleanSubject,
-	}
-}
-
-func (mux *Mux[Subject, Message]) SetDelimiter(delimiter byte, atLeft bool) *Mux[Subject, Message] {
-	mux.delimiter = string(delimiter)
-	mux.delimiterAtLeft = atLeft
+func (mux *Mux[Subject, Message]) SetErrorAndRecoverHandler(errorAndRecover func(*Message, *RouteParam, error) error) *Mux[Subject, Message] {
+	mux.errorAndRecover = errorAndRecover
 	return mux
 }
 
@@ -248,25 +235,18 @@ func (mux *Mux[Subject, Message]) Subjects() (result []string) {
 	return subjects
 }
 
-func (mux *Mux[Subject, Message]) SetCleanSubject(cleanSubject bool) *Mux[Subject, Message] {
-	mux.isCleanSubject = cleanSubject
-	return mux
+func (mux *Mux[Subject, Message]) calcuSubject(s Subject) string {
+	if !mux.enableAutoDelimiter {
+		return fmt.Sprintf("%v", s)
+	}
+	if mux.delimiterAtLeft {
+		return mux.routeDelimiter + fmt.Sprintf("%v", s)
+	}
+	return fmt.Sprintf("%v", s) + mux.routeDelimiter
 }
 
-func cleanSubject[Subject constraints.Ordered](s Subject, isClean bool) string {
-	actions := []func(s string) string{
-		strings.TrimSpace,
-		func(s string) string { return strings.Trim(s, `/.\`) },
-		strings.TrimSpace,
-	}
-
-	subject := fmt.Sprintf("%v", s)
-	if !isClean {
-		return subject
-	}
-
-	for _, action := range actions {
-		subject = action(subject)
-	}
-	return subject
+func (mux *Mux[Subject, Message]) SetAutoDelimiter(atLeft bool) *Mux[Subject, Message] {
+	mux.enableAutoDelimiter = true
+	mux.delimiterAtLeft = atLeft
+	return mux
 }

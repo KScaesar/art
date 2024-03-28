@@ -21,7 +21,7 @@ func TestMessageMux_HandleMessage(t *testing.T) {
 		return message.channel, nil
 	}
 
-	mux := NewMux[string, redisMessage](getSubject).
+	mux := NewMux[string, redisMessage]("", getSubject).
 		Handler("hello", func(dto *redisMessage, route *RouteParam) error {
 			fmt.Fprintf(recorder, "topic=%v, payload=%v", dto.channel, string(dto.body))
 			return nil
@@ -149,8 +149,7 @@ func TestMessageMux_Transform(t *testing.T) {
 	newSubject := func(msg *testcaseTransformMessage) (string, error) {
 		return "/" + strconv.Itoa(msg.level0TypeId), nil
 	}
-	mux := NewMux[int, testcaseTransformMessage](newSubject).
-		SetDelimiter('/', true)
+	mux := NewMux[int, testcaseTransformMessage]("/", newSubject).SetAutoDelimiter(true)
 
 	mux.Handler(2, record)
 
@@ -200,7 +199,7 @@ func TestMessageMux_Transform(t *testing.T) {
 	for _, message := range messages {
 		err := mux.HandleMessage(message, nil)
 		if err != nil {
-			t.Errorf("unexpected error: got %v", err)
+			t.Errorf("%#v :unexpected error: got %v", message, err)
 			break
 		}
 	}
@@ -260,54 +259,52 @@ func TestMessageMux_Group(t *testing.T) {
 	}
 
 	newSubject := func(msg *testcaseGroupMessage) (string, error) { return string(msg.subject), nil }
-	mux := NewMux[Subject, testcaseGroupMessage](newSubject).
-		SetCleanSubject(true).
-		SetDelimiter('/', false)
+	mux := NewMux[Subject, testcaseGroupMessage]("/", newSubject)
 
 	mux.PreMiddleware(func(message *testcaseGroupMessage, route *RouteParam) error {
 		message.body = "*" + message.body + "*"
 		return nil
 	})
 
-	mux.Handler("topic1", record)
+	mux.Handler("/topic1", record)
 
 	mux.Group("/topic2").
 		Handler("/orders", record).
 		Handler("/users", record)
 
-	mux.Group("topic3/").
-		Handler("created/orders/", record).
-		Handler("login/users/", record).
-		Handler("upgraded.users/", record)
+	mux.Group("/topic3").
+		Handler("/created/orders", record).
+		Handler("/login/users", record).
+		Handler("/upgraded.users", record)
 
-	topic4 := mux.Group("/topic4/").
-		Handler("game1", record).
-		Handler("/game2/kindA/", record)
-	topic4_game3 := topic4.Group("game3").
+	topic4 := mux.Group("/topic4").
+		Handler("/game1", record).
+		Handler("/game2/kindA", record)
+	topic4_game3 := topic4.Group("/game3").
 		PreMiddleware(func(message *testcaseGroupMessage, route *RouteParam) error {
 			message.body = "&" + message.body + "&"
 			return nil
 		}).
-		Handler("kindX", record).
-		Handler("kindY", record)
-	topic4_game3.Group("v2").
-		Handler("kindX", record)
-	topic4_game3.Group("v3").
-		Handler("kindY", record)
+		Handler("/kindX", record).
+		Handler("/kindY", record)
+	topic4_game3.Group("/v2").
+		Handler("/kindX", record)
+	topic4_game3.Group("/v3").
+		Handler("/kindY", record)
 
-	mux.Handler("topic5/game1/", record)
-	mux.Handler("topic5/game2/kindA", record)
-	mux.Handler("//topic5/game3/kindX/", record)
-	mux.Handler("topic5/game3/kindY/", record)
-	mux.Handler("topic5/game3/v2/kindX//", record)
-	mux.Handler("topic5/game3/v3/kindY", record)
+	mux.Handler("/topic5/game1", record)
+	mux.Handler("/topic5/game2/kindA", record)
+	mux.Handler("/topic5/game3/kindX", record)
+	mux.Handler("/topic5/game3/kindY", record)
+	mux.Handler("/topic5/game3/v2/kindX", record)
+	mux.Handler("/topic5/game3/v3/kindY", record)
 
 	expectedSubjects := []string{
-		"topic1/",
-		"topic2/orders/", "topic2/users/",
-		"topic3/created/orders/", "topic3/login/users/", "topic3/upgraded.users/",
-		"topic4/game1/", "topic4/game2/kindA/", "topic4/game3/kindX/", "topic4/game3/kindY/", "topic4/game3/v2/kindX/", "topic4/game3/v3/kindY/",
-		"topic5/game1/", "topic5/game2/kindA/", "topic5/game3/kindX/", "topic5/game3/kindY/", "topic5/game3/v2/kindX/", "topic5/game3/v3/kindY/",
+		"/topic1",
+		"/topic2/orders", "/topic2/users",
+		"/topic3/created/orders", "/topic3/login/users", "/topic3/upgraded.users",
+		"/topic4/game1", "/topic4/game2/kindA", "/topic4/game3/kindX", "/topic4/game3/kindY", "/topic4/game3/v2/kindX", "/topic4/game3/v3/kindY",
+		"/topic5/game1", "/topic5/game2/kindA", "/topic5/game3/kindX", "/topic5/game3/kindY", "/topic5/game3/v2/kindX", "/topic5/game3/v3/kindY",
 	}
 
 	gotSubjects := mux.Subjects()
@@ -318,23 +315,23 @@ func TestMessageMux_Group(t *testing.T) {
 	}
 
 	subjects := []Subject{
-		"topic3/upgraded.users/",
-		"topic4/game3/kindX/",
-		"topic5/game3/kindY/",
-		"topic4/game3/kindY/",
-		"topic2/users/",
-		"topic3/created/orders/",
-		"topic5/game3/v2/kindX/",
-		"topic5/game2/kindA/",
-		"topic3/login/users/",
-		"topic1/",
-		"topic4/game3/v3/kindY/",
-		"topic5/game3/kindX/",
-		"topic5/game1/",
-		"topic4/game1/",
-		"topic4/game3/v2/kindX/",
-		"topic2/orders/",
-		"topic4/game2/kindA/",
+		"/topic3/upgraded.users",
+		"/topic4/game3/kindX",
+		"/topic5/game3/kindY",
+		"/topic4/game3/kindY",
+		"/topic2/users",
+		"/topic3/created/orders",
+		"/topic5/game3/v2/kindX",
+		"/topic5/game2/kindA",
+		"/topic3/login/users",
+		"/topic1",
+		"/topic4/game3/v3/kindY",
+		"/topic5/game3/kindX",
+		"/topic5/game1",
+		"/topic4/game1",
+		"/topic4/game3/v2/kindX",
+		"/topic2/orders",
+		"/topic4/game2/kindA",
 	}
 
 	for _, subject := range subjects {
@@ -350,23 +347,23 @@ func TestMessageMux_Group(t *testing.T) {
 	}
 
 	expectedRecords := []string{
-		"*topic3/upgraded.users/*",
-		"&*topic4/game3/kindX/*&",
-		"*topic5/game3/kindY/*",
-		"&*topic4/game3/kindY/*&",
-		"*topic2/users/*",
-		"*topic3/created/orders/*",
-		"*topic5/game3/v2/kindX/*",
-		"*topic5/game2/kindA/*",
-		"*topic3/login/users/*",
-		"*topic1/*",
-		"&*topic4/game3/v3/kindY/*&",
-		"*topic5/game3/kindX/*",
-		"*topic5/game1/*",
-		"*topic4/game1/*",
-		"&*topic4/game3/v2/kindX/*&",
-		"*topic2/orders/*",
-		"*topic4/game2/kindA/*",
+		"*/topic3/upgraded.users*",
+		"&*/topic4/game3/kindX*&",
+		"*/topic5/game3/kindY*",
+		"&*/topic4/game3/kindY*&",
+		"*/topic2/users*",
+		"*/topic3/created/orders*",
+		"*/topic5/game3/v2/kindX*",
+		"*/topic5/game2/kindA*",
+		"*/topic3/login/users*",
+		"*/topic1*",
+		"&*/topic4/game3/v3/kindY*&",
+		"*/topic5/game3/kindX*",
+		"*/topic5/game1*",
+		"*/topic4/game1*",
+		"&*/topic4/game3/v2/kindX*&",
+		"*/topic2/orders*",
+		"*/topic4/game2/kindA*",
 	}
 
 	for i, gotRecord := range recorder {
@@ -385,7 +382,7 @@ func TestMux_SetDefaultHandler(t *testing.T) {
 
 	isCalled := false
 	newSubject := func(msg *testcaseDefaultHandler) (string, error) { return string(msg.subject), nil }
-	mux := NewMux[Subject, testcaseDefaultHandler](newSubject).
+	mux := NewMux[Subject, testcaseDefaultHandler]("/", newSubject).
 		SetDefaultHandler(func(message *testcaseDefaultHandler, route *RouteParam) error {
 			isCalled = true
 			return nil
@@ -395,5 +392,83 @@ func TestMux_SetDefaultHandler(t *testing.T) {
 	err := mux.HandleMessage(msg, nil)
 	if err != nil || isCalled != true {
 		t.Errorf("unexpected error: got %v", err)
+	}
+}
+
+func TestMux_RouteParam_when_wildcard_subject(t *testing.T) {
+	type Subject = string
+	type testcaseRouteParam struct {
+		subject Subject
+		body    string
+	}
+
+	newSubject := func(msg *testcaseRouteParam) (string, error) { return string(msg.subject), nil }
+	mux := NewMux[Subject, testcaseRouteParam]("/", newSubject)
+
+	actual := []string{}
+	mux.
+		Handler("order/kind/game", func(message *testcaseRouteParam, route *RouteParam) error {
+			actual = append(actual, message.subject)
+			return nil
+		}).
+		Handler("order/{user_id}", func(message *testcaseRouteParam, route *RouteParam) error {
+			actual = append(actual, route.Str("user_id"))
+			return nil
+		}).
+		Handler("/get/test/abc/", func(message *testcaseRouteParam, route *RouteParam) error {
+			actual = append(actual, message.subject)
+			return nil
+		}).
+		Handler("/get/{param}/abc/", func(message *testcaseRouteParam, route *RouteParam) error {
+			actual = append(actual, route.Str("param"))
+			return nil
+		}).
+		Handler("{kind}/book/{book_id}", func(message *testcaseRouteParam, route *RouteParam) error {
+			actual = append(actual, route.Str("kind")+" "+route.Str("book_id"))
+			return nil
+		}).
+		Handler("dev/book/{book_id}", func(message *testcaseRouteParam, route *RouteParam) error {
+			actual = append(actual, "dev book "+route.Str("book_id"))
+			return nil
+		}).
+		Handler("dev/ebook/{book_id}", func(message *testcaseRouteParam, route *RouteParam) error {
+			actual = append(actual, "dev ebook "+route.Str("book_id"))
+			return nil
+		})
+
+	expected := []string{
+		"order/kind/game",
+		"qaz1017",
+		"/get/test/abc/",
+		"xyz",
+		"tt",
+		"devops 6263334908",
+		"dev book 1449373321",
+		"dev ebook 1492052205",
+	}
+
+	messages := []*testcaseRouteParam{
+		{subject: "order/kind/game"},
+		{subject: "order/qaz1017"},
+		{subject: "/get/test/abc/"},
+		{subject: "/get/xyz/abc/"},
+		{subject: "/get/tt/abc/"},
+		{subject: "devops/book/6263334908"},
+		{subject: "dev/book/1449373321"},
+		{subject: "dev/ebook/1492052205"},
+	}
+
+	for _, message := range messages {
+		err := mux.HandleMessage(message, nil)
+		if err != nil {
+			t.Errorf("%v: unexpected error: got %v", message.subject, err)
+			break
+		}
+	}
+
+	for i := 0; i < len(actual); i++ {
+		if actual[i] != expected[i] {
+			t.Errorf("unexpected output: got %s, want %s", actual[i], expected[i])
+		}
 	}
 }

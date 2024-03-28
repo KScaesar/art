@@ -5,7 +5,7 @@ import (
 )
 
 func Test_trie_endpoint(t *testing.T) {
-	node := newTrie[string]()
+	node := newTrie[string]("")
 	handler1 := func(_ *string, _ *RouteParam) error {
 		return nil
 	}
