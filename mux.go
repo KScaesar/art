@@ -1,7 +1,7 @@
 package Artifex
 
 import (
-	"fmt"
+	"runtime/debug"
 	"strconv"
 
 	"github.com/gookit/goutil/maputil"
@@ -83,13 +83,8 @@ func NewMux[Message any](routeDelimiter string, getSubject NewSubjectFunc[Messag
 	}
 
 	mux := &Mux[Message]{
-		node: newTrie[Message](routeDelimiter),
-		errorAndRecover: func(_ *Message, _ *RouteParam, err error) error {
-			if r := recover(); r != nil {
-				return fmt.Errorf("%v", r)
-			}
-			return err
-		},
+		node:           newTrie[Message](routeDelimiter),
+		errorHandler:   func(_ *Message, _ *RouteParam, err error) error { return err },
 		routeDelimiter: routeDelimiter,
 	}
 
@@ -102,9 +97,9 @@ func NewMux[Message any](routeDelimiter string, getSubject NewSubjectFunc[Messag
 //
 // Message represents a high-level abstraction data structure containing metadata (e.g. header) + body
 type Mux[Message any] struct {
-	node            *trie[Message]
-	errorAndRecover func(*Message, *RouteParam, error) error
-	routeDelimiter  string
+	node           *trie[Message]
+	errorHandler   func(*Message, *RouteParam, error) error
+	routeDelimiter string
 }
 
 // HandleMessage to handle various messages
@@ -120,7 +115,7 @@ func (mux *Mux[Message]) HandleMessage(message *Message, route *RouteParam) (err
 	}
 
 	defer func() {
-		err = mux.errorAndRecover(message, route, err)
+		err = mux.errorHandler(message, route, err)
 	}()
 
 	if mux.node.transforms != nil {
@@ -157,9 +152,9 @@ func (mux *Mux[Message]) Group(groupName string) *Mux[Message] {
 	handler := &routeHandler[Message]{}
 	groupNode := mux.node.addRoute(groupName, 0, handler)
 	return &Mux[Message]{
-		node:            groupNode,
-		errorAndRecover: mux.errorAndRecover,
-		routeDelimiter:  mux.routeDelimiter,
+		node:           groupNode,
+		errorHandler:   mux.errorHandler,
+		routeDelimiter: mux.routeDelimiter,
 	}
 }
 
@@ -225,11 +220,30 @@ func (mux *Mux[Message]) SetNotFoundHandler(h HandleFunc[Message]) *Mux[Message]
 	return mux
 }
 
-func (mux *Mux[Message]) SetErrorAndRecoverHandler(errorAndRecover func(*Message, *RouteParam, error) error) *Mux[Message] {
-	mux.errorAndRecover = errorAndRecover
+func (mux *Mux[Message]) SetErrorHandler(errorHandler func(*Message, *RouteParam, error) error) *Mux[Message] {
+	mux.errorHandler = errorHandler
 	return mux
 }
 
 func (mux *Mux[Message]) GetSubjectAndHandler() (subjects, functions []string) {
 	return mux.node.endpoint()
+}
+
+func (mux *Mux[Message]) EnableRecover() *Mux[Message] {
+	logger := DefaultLogger()
+
+	return mux.Middleware(func(next HandleFunc[Message]) HandleFunc[Message] {
+		return func(message *Message, route *RouteParam) error {
+
+			defer func() {
+				if r := recover(); r != nil {
+					subject, _ := mux.node.getSubject(message)
+					logger.Error("%q recovered from panic: %v\n", subject, r)
+					logger.Error("call stack: %v", string(debug.Stack()))
+				}
+			}()
+
+			return next(message, route)
+		}
+	})
 }

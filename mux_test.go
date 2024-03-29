@@ -508,3 +508,32 @@ func TestMux_RouteParam_when_wildcard_subject(t *testing.T) {
 		}
 	}
 }
+
+func TestMessageMux_EnableRecover(t *testing.T) {
+	type testcaseEnableRecover struct {
+		subject string
+		body    string
+	}
+
+	newSubject := func(msg *testcaseEnableRecover) (string, error) {
+		return msg.subject, nil
+	}
+
+	SetDefaultLogger(SilentLogger())
+	mux := NewMux[testcaseEnableRecover]("/", newSubject).
+		EnableRecover().
+		SetDefaultHandler(func(_ *testcaseEnableRecover, _ *RouteParam) error {
+			panic("testcase")
+			return nil
+		})
+
+	message := &testcaseEnableRecover{
+		subject: "create_order",
+		body:    "",
+	}
+
+	err := mux.HandleMessage(message, nil)
+	if err != nil {
+		t.Errorf("%#v :unexpected error: got %v", message, err)
+	}
+}
