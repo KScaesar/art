@@ -6,54 +6,15 @@ import (
 	"time"
 )
 
-type PingPong struct {
-	IsSendPingWaitPong bool
+func WaitPingSendPong(waitPing <-chan error, sendPong func() error, isStop func() bool, waitPingSecond int) error {
+	waitPingTime := time.Duration(waitPingSecond) * time.Second
 
-	SendFunc   func() error
-	WaitNotify chan error
-
-	// When SendPingWaitPong sends a ping message and waits for a corresponding pong message.
-	// SendPeriod = WaitSecond / 2
-	//
-	// When WaitPingSendPong waits for a ping message and response a corresponding pong message.
-	// SendPeriod = WaitSecond
-	WaitSecond int // Must,  when enable PingPong
-}
-
-func (pp PingPong) Execute(allowStop func() bool) error {
-	err := pp.validate()
-	if err != nil {
-		return err
-	}
-	second := pp.WaitSecond
-	if second <= 0 {
-		second = 30
-	}
-	if pp.IsSendPingWaitPong {
-		return SendPingWaitPong(pp.SendFunc, pp.WaitNotify, allowStop, second)
-	}
-	return WaitPingSendPong(pp.WaitNotify, pp.SendFunc, allowStop, second)
-}
-
-func (pp PingPong) validate() error {
-	if pp.SendFunc == nil {
-		return ErrorWrapWithMessage(ErrInvalidParameter, "pingpong send is nil")
-	}
-	if pp.WaitNotify == nil {
-		return ErrorWrapWithMessage(ErrInvalidParameter, "pingpong wait is nil")
-	}
-	return nil
-}
-
-func WaitPingSendPong(waitPing <-chan error, sendPong func() error, isStop func() bool, pingWaitSecond int) error {
-	pingWaitTime := time.Duration(pingWaitSecond) * time.Second
-
-	timer := time.NewTimer(pingWaitTime)
-	defer timer.Stop()
+	waitPingTimer := time.NewTimer(waitPingTime)
+	defer waitPingTimer.Stop()
 
 	for !isStop() {
 		select {
-		case <-timer.C:
+		case <-waitPingTimer.C:
 			if isStop() {
 				return nil
 			}
@@ -62,17 +23,17 @@ func WaitPingSendPong(waitPing <-chan error, sendPong func() error, isStop func(
 
 		case err := <-waitPing:
 			if err != nil {
-				return fmt.Errorf("wait ping: %v", err)
+				return fmt.Errorf("handle ping: %v", err)
 			}
 
 			err = sendPong()
 			if err != nil {
-				return fmt.Errorf("AdapterSend pong: %v", err)
+				return fmt.Errorf("send pong: %v", err)
 			}
 
-			ok := timer.Reset(pingWaitTime)
+			ok := waitPingTimer.Reset(waitPingTime)
 			if !ok {
-				timer = time.NewTimer(pingWaitTime)
+				waitPingTimer = time.NewTimer(waitPingTime)
 			}
 		}
 	}
@@ -80,30 +41,30 @@ func WaitPingSendPong(waitPing <-chan error, sendPong func() error, isStop func(
 	return nil
 }
 
-func SendPingWaitPong(ping func() error, pong <-chan error, isStop func() bool, pongWaitSecond int) error {
-	pongWaitTime := time.Duration(pongWaitSecond) * time.Second
-	pingPeriod := pongWaitTime / 2
+func SendPingWaitPong(sendPing func() error, waitPong <-chan error, isStop func() bool, waitPongSecond int) error {
+	waitPongTime := time.Duration(waitPongSecond) * time.Second
+	sendPingPeriod := waitPongTime / 2
 
 	done := make(chan struct{})
 	defer close(done)
 
 	result := make(chan error, 2)
 
-	sendPing := func() {
-		ticker := time.NewTicker(pingPeriod)
-		defer ticker.Stop()
+	go func() {
+		sendPingTicker := time.NewTicker(sendPingPeriod)
+		defer sendPingTicker.Stop()
 
 		for !isStop() {
 			select {
-			case <-ticker.C:
+			case <-sendPingTicker.C:
 				if isStop() {
 					result <- nil
 					return
 				}
 
-				err := ping()
+				err := sendPing()
 				if err != nil {
-					result <- fmt.Errorf("Send ping: %v", err)
+					result <- fmt.Errorf("send ping: %v", err)
 					return
 				}
 
@@ -112,15 +73,15 @@ func SendPingWaitPong(ping func() error, pong <-chan error, isStop func() bool, 
 			}
 		}
 		result <- nil
-	}
+	}()
 
-	waitPong := func() {
-		timer := time.NewTimer(pongWaitTime)
-		defer timer.Stop()
+	go func() {
+		waitPongTimer := time.NewTimer(waitPongTime)
+		defer waitPongTimer.Stop()
 
 		for !isStop() {
 			select {
-			case <-timer.C:
+			case <-waitPongTimer.C:
 				if isStop() {
 					result <- nil
 					return
@@ -129,15 +90,15 @@ func SendPingWaitPong(ping func() error, pong <-chan error, isStop func() bool, 
 				result <- errors.New("wait pong timeout")
 				return
 
-			case err := <-pong:
+			case err := <-waitPong:
 				if err != nil {
 					result <- fmt.Errorf("handle pong: %v", err)
 					return
 				}
 
-				ok := timer.Reset(pongWaitTime)
+				ok := waitPongTimer.Reset(waitPongTime)
 				if !ok {
-					timer = time.NewTimer(pongWaitTime)
+					waitPongTimer = time.NewTimer(waitPongTime)
 				}
 
 			case <-done:
@@ -145,9 +106,7 @@ func SendPingWaitPong(ping func() error, pong <-chan error, isStop func() bool, 
 			}
 		}
 		result <- nil
-	}
+	}()
 
-	go sendPing()
-	go waitPong()
 	return <-result
 }

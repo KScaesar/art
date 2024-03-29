@@ -117,165 +117,201 @@ import (
 	"github.com/KScaesar/Artifex"
 )
 
-func Build{{.FileName}}Infrastructure() (any, error) {
-	return nil, nil
-}
-
-func New{{.FileName}}PingPong() Artifex.PingPong {
-	waitNotify := make(chan error, 1)
-
-	return Artifex.PingPong{
-		IsSendPingWaitPong: true,
-		SendFunc: func() error {
-			return nil
-		},
-		WaitNotify: waitNotify,
-		WaitSecond: 30,
-	}
-}
-
 type {{.FileName}}Factory struct {
-	NewMux      func() (ingressMux *{{.FileName}}IngressMux, egressMux *{{.FileName}}EgressMux)
+	NewMux func() (ingressMux *{{.FileName}}IngressMux, egressMux *{{.FileName}}EgressMux)
+
+	PubSubHub *{{.FileName}}PubSubHub
+	PubHub    *{{.FileName}}PublisherHub
+	SubHub    *{{.FileName}}SubscriberHub
 }
 
 //
 
-type {{.FileName}}PubSub    = Artifex.PubSub[{{.FileName}}Ingress, {{.FileName}}Egress]
+type {{.FileName}}PubSub = Artifex.Adapter[{{.FileName}}Ingress, {{.FileName}}Egress]
 type {{.FileName}}PubSubHub = Artifex.Hub[*{{.FileName}}PubSub]
 
 func New{{.FileName}}PubSubHub() *{{.FileName}}PubSubHub {
-	stop := func(adapter *{{.FileName}}PubSub) error {
-		return adapter.Stop()
+	stop := func(pubsub *{{.FileName}}PubSub) error {
+		return pubsub.Stop()
 	}
 	return Artifex.NewHub(stop)
 }
 
 func (f *{{.FileName}}Factory) CreatePubSub() (*{{.FileName}}PubSub, error) {
-	var mu sync.Mutex
+
 	ingressMux, egressMux := f.NewMux()
 
-	pubsub := &{{.FileName}}PubSub{
-		HandleRecv: ingressMux.HandleMessage,
-		Identifier: "",
-	}
+	opt := Artifex.NewPubSubOption[{{.FileName}}Ingress, {{.FileName}}Egress]().
+		Identifier("").
+		HandleRecv(ingressMux.HandleMessage)
 
-	pubsub.AdapterRecv = func() (*{{.FileName}}Ingress, error) {
+	var mu sync.Mutex
+	waitNotify := make(chan error, 1)
+
+	opt.SendPing(func() error {
+		mu.Lock()
+		defer mu.Unlock()
+		return nil
+	}, waitNotify, 30)
+
+	opt.WaitPing(func() error {
+		mu.Lock()
+		defer mu.Unlock()
+		return nil
+	}, waitNotify, 30)
+
+	opt.AdapterRecv(func(adp *{{.FileName}}PubSub) (*{{.FileName}}Ingress, error) {
 		return New{{.FileName}}Ingress(), nil
-	}
+	})
 
-	pubsub.AdapterSend = func(message *{{.FileName}}Egress) error {
-		err := egressMux.HandleMessage(message, nil)
+	opt.AdapterSend(func(adp *{{.FileName}}PubSub, egress *{{.FileName}}Egress) error {
+		err := egressMux.HandleMessage(egress, nil)
 		if err != nil {
 			return err
 		}
+
 		mu.Lock()
 		defer mu.Unlock()
 		return nil
-	}
+	})
 
-	pubsub.AdapterStop = func(message *{{.FileName}}Egress) error {
+	opt.AdapterStop(func(adp *{{.FileName}}PubSub, egress *{{.FileName}}Egress) error {
 		mu.Lock()
 		defer mu.Unlock()
 		return nil
-	}
+	})
 
-	pubsub.FixupMaxRetrySecond = 0
-	pubsub.Fixup = func() error {
+	opt.AdapterFixup(0, func() error {
+		mu.Lock()
+		defer mu.Unlock()
 		return nil
-	}
+	})
 
-	life := Artifex.Lifecycle{}
-	pubsub.Lifecycle = life
-
-	pp := New{{.FileName}}PingPong()
-	go func() {
-		err := pubsub.PingPong(pp)
-		if err != nil {
-			_ = err
-		}
-	}()
+	pubsub := Artifex.NewPubSub(opt)
+	pubsub.
+		AddSpawnHandler(func() error {
+			err := f.PubSubHub.Join(pubsub.Identifier(), pubsub)
+			if err != nil {
+				return err
+			}
+			return nil
+		}).
+		AddExitHandler(func() error {
+			f.PubSubHub.RemoveByKey(pubsub.Identifier())
+			return nil
+		})
 
 	return pubsub, nil
 }
 
 //
 
-type {{.FileName}}Publisher = Artifex.Publisher[{{.FileName}}Egress]
+type {{.FileName}}Publisher = Artifex.Adapter[struct{}, {{.FileName}}Egress]
 type {{.FileName}}PublisherHub = Artifex.Hub[*{{.FileName}}Publisher]
 
 func New{{.FileName}}PublisherHub() *{{.FileName}}PublisherHub {
-	stop := func(adapter *{{.FileName}}Publisher) error {
-		return adapter.Stop()
+	stop := func(publisher *{{.FileName}}Publisher) error {
+		return publisher.Stop()
 	}
 	return Artifex.NewHub(stop)
 }
 
 func (f *{{.FileName}}Factory) CreatePublisher() (*{{.FileName}}Publisher, error) {
+
 	_, egressMux := f.NewMux()
 
-	pub := &{{.FileName}}Publisher{
-		Identifier: "",
-	}
+	waitNotify := make(chan error, 1)
+	opt := Artifex.NewPublisherOption[{{.FileName}}Egress]().
+		Identifier("").
+		SendPing(func() error { return nil }, waitNotify, 30)
 
-	pub.AdapterSend = func(message *{{.FileName}}Egress) error {
-		err := egressMux.HandleMessage(message, nil)
+	opt.AdapterSend(func(adp *{{.FileName}}Publisher, egress *{{.FileName}}Egress) error {
+		err := egressMux.HandleMessage(egress, nil)
 		if err != nil {
 			return err
 		}
 		return nil
-	}
+	})
 
-	pub.AdapterStop = func() error {
+	opt.AdapterStop(func(adp *{{.FileName}}Publisher, _ *{{.FileName}}Egress) error {
 		return nil
-	}
+	})
 
-	pub.FixupMaxRetrySecond = 0
-	pub.Fixup = func() error {
+	var mu sync.Mutex
+	opt.AdapterFixup(0, func() error {
+		mu.Lock()
+		defer mu.Unlock()
 		return nil
-	}
+	})
 
-	life := Artifex.Lifecycle{}
-	pub.Lifecycle = life
+	publisher := Artifex.NewPublisher(opt)
+	publisher.
+		AddSpawnHandler(func() error {
+			err := f.PubHub.Join(publisher.Identifier(), publisher)
+			if err != nil {
+				return err
+			}
+			return nil
+		}).
+		AddExitHandler(func() error {
+			f.PubHub.RemoveByKey(publisher.Identifier())
+			return nil
+		})
 
-	return pub, nil
+	return publisher, nil
 }
 
 //
 
-type {{.FileName}}Subscriber = Artifex.Subscriber[{{.FileName}}Ingress]
+type {{.FileName}}Subscriber = Artifex.Adapter[{{.FileName}}Ingress, struct{}]
 type {{.FileName}}SubscriberHub = Artifex.Hub[*{{.FileName}}Subscriber]
 
 func New{{.FileName}}SubscriberHub() *{{.FileName}}SubscriberHub {
-	stop := func(adapter *{{.FileName}}Subscriber) error {
-		return adapter.Stop()
+	stop := func(subscriber *{{.FileName}}Subscriber) error {
+		return subscriber.Stop()
 	}
 	return Artifex.NewHub(stop)
 }
 
 func (f *{{.FileName}}Factory) CreateSubscriber() (*{{.FileName}}Subscriber, error) {
+
 	ingressMux, _ := f.NewMux()
 
-	sub := &{{.FileName}}Subscriber{
-		HandleRecv: ingressMux.HandleMessage,
-		Identifier: "",
-	}
+	waitNotify := make(chan error, 1)
+	opt := Artifex.NewSubscriberOption[{{.FileName}}Ingress]().
+		Identifier("").
+		HandleRecv(ingressMux.HandleMessage).
+		SendPing(func() error { return nil }, waitNotify, 30)
 
-	sub.AdapterRecv = func() (*{{.FileName}}Ingress, error) {
+	opt.AdapterRecv(func(adp *{{.FileName}}Subscriber) (*{{.FileName}}Ingress, error) {
 		return New{{.FileName}}Ingress(), nil
-	}
+	})
 
-	sub.AdapterStop = func() error {
+	opt.AdapterStop(func(adp *{{.FileName}}Subscriber, _ *struct{}) error {
 		return nil
-	}
+	})
 
-	sub.FixupMaxRetrySecond = 0
-	sub.Fixup = func() error {
+	var mu sync.Mutex
+	opt.AdapterFixup(0, func() error {
+		mu.Lock()
+		defer mu.Unlock()
 		return nil
-	}
+	})
 
-	life := Artifex.Lifecycle{}
-	sub.Lifecycle = life
+	subscriber := Artifex.NewSubscriber(opt)
+	subscriber.
+		AddSpawnHandler(func() error {
+			err := f.SubHub.Join(subscriber.Identifier(), subscriber)
+			if err != nil {
+				return err
+			}
+			return nil
+		}).
+		AddExitHandler(func() error {
+			f.SubHub.RemoveByKey(subscriber.Identifier())
+			return nil
+		})
 
-	return sub, nil
+	return subscriber, nil
 }
 `

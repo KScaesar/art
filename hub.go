@@ -17,7 +17,7 @@ func NewHub[T any](stopObj func(T) error) *Hub[T] {
 //	concurrencyQty controls how many tasks can run simultaneously,
 //	preventing resource usage or avoid frequent context switches.
 type Hub[T any] struct {
-	collections    map[string]T // Identifier:T
+	collections    map[string]T
 	concurrencyQty int
 	mu             sync.RWMutex
 

@@ -4,7 +4,7 @@ package Artifex
 type Lifecycle struct {
 	spawnHandlers []func() error
 	exitHandlers  []func() error
-	exitNotify    chan struct{}
+	notifyExit    chan struct{}
 }
 
 func (life *Lifecycle) AddSpawnHandler(spawnHandlers ...func() error) {
@@ -16,33 +16,32 @@ func (life *Lifecycle) AddExitHandler(exitHandlers ...func() error) {
 }
 
 func (life *Lifecycle) NotifyExit() {
-	if life.exitNotify == nil {
+	if life.notifyExit == nil {
 		return
 	}
 
 	select {
-	case <-life.exitNotify:
+	case <-life.notifyExit:
 		return
 	default:
-		close(life.exitNotify)
+		close(life.notifyExit)
 	}
 }
 
 func (life *Lifecycle) Execute() error {
+	if life.notifyExit != nil {
+		return nil
+	}
+
 	err := life.spawn()
 	if err != nil {
 		return err
 	}
 
-	if len(life.exitHandlers) == 0 {
-		return nil
-	}
-
-	exitNotify := make(chan struct{})
-	life.exitNotify = exitNotify
+	life.notifyExit = make(chan struct{})
 
 	go func() {
-		<-exitNotify
+		<-life.notifyExit
 		life.exit()
 	}()
 
