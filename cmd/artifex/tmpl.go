@@ -143,7 +143,7 @@ type {{.FileName}}Factory struct {
 //
 
 type {{.FileName}}PubSub    = Artifex.PubSub[{{.FileName}}Ingress, {{.FileName}}Egress]
-type {{.FileName}}PubSubHub = Artifex.Hub[{{.FileName}}PubSub]
+type {{.FileName}}PubSubHub = Artifex.Hub[*{{.FileName}}PubSub]
 
 func New{{.FileName}}PubSubHub() *{{.FileName}}PubSubHub {
 	stop := func(adapter *{{.FileName}}PubSub) error {
@@ -204,7 +204,7 @@ func (f *{{.FileName}}Factory) CreatePubSub() (*{{.FileName}}PubSub, error) {
 //
 
 type {{.FileName}}Publisher = Artifex.Publisher[{{.FileName}}Egress]
-type {{.FileName}}PublisherHub = Artifex.Hub[{{.FileName}}Publisher]
+type {{.FileName}}PublisherHub = Artifex.Hub[*{{.FileName}}Publisher]
 
 func New{{.FileName}}PublisherHub() *{{.FileName}}PublisherHub {
 	stop := func(adapter *{{.FileName}}Publisher) error {
@@ -246,7 +246,7 @@ func (f *{{.FileName}}Factory) CreatePublisher() (*{{.FileName}}Publisher, error
 //
 
 type {{.FileName}}Subscriber = Artifex.Subscriber[{{.FileName}}Ingress]
-type {{.FileName}}SubscriberHub = Artifex.Hub[{{.FileName}}Subscriber]
+type {{.FileName}}SubscriberHub = Artifex.Hub[*{{.FileName}}Subscriber]
 
 func New{{.FileName}}SubscriberHub() *{{.FileName}}SubscriberHub {
 	stop := func(adapter *{{.FileName}}Subscriber) error {

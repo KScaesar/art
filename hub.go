@@ -5,9 +5,9 @@ import (
 	"sync/atomic"
 )
 
-func NewHub[T any](stopObj func(*T) error) *Hub[T] {
+func NewHub[T any](stopObj func(T) error) *Hub[T] {
 	return &Hub[T]{
-		collections: make(map[string]*T),
+		collections: make(map[string]T),
 		stopObj:     stopObj,
 	}
 }
@@ -17,15 +17,15 @@ func NewHub[T any](stopObj func(*T) error) *Hub[T] {
 //	concurrencyQty controls how many tasks can run simultaneously,
 //	preventing resource usage or avoid frequent context switches.
 type Hub[T any] struct {
-	collections    map[string]*T // Identifier:T
+	collections    map[string]T // Identifier:T
 	concurrencyQty int
 	mu             sync.RWMutex
 
-	stopObj func(*T) error
+	stopObj func(T) error
 	isStop  atomic.Bool
 }
 
-func (hub *Hub[T]) Join(key string, obj *T) error {
+func (hub *Hub[T]) Join(key string, obj T) error {
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
 	if hub.isStop.Load() {
@@ -34,7 +34,7 @@ func (hub *Hub[T]) Join(key string, obj *T) error {
 
 	_, found := hub.collections[key]
 	if found {
-		return ErrorWrapWithMessage(ErrInvalidParameter, "duplicated key=%v", key)
+		hub.remove(key)
 	}
 	hub.collections[key] = obj
 	return nil
@@ -43,7 +43,10 @@ func (hub *Hub[T]) Join(key string, obj *T) error {
 func (hub *Hub[T]) Remove(key string) {
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
+	hub.remove(key)
+}
 
+func (hub *Hub[T]) remove(key string) {
 	obj, found := hub.collections[key]
 	if !found {
 		return
@@ -52,7 +55,7 @@ func (hub *Hub[T]) Remove(key string) {
 	hub.stopObj(obj)
 }
 
-func (hub *Hub[T]) UpdateKeyAndObj(oldKey string, update func(*T) (freshKey string)) error {
+func (hub *Hub[T]) UpdateKeyAndObj(oldKey string, update func(T) (freshKey string)) error {
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
 	if hub.isStop.Load() {
@@ -69,7 +72,7 @@ func (hub *Hub[T]) UpdateKeyAndObj(oldKey string, update func(*T) (freshKey stri
 	return nil
 }
 
-func (hub *Hub[T]) UpdateByKey(key string, update func(*T)) error {
+func (hub *Hub[T]) UpdateByKey(key string, update func(T)) error {
 	hub.mu.RLock()
 	defer hub.mu.RUnlock()
 	if hub.isStop.Load() {
@@ -98,7 +101,7 @@ func (hub *Hub[T]) StopAll() {
 	}
 }
 
-func (hub *Hub[T]) DoSync(action func(*T) (stop bool)) {
+func (hub *Hub[T]) DoSync(action func(T) (stop bool)) {
 	hub.mu.RLock()
 	defer hub.mu.RUnlock()
 	if hub.isStop.Load() {
@@ -113,7 +116,7 @@ func (hub *Hub[T]) DoSync(action func(*T) (stop bool)) {
 	}
 }
 
-func (hub *Hub[T]) DoAsync(action func(*T)) {
+func (hub *Hub[T]) DoAsync(action func(T)) {
 	hub.mu.RLock()
 	defer hub.mu.RUnlock()
 	if hub.isStop.Load() {
@@ -139,9 +142,9 @@ func (hub *Hub[T]) DoAsync(action func(*T)) {
 	}
 }
 
-func (hub *Hub[T]) Find(filter func(*T) bool) (obj *T, found bool) {
-	var target *T
-	hub.DoSync(func(obj *T) (stop bool) {
+func (hub *Hub[T]) Find(filter func(T) bool) (obj T, found bool) {
+	var target T
+	hub.DoSync(func(obj T) (stop bool) {
 		if filter(obj) {
 			target = obj
 			return true
@@ -151,16 +154,16 @@ func (hub *Hub[T]) Find(filter func(*T) bool) (obj *T, found bool) {
 	return target, target != nil
 }
 
-func (hub *Hub[T]) FindByKey(key string) (obj *T, found bool) {
+func (hub *Hub[T]) FindByKey(key string) (obj T, found bool) {
 	hub.mu.RLock()
 	defer hub.mu.RUnlock()
 	obj, found = hub.collections[key]
 	return
 }
 
-func (hub *Hub[T]) FindAll(filter func(*T) bool) (all []*T, found bool) {
-	all = make([]*T, 0)
-	hub.DoSync(func(obj *T) bool {
+func (hub *Hub[T]) FindAll(filter func(T) bool) (all []T, found bool) {
+	all = make([]T, 0)
+	hub.DoSync(func(obj T) bool {
 		if filter(obj) {
 			all = append(all, obj)
 		}
@@ -169,11 +172,11 @@ func (hub *Hub[T]) FindAll(filter func(*T) bool) (all []*T, found bool) {
 	return all, len(all) > 0
 }
 
-func (hub *Hub[T]) FindAllByKey(keys []string) (all []*T, found bool) {
+func (hub *Hub[T]) FindAllByKey(keys []string) (all []T, found bool) {
 	hub.mu.RLock()
 	defer hub.mu.RUnlock()
 
-	all = make([]*T, 0)
+	all = make([]T, 0)
 	for i := 0; i < len(keys); i++ {
 		obj, ok := hub.collections[keys[i]]
 		if ok {
@@ -183,9 +186,9 @@ func (hub *Hub[T]) FindAllByKey(keys []string) (all []*T, found bool) {
 	return all, len(all) > 0
 }
 
-func (hub *Hub[T]) Count(filter func(*T) bool) int {
+func (hub *Hub[T]) Count(filter func(T) bool) int {
 	cnt := 0
-	hub.DoSync(func(obj *T) bool {
+	hub.DoSync(func(obj T) bool {
 		if filter(obj) {
 			cnt++
 		}
