@@ -194,19 +194,17 @@ func (node *trie[M]) handleMessage(subject string, cursor int, path *routeHandle
 	}
 
 	// for static route
-	if idx == len(subject) {
-		if current.handler != nil {
-			return LinkMiddlewares(current.handler, path.middlewares...)(msg, route)
-		}
-		if path.defaultHandler != nil {
-			return LinkMiddlewares(path.defaultHandler, path.middlewares...)(msg, route)
-		}
-		if path.notFoundHandler != nil {
-			return path.notFoundHandler(msg, route)
-		}
-		if wildcardParent == nil {
-			return ErrorWrapWithMessage(ErrNotFoundSubjectOfMux, "mux subject")
-		}
+	if current.handler != nil {
+		return LinkMiddlewares(current.handler, path.middlewares...)(msg, route)
+	}
+	if path.defaultHandler != nil {
+		return LinkMiddlewares(path.defaultHandler, path.middlewares...)(msg, route)
+	}
+	if path.notFoundHandler != nil {
+		return path.notFoundHandler(msg, route)
+	}
+	if wildcardParent == nil {
+		return ErrorWrapWithMessage(ErrNotFoundSubjectOfMux, "mux subject")
 	}
 
 	// for wildcard route

@@ -139,6 +139,29 @@ hello_world_decoratorA
 	}
 }
 
+func TestMessageMux_Transform_when_only_defaultHandler(t *testing.T) {
+	newSubject := func(msg *testcaseTransformMessage) (string, error) {
+		return "/" + strconv.Itoa(msg.level0TypeId), nil
+	}
+
+	mux := NewMux[testcaseTransformMessage]("/", newSubject)
+
+	mux.SetDefaultHandler(func(_ *testcaseTransformMessage, _ *RouteParam) error {
+		return nil
+	})
+
+	message := &testcaseTransformMessage{
+		level0TypeId: 0,
+		level1TypeId: 0,
+		body:         "",
+	}
+
+	err := mux.HandleMessage(message, nil)
+	if err != nil {
+		t.Errorf("%#v :unexpected error: got %v", message, err)
+	}
+}
+
 func TestMessageMux_Transform(t *testing.T) {
 	recorder := []string{}
 	record := func(message *testcaseTransformMessage, route *RouteParam) error {
