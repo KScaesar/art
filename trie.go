@@ -204,7 +204,7 @@ func (node *trie[M]) handleMessage(subject string, cursor int, path *routeHandle
 		return path.notFoundHandler(msg, route)
 	}
 	if wildcardParent == nil {
-		return ErrorWrapWithMessage(ErrNotFoundSubjectOfMux, "mux subject")
+		return ErrNotFoundSubjectOfMux
 	}
 
 	// for wildcard route
