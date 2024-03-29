@@ -52,6 +52,7 @@ func (sub *Subscriber[rMessage]) Listen() error {
 	if err != nil {
 		return err
 	}
+	defer sub.Stop()
 
 	if sub.Fixup == nil {
 		return sub.listen()

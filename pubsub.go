@@ -53,6 +53,7 @@ func (pubsub *PubSub[rMessage, sMessage]) Listen() error {
 	if err != nil {
 		return err
 	}
+	defer pubsub.Stop()
 
 	if pubsub.Fixup == nil {
 		return pubsub.listen()

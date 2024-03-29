@@ -54,6 +54,10 @@ func WaitPingSendPong(waitPing <-chan error, sendPong func() error, isStop func(
 	for !isStop() {
 		select {
 		case <-timer.C:
+			if isStop() {
+				return nil
+			}
+
 			return errors.New("wait ping timeout")
 
 		case err := <-waitPing:
@@ -92,6 +96,11 @@ func SendPingWaitPong(ping func() error, pong <-chan error, isStop func() bool, 
 		for !isStop() {
 			select {
 			case <-ticker.C:
+				if isStop() {
+					result <- nil
+					return
+				}
+
 				err := ping()
 				if err != nil {
 					result <- fmt.Errorf("Send ping: %v", err)
@@ -112,6 +121,11 @@ func SendPingWaitPong(ping func() error, pong <-chan error, isStop func() bool, 
 		for !isStop() {
 			select {
 			case <-timer.C:
+				if isStop() {
+					result <- nil
+					return
+				}
+
 				result <- errors.New("wait pong timeout")
 				return
 
