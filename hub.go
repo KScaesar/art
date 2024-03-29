@@ -40,10 +40,108 @@ func (hub *Hub[T]) Join(key string, obj T) error {
 	return nil
 }
 
-func (hub *Hub[T]) Remove(key string) {
+func (hub *Hub[T]) UpdateByOldKey(oldKey string, update func(T) (freshKey string, err error)) error {
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+	if hub.isStop.Load() {
+		return ErrorWrapWithMessage(ErrClosed, "Artifex hub")
+	}
+
+	obj, found := hub.collections[oldKey]
+	if !found {
+		return ErrorWrapWithMessage(ErrNotFound, "key=%v not exist in hub", oldKey)
+	}
+
+	freshKey, err := update(obj)
+	if err != nil {
+		return err
+	}
+
+	hub.collections[freshKey] = obj
+	delete(hub.collections, oldKey)
+	return nil
+}
+
+func (hub *Hub[T]) FindByKey(key string) (obj T, found bool) {
+	hub.mu.RLock()
+	defer hub.mu.RUnlock()
+	obj, found = hub.collections[key]
+	return
+}
+
+func (hub *Hub[T]) FindOne(filter func(T) bool) (obj T, found bool) {
+	var target T
+	hub.DoSync(func(obj T) (stop bool) {
+		if filter(obj) {
+			target = obj
+			return true
+		}
+		return false
+	})
+	return target, target != nil
+}
+
+func (hub *Hub[T]) FindMulti(filter func(T) bool) (all []T, found bool) {
+	all = make([]T, 0)
+	hub.DoSync(func(obj T) bool {
+		if filter(obj) {
+			all = append(all, obj)
+		}
+		return false
+	})
+	return all, len(all) > 0
+}
+
+func (hub *Hub[T]) FindMultiByKey(keys []string) (all []T, found bool) {
+	hub.mu.RLock()
+	defer hub.mu.RUnlock()
+
+	all = make([]T, 0)
+	for i := 0; i < len(keys); i++ {
+		obj, ok := hub.collections[keys[i]]
+		if ok {
+			all = append(all, obj)
+		}
+	}
+	return all, len(all) > 0
+}
+
+func (hub *Hub[T]) RemoveByKey(key string) {
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
 	hub.remove(key)
+}
+
+func (hub *Hub[T]) RemoveOne(filter func(T) bool) {
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+
+	for key, obj := range hub.collections {
+		if filter(obj) {
+			hub.remove(key)
+			break
+		}
+	}
+}
+
+func (hub *Hub[T]) RemoveMulti(filter func(T) bool) {
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+
+	for key, obj := range hub.collections {
+		if filter(obj) {
+			hub.remove(key)
+		}
+	}
+}
+
+func (hub *Hub[T]) RemoveMultiByKey(keys []string) {
+	hub.mu.RLock()
+	defer hub.mu.RUnlock()
+
+	for i := 0; i < len(keys); i++ {
+		hub.remove(keys[i])
+	}
 }
 
 func (hub *Hub[T]) remove(key string) {
@@ -55,38 +153,6 @@ func (hub *Hub[T]) remove(key string) {
 	hub.stopObj(obj)
 }
 
-func (hub *Hub[T]) UpdateKeyAndObj(oldKey string, update func(T) (freshKey string)) error {
-	hub.mu.Lock()
-	defer hub.mu.Unlock()
-	if hub.isStop.Load() {
-		return ErrorWrapWithMessage(ErrClosed, "Artifex hub")
-	}
-
-	obj, found := hub.collections[oldKey]
-	if !found {
-		return ErrorWrapWithMessage(ErrNotFound, "key=%v not exist in hub", oldKey)
-	}
-	freshKey := update(obj)
-	hub.collections[freshKey] = obj
-	delete(hub.collections, oldKey)
-	return nil
-}
-
-func (hub *Hub[T]) UpdateByKey(key string, update func(T)) error {
-	hub.mu.RLock()
-	defer hub.mu.RUnlock()
-	if hub.isStop.Load() {
-		return ErrorWrapWithMessage(ErrClosed, "Artifex hub")
-	}
-
-	obj, found := hub.collections[key]
-	if !found {
-		return ErrorWrapWithMessage(ErrNotFound, "key=%v not exist in hub", key)
-	}
-	update(obj)
-	return nil
-}
-
 func (hub *Hub[T]) StopAll() {
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
@@ -95,9 +161,8 @@ func (hub *Hub[T]) StopAll() {
 	}
 
 	hub.isStop.Store(true)
-	for key, obj := range hub.collections {
-		delete(hub.collections, key)
-		hub.stopObj(obj)
+	for key, _ := range hub.collections {
+		hub.remove(key)
 	}
 }
 
@@ -140,50 +205,6 @@ func (hub *Hub[T]) DoAsync(action func(T)) {
 			action(obj)
 		}()
 	}
-}
-
-func (hub *Hub[T]) Find(filter func(T) bool) (obj T, found bool) {
-	var target T
-	hub.DoSync(func(obj T) (stop bool) {
-		if filter(obj) {
-			target = obj
-			return true
-		}
-		return false
-	})
-	return target, target != nil
-}
-
-func (hub *Hub[T]) FindByKey(key string) (obj T, found bool) {
-	hub.mu.RLock()
-	defer hub.mu.RUnlock()
-	obj, found = hub.collections[key]
-	return
-}
-
-func (hub *Hub[T]) FindAll(filter func(T) bool) (all []T, found bool) {
-	all = make([]T, 0)
-	hub.DoSync(func(obj T) bool {
-		if filter(obj) {
-			all = append(all, obj)
-		}
-		return false
-	})
-	return all, len(all) > 0
-}
-
-func (hub *Hub[T]) FindAllByKey(keys []string) (all []T, found bool) {
-	hub.mu.RLock()
-	defer hub.mu.RUnlock()
-
-	all = make([]T, 0)
-	for i := 0; i < len(keys); i++ {
-		obj, ok := hub.collections[keys[i]]
-		if ok {
-			all = append(all, obj)
-		}
-	}
-	return all, len(all) > 0
 }
 
 func (hub *Hub[T]) Count(filter func(T) bool) int {
