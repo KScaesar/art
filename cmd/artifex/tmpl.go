@@ -27,7 +27,7 @@ type {{.FileName}}Ingress struct {
 
 type {{.FileName}}IngressHandleFunc = Artifex.HandleFunc[{{.FileName}}Ingress]
 type {{.FileName}}IngressMiddleware = Artifex.Middleware[{{.FileName}}Ingress]
-type {{.FileName}}IngressMux = Artifex.Mux[{{.Subject}}, {{.FileName}}Ingress]
+type {{.FileName}}IngressMux = Artifex.Mux[{{.FileName}}Ingress]
 
 func New{{.FileName}}IngressMux() *{{.FileName}}IngressMux {
 	get{{.Subject}} := func(message *{{.FileName}}Ingress) (string, error) {
@@ -35,7 +35,7 @@ func New{{.FileName}}IngressMux() *{{.FileName}}IngressMux {
 		return "", nil
 	}
 
-	mux := Artifex.NewMux[{{.Subject}}](get{{.Subject}})
+	mux := Artifex.NewMux("/", get{{.Subject}})
 	mux.Handler("ingress", {{.FileName}}IngressHandler())
 	return mux
 }
@@ -81,7 +81,7 @@ func (e *{{.FileName}}Egress) SetMsgId(msgId string) {
 
 type {{.FileName}}EgressHandleFunc = Artifex.HandleFunc[{{.FileName}}Egress]
 type {{.FileName}}EgressMiddleware = Artifex.Middleware[{{.FileName}}Egress]
-type {{.FileName}}EgressMux = Artifex.Mux[{{.Subject}}, {{.FileName}}Egress]
+type {{.FileName}}EgressMux = Artifex.Mux[{{.FileName}}Egress]
 
 func New{{.FileName}}EgressMux() *{{.FileName}}EgressMux {
 	get{{.Subject}} := func(message *{{.FileName}}Egress) (string, error) {
@@ -89,7 +89,7 @@ func New{{.FileName}}EgressMux() *{{.FileName}}EgressMux {
 		return "", nil
 	}
 
-	mux := Artifex.NewMux[{{.Subject}}](get{{.Subject}})
+	mux := Artifex.NewMux("/", get{{.Subject}})
 	mux.Handler("egress", {{.FileName}}EgressHandler())
 	return mux
 }
