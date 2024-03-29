@@ -38,54 +38,54 @@ func (s *Shutdown) SetStopAction(name string, action func() error) *Shutdown {
 }
 
 func (s *Shutdown) NotifyStop(cause error) {
-	s.cancel(cause)
+	select {
+	case <-s.done:
+		return
+	default:
+		s.cancel(cause)
+	}
 }
 
 func (s *Shutdown) Wait() {
 	<-s.done
 }
 
-func (s *Shutdown) Listen(ctx context.Context) *Shutdown {
+func (s *Shutdown) Listen(ctx context.Context) {
+	defer close(s.done)
+
 	if ctx == nil {
 		ctx = context.Background()
 	}
-
 	ctx, s.cancel = context.WithCancelCause(ctx)
 
-	go func() {
-		defer close(s.done)
+	select {
+	case sig := <-s.sysSignal:
+		s.Logger.Info("receive signal: %v", sig)
 
-		select {
-		case sig := <-s.sysSignal:
-			s.Logger.Info("receive signal: %v", sig)
+	case <-ctx.Done():
+		err := context.Cause(ctx)
+		if errors.Is(err, context.Canceled) {
+			s.Logger.Info("receive go context")
+		} else {
+			s.Logger.Error("receive go context: %v", err)
+		}
+	}
 
-		case <-ctx.Done():
-			err := context.Cause(ctx)
-			if errors.Is(err, context.Canceled) {
-				s.Logger.Info("receive go context")
-			} else {
-				s.Logger.Error("receive go context: %v", err)
+	s.Logger.Info("shutdown total service qty=%v", s.stopQty)
+	wg := sync.WaitGroup{}
+	for i := 0; i < s.stopQty; i++ {
+		number := i + 1
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.Logger.Info("number %v service %q shutdown start", number, s.names[number-1])
+			err := s.stopActions[number-1]()
+			if err != nil {
+				s.Logger.Error("number %v service %q shutdown: %v", number, s.names[number-1], err)
 			}
-		}
-
-		s.Logger.Info("shutdown total service qty=%v", s.stopQty)
-		wg := sync.WaitGroup{}
-		for i := 0; i < s.stopQty; i++ {
-			number := i + 1
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				s.Logger.Info("number %v service %q shutdown start", number, s.names[number-1])
-				err := s.stopActions[number-1]()
-				if err != nil {
-					s.Logger.Error("number %v service %q shutdown: %v", number, s.names[number-1], err)
-				}
-				s.Logger.Info("number %v service %q shutdown finish", number, s.names[number-1])
-			}()
-		}
-		wg.Wait()
-		s.Logger.Info("shutdown finish")
-	}()
-
-	return s
+			s.Logger.Info("number %v service %q shutdown finish", number, s.names[number-1])
+		}()
+	}
+	wg.Wait()
+	s.Logger.Info("shutdown finish")
 }
