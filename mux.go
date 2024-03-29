@@ -2,9 +2,9 @@ package Artifex
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/gookit/goutil/maputil"
-	"golang.org/x/exp/constraints"
 )
 
 // RouteParam are used to capture values from subject.
@@ -73,47 +73,44 @@ func LinkMiddlewares[Message any](handler HandleFunc[Message], middlewares ...Mi
 
 type NewSubjectFunc[Message any] func(*Message) (string, error)
 
-func NewMux[Subject constraints.Ordered, Message any](routeDelimiter string, getSubject NewSubjectFunc[Message]) *Mux[Subject, Message] {
-	handler := &routeHandler[Message]{
-		getSubject: getSubject,
+// NewMux
+// If routeDelimiter is an empty string, RouteParam cannot be used.
+// routeDelimiter can only be set to a string of length 1.
+// this parameter determines the delimiter used between different parts of the route.
+func NewMux[Message any](routeDelimiter string, getSubject NewSubjectFunc[Message]) *Mux[Message] {
+	if len(routeDelimiter) > 1 {
+		panic("routeDelimiter can only be set to a string of length 1.")
 	}
 
-	node := newTrie[Message](routeDelimiter)
-
-	node.addRoute("", 0, handler)
-
-	return &Mux[Subject, Message]{
-		node: node,
+	mux := &Mux[Message]{
+		node: newTrie[Message](routeDelimiter),
 		errorAndRecover: func(_ *Message, _ *RouteParam, err error) error {
 			if r := recover(); r != nil {
 				return fmt.Errorf("%v", r)
 			}
 			return err
 		},
-
-		enableAutoDelimiter: false,
-		routeDelimiter:      routeDelimiter,
-		delimiterAtLeft:     true,
+		routeDelimiter: routeDelimiter,
 	}
+
+	mux.SetSubjectFunc(getSubject)
+	return mux
 }
 
 // Mux refers to a router or multiplexer, which can be used to handle different message.
 // Itself is also a HandleFunc, but with added routing capabilities.
 //
 // Message represents a high-level abstraction data structure containing metadata (e.g. header) + body
-type Mux[Subject constraints.Ordered, Message any] struct {
+type Mux[Message any] struct {
 	node            *trie[Message]
 	errorAndRecover func(*Message, *RouteParam, error) error
-
-	enableAutoDelimiter bool
-	delimiterAtLeft     bool
-	routeDelimiter      string
+	routeDelimiter  string
 }
 
 // HandleMessage to handle various messages
 //
 // - route parameter can nil
-func (mux *Mux[Subject, Message]) HandleMessage(message *Message, route *RouteParam) (err error) {
+func (mux *Mux[Message]) HandleMessage(message *Message, route *RouteParam) (err error) {
 	if route == nil {
 		route = routeParamPool.Get()
 		defer func() {
@@ -144,8 +141,7 @@ func (mux *Mux[Subject, Message]) HandleMessage(message *Message, route *RoutePa
 	return mux.node.handleMessage(subject, 0, path, message, route)
 }
 
-func (mux *Mux[Subject, Message]) Handler(s Subject, h HandleFunc[Message]) *Mux[Subject, Message] {
-	subject := mux.calcuSubject(s)
+func (mux *Mux[Message]) Handler(subject string, h HandleFunc[Message]) *Mux[Message] {
 	handler := &routeHandler[Message]{
 		handler: h,
 	}
@@ -153,21 +149,25 @@ func (mux *Mux[Subject, Message]) Handler(s Subject, h HandleFunc[Message]) *Mux
 	return mux
 }
 
-func (mux *Mux[Subject, Message]) Group(s Subject) *Mux[Subject, Message] {
-	groupName := mux.calcuSubject(s)
+func (mux *Mux[Message]) HandlerByNumber(subject int, h HandleFunc[Message]) *Mux[Message] {
+	return mux.Handler(mux.routeDelimiter+strconv.Itoa(subject), h)
+}
+
+func (mux *Mux[Message]) Group(groupName string) *Mux[Message] {
 	handler := &routeHandler[Message]{}
 	groupNode := mux.node.addRoute(groupName, 0, handler)
-	return &Mux[Subject, Message]{
+	return &Mux[Message]{
 		node:            groupNode,
 		errorAndRecover: mux.errorAndRecover,
-
-		enableAutoDelimiter: mux.enableAutoDelimiter,
-		delimiterAtLeft:     mux.delimiterAtLeft,
-		routeDelimiter:      mux.routeDelimiter,
+		routeDelimiter:  mux.routeDelimiter,
 	}
 }
 
-func (mux *Mux[Subject, Message]) Transform(transforms ...HandleFunc[Message]) *Mux[Subject, Message] {
+func (mux *Mux[Message]) GroupByNumber(groupName int) *Mux[Message] {
+	return mux.Group(mux.routeDelimiter + strconv.Itoa(groupName))
+}
+
+func (mux *Mux[Message]) Transform(transforms ...HandleFunc[Message]) *Mux[Message] {
 	handler := &routeHandler[Message]{
 		transforms: transforms,
 	}
@@ -175,7 +175,7 @@ func (mux *Mux[Subject, Message]) Transform(transforms ...HandleFunc[Message]) *
 	return mux
 }
 
-func (mux *Mux[Subject, Message]) SetSubjectFunc(getSubject NewSubjectFunc[Message]) *Mux[Subject, Message] {
+func (mux *Mux[Message]) SetSubjectFunc(getSubject NewSubjectFunc[Message]) *Mux[Message] {
 	handler := &routeHandler[Message]{
 		getSubject: getSubject,
 	}
@@ -183,7 +183,7 @@ func (mux *Mux[Subject, Message]) SetSubjectFunc(getSubject NewSubjectFunc[Messa
 	return mux
 }
 
-func (mux *Mux[Subject, Message]) Middleware(middlewares ...Middleware[Message]) *Mux[Subject, Message] {
+func (mux *Mux[Message]) Middleware(middlewares ...Middleware[Message]) *Mux[Message] {
 	handler := &routeHandler[Message]{
 		middlewares: middlewares,
 	}
@@ -191,7 +191,7 @@ func (mux *Mux[Subject, Message]) Middleware(middlewares ...Middleware[Message])
 	return mux
 }
 
-func (mux *Mux[Subject, Message]) PreMiddleware(handleFuncs ...HandleFunc[Message]) *Mux[Subject, Message] {
+func (mux *Mux[Message]) PreMiddleware(handleFuncs ...HandleFunc[Message]) *Mux[Message] {
 	handler := &routeHandler[Message]{}
 	for _, h := range handleFuncs {
 		handler.middlewares = append(handler.middlewares, h.PreMiddleware())
@@ -200,7 +200,7 @@ func (mux *Mux[Subject, Message]) PreMiddleware(handleFuncs ...HandleFunc[Messag
 	return mux
 }
 
-func (mux *Mux[Subject, Message]) PostMiddleware(handleFuncs ...HandleFunc[Message]) *Mux[Subject, Message] {
+func (mux *Mux[Message]) PostMiddleware(handleFuncs ...HandleFunc[Message]) *Mux[Message] {
 	handler := &routeHandler[Message]{}
 	for _, h := range handleFuncs {
 		handler.middlewares = append(handler.middlewares, h.PostMiddleware())
@@ -209,7 +209,7 @@ func (mux *Mux[Subject, Message]) PostMiddleware(handleFuncs ...HandleFunc[Messa
 	return mux
 }
 
-func (mux *Mux[Subject, Message]) SetDefaultHandler(h HandleFunc[Message]) *Mux[Subject, Message] {
+func (mux *Mux[Message]) SetDefaultHandler(h HandleFunc[Message]) *Mux[Message] {
 	handler := &routeHandler[Message]{
 		defaultHandler: h,
 	}
@@ -217,7 +217,7 @@ func (mux *Mux[Subject, Message]) SetDefaultHandler(h HandleFunc[Message]) *Mux[
 	return mux
 }
 
-func (mux *Mux[Subject, Message]) SetNotFoundHandler(h HandleFunc[Message]) *Mux[Subject, Message] {
+func (mux *Mux[Message]) SetNotFoundHandler(h HandleFunc[Message]) *Mux[Message] {
 	handler := &routeHandler[Message]{
 		notFoundHandler: h,
 	}
@@ -225,28 +225,11 @@ func (mux *Mux[Subject, Message]) SetNotFoundHandler(h HandleFunc[Message]) *Mux
 	return mux
 }
 
-func (mux *Mux[Subject, Message]) SetErrorAndRecoverHandler(errorAndRecover func(*Message, *RouteParam, error) error) *Mux[Subject, Message] {
+func (mux *Mux[Message]) SetErrorAndRecoverHandler(errorAndRecover func(*Message, *RouteParam, error) error) *Mux[Message] {
 	mux.errorAndRecover = errorAndRecover
 	return mux
 }
 
-func (mux *Mux[Subject, Message]) Subjects() (result []string) {
-	subjects, _ := mux.node.endpoint()
-	return subjects
-}
-
-func (mux *Mux[Subject, Message]) calcuSubject(s Subject) string {
-	if !mux.enableAutoDelimiter {
-		return fmt.Sprintf("%v", s)
-	}
-	if mux.delimiterAtLeft {
-		return mux.routeDelimiter + fmt.Sprintf("%v", s)
-	}
-	return fmt.Sprintf("%v", s) + mux.routeDelimiter
-}
-
-func (mux *Mux[Subject, Message]) SetAutoDelimiter(atLeft bool) *Mux[Subject, Message] {
-	mux.enableAutoDelimiter = true
-	mux.delimiterAtLeft = atLeft
-	return mux
+func (mux *Mux[Message]) GetSubjectAndHandler() (subjects, functions []string) {
+	return mux.node.endpoint()
 }

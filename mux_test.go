@@ -21,7 +21,7 @@ func TestMessageMux_HandleMessage(t *testing.T) {
 		return message.channel, nil
 	}
 
-	mux := NewMux[string, redisMessage]("", getSubject).
+	mux := NewMux[redisMessage]("", getSubject).
 		Handler("hello", func(dto *redisMessage, route *RouteParam) error {
 			fmt.Fprintf(recorder, "topic=%v, payload=%v", dto.channel, string(dto.body))
 			return nil
@@ -149,31 +149,31 @@ func TestMessageMux_Transform(t *testing.T) {
 	newSubject := func(msg *testcaseTransformMessage) (string, error) {
 		return "/" + strconv.Itoa(msg.level0TypeId), nil
 	}
-	mux := NewMux[int, testcaseTransformMessage]("/", newSubject).SetAutoDelimiter(true)
+	mux := NewMux[testcaseTransformMessage]("/", newSubject)
 
-	mux.Handler(2, record)
+	mux.HandlerByNumber(2, record)
 
-	mux.Group(3).Transform(testcaseTransformLevel1).
-		Handler(1, record).
-		Handler(2, record).
-		Group(5).Transform(testcaseTransformLevel2).
+	mux.GroupByNumber(3).Transform(testcaseTransformLevel1).
+		HandlerByNumber(1, record).
+		HandlerByNumber(2, record).
+		GroupByNumber(5).Transform(testcaseTransformLevel2).
 		PreMiddleware(
 			func(message *testcaseTransformMessage, route *RouteParam) error {
 				message.body = "^" + message.body + "^"
 				return nil
 			}).
-		Handler(1, record).
-		Handler(2, record)
+		HandlerByNumber(1, record).
+		HandlerByNumber(2, record)
 
-	mux.Group(4).Transform(testcaseTransformLevel1).
+	mux.GroupByNumber(4).Transform(testcaseTransformLevel1).
 		PreMiddleware(
 			func(message *testcaseTransformMessage, route *RouteParam) error {
 				message.body = "_" + message.body + "_"
 				return nil
 			}).
-		Handler(1, record).
-		Handler(2, record).
-		Handler(4, record)
+		HandlerByNumber(1, record).
+		HandlerByNumber(2, record).
+		HandlerByNumber(4, record)
 
 	expectedSubjects := []string{
 		"/2",
@@ -182,7 +182,7 @@ func TestMessageMux_Transform(t *testing.T) {
 		"/4/1", "/4/2", "/4/4",
 	}
 
-	gotSubjects := mux.Subjects()
+	gotSubjects, _ := mux.GetSubjectAndHandler()
 	for i, gotSubject := range gotSubjects {
 		if gotSubject != expectedSubjects[i] {
 			t.Errorf("unexpected output: got %s, want %s", gotSubject, expectedSubjects[i])
@@ -257,7 +257,7 @@ func TestMessageMux_Group(t *testing.T) {
 	}
 
 	newSubject := func(msg *testcaseGroupMessage) (string, error) { return string(msg.subject), nil }
-	mux := NewMux[Subject, testcaseGroupMessage]("/", newSubject)
+	mux := NewMux[testcaseGroupMessage]("/", newSubject)
 
 	mux.PreMiddleware(func(message *testcaseGroupMessage, route *RouteParam) error {
 		message.body = "*" + message.body + "*"
@@ -305,7 +305,7 @@ func TestMessageMux_Group(t *testing.T) {
 		"/topic5/game1", "/topic5/game2/kindA", "/topic5/game3/kindX", "/topic5/game3/kindY", "/topic5/game3/v2/kindX", "/topic5/game3/v3/kindY",
 	}
 
-	gotSubjects := mux.Subjects()
+	gotSubjects, _ := mux.GetSubjectAndHandler()
 	for i, gotSubject := range gotSubjects {
 		if gotSubject != expectedSubjects[i] {
 			t.Errorf("unexpected output: got %s, want %s", gotSubject, expectedSubjects[i])
@@ -380,7 +380,7 @@ func TestMux_SetDefaultHandler(t *testing.T) {
 
 	isCalled := false
 	newSubject := func(msg *testcaseDefaultHandler) (string, error) { return string(msg.subject), nil }
-	mux := NewMux[Subject, testcaseDefaultHandler]("/", newSubject).
+	mux := NewMux[testcaseDefaultHandler]("/", newSubject).
 		SetDefaultHandler(func(message *testcaseDefaultHandler, route *RouteParam) error {
 			isCalled = true
 			return nil
@@ -401,7 +401,7 @@ func TestMux_RouteParam_when_wildcard_subject(t *testing.T) {
 	}
 
 	newSubject := func(msg *testcaseRouteParam) (string, error) { return string(msg.subject), nil }
-	mux := NewMux[Subject, testcaseRouteParam]("/", newSubject)
+	mux := NewMux[testcaseRouteParam]("/", newSubject)
 
 	actual := []string{}
 	mux.
@@ -444,7 +444,7 @@ func TestMux_RouteParam_when_wildcard_subject(t *testing.T) {
 		"{kind}/book/{book_id}",
 	}
 
-	gotSubjects := mux.Subjects()
+	gotSubjects, _ := mux.GetSubjectAndHandler()
 	for i, gotSubject := range gotSubjects {
 		if gotSubject != expectedSubjects[i] {
 			t.Errorf("unexpected output: got %s, want %s", gotSubject, expectedSubjects[i])

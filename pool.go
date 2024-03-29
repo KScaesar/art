@@ -12,17 +12,16 @@ var (
 	})
 )
 
-type pool[T any] struct {
-	syncPool sync.Pool
-}
-
 func newPool[T any](newFn func() T) *pool[T] {
-	pool := &pool[T]{
+	return &pool[T]{
 		syncPool: sync.Pool{
 			New: func() interface{} { return newFn() },
 		},
 	}
-	return pool
+}
+
+type pool[T any] struct {
+	syncPool sync.Pool
 }
 
 func (p *pool[T]) Get() T {
