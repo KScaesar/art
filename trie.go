@@ -197,13 +197,13 @@ func (node *trie[M]) handleMessage(subject string, cursor int, path *routeHandle
 	if current.handler != nil {
 		return LinkMiddlewares(current.handler, path.middlewares...)(msg, route)
 	}
-	if path.defaultHandler != nil {
-		return LinkMiddlewares(path.defaultHandler, path.middlewares...)(msg, route)
-	}
-	if path.notFoundHandler != nil {
-		return path.notFoundHandler(msg, route)
-	}
 	if wildcardParent == nil {
+		if path.defaultHandler != nil {
+			return LinkMiddlewares(path.defaultHandler, path.middlewares...)(msg, route)
+		}
+		if path.notFoundHandler != nil {
+			return path.notFoundHandler(msg, route)
+		}
 		return ErrNotFoundSubjectOfMux
 	}
 

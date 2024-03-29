@@ -479,6 +479,75 @@ func TestMux_SetDefaultHandler(t *testing.T) {
 	}
 }
 
+func TestMux_SetDefaultHandler_when_wildcard(t *testing.T) {
+	type testcaseMessage struct {
+		subject string
+		body    string
+	}
+
+	recorder := []string{}
+	newSubject := func(msg *testcaseMessage) (string, error) { return msg.subject, nil }
+	mux := NewMux[testcaseMessage](".", newSubject).
+		SetDefaultHandler(func(message *testcaseMessage, _ *RouteParam) error {
+			recorder = append(recorder, message.body+" default")
+			return nil
+		}).EnableRecover()
+
+	v1 := mux.Group("v1")
+
+	v1.
+		PreMiddleware(func(message *testcaseMessage, route *RouteParam) error {
+			message.body = "! " + message.body
+			return nil
+		}).
+		Handler(".{kind}.book.{book_id}", func(message *testcaseMessage, _ *RouteParam) error {
+			recorder = append(recorder, message.body+" {kind}")
+			return nil
+		})
+
+	v1.Group(".dev.book").
+		PreMiddleware(func(message *testcaseMessage, route *RouteParam) error {
+			message.body = "* " + message.body
+			return nil
+		}).
+		Handler(".discount", func(message *testcaseMessage, _ *RouteParam) error {
+			recorder = append(recorder, message.body)
+			return nil
+		})
+
+	subjects, _ := mux.GetSubjectAndHandler()
+	_ = subjects
+	// t.Logf("subjects=%v", subjects)
+
+	expectedResponse := []string{
+		"! v1.devops.book.6263334908 {kind}",
+		"! v1.dev.book.1449373321 {kind}",
+		"* ! v1.dev.book.discount",
+		"v2 default",
+	}
+
+	messages := []*testcaseMessage{
+		{subject: "v1.devops.book.6263334908"},
+		{subject: "v1.dev.book.1449373321"},
+		{subject: "v1.dev.book.discount"},
+		{subject: "v2"},
+	}
+
+	for i, message := range messages {
+		message.body = message.subject
+		err := mux.HandleMessage(message, nil)
+		if err != nil {
+			t.Errorf("%v: unexpected error: got %v", message.subject, err)
+			break
+		}
+		if recorder[i] != expectedResponse[i] {
+			t.Errorf("%v: unexpected output: got %s, want %s", message.subject, recorder[i], expectedResponse[i])
+			break
+		}
+	}
+
+}
+
 func TestMux_RouteParam_when_wildcard_subject(t *testing.T) {
 	type Subject = string
 	type testcaseRouteParam struct {
