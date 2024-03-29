@@ -74,11 +74,12 @@ func (hub *Hub[T]) FindOne(filter func(T) bool) (obj T, found bool) {
 	hub.DoSync(func(obj T) (stop bool) {
 		if filter(obj) {
 			target = obj
+			found = true
 			return true
 		}
 		return false
 	})
-	return target, target != nil
+	return target, found
 }
 
 func (hub *Hub[T]) FindMulti(filter func(T) bool) (all []T, found bool) {
