@@ -82,10 +82,12 @@ func NewMux[Message any](routeDelimiter string, getSubject NewSubjectFunc[Messag
 		panic("routeDelimiter can only be set to a string of length 1.")
 	}
 
+	var qty int
 	mux := &Mux[Message]{
 		node:           newTrie[Message](routeDelimiter),
 		errorHandler:   func(_ *Message, _ *RouteParam, err error) error { return err },
 		routeDelimiter: routeDelimiter,
+		middlewareQty:  &qty,
 	}
 
 	mux.SetSubjectFunc(getSubject)
@@ -100,6 +102,7 @@ type Mux[Message any] struct {
 	node           *trie[Message]
 	errorHandler   func(*Message, *RouteParam, error) error
 	routeDelimiter string
+	middlewareQty  *int
 }
 
 // HandleMessage to handle various messages
@@ -118,20 +121,17 @@ func (mux *Mux[Message]) HandleMessage(message *Message, route *RouteParam) (err
 		err = mux.errorHandler(message, route, err)
 	}()
 
+	path := &routeHandler[Message]{
+		middlewares: make([]Middleware[Message], 0, *mux.middlewareQty),
+	}
+
 	if mux.node.transforms != nil {
-		path := &routeHandler[Message]{
-			middlewares: []Middleware[Message]{},
-		}
 		return mux.node.handleMessage("", 0, path, message, route)
 	}
 
 	subject, err := mux.node.getSubject(message)
 	if err != nil {
 		return err
-	}
-
-	path := &routeHandler[Message]{
-		middlewares: []Middleware[Message]{},
 	}
 	return mux.node.handleMessage(subject, 0, path, message, route)
 }
@@ -155,6 +155,7 @@ func (mux *Mux[Message]) Group(groupName string) *Mux[Message] {
 		node:           groupNode,
 		errorHandler:   mux.errorHandler,
 		routeDelimiter: mux.routeDelimiter,
+		middlewareQty:  mux.middlewareQty,
 	}
 }
 
@@ -179,6 +180,7 @@ func (mux *Mux[Message]) SetSubjectFunc(getSubject NewSubjectFunc[Message]) *Mux
 }
 
 func (mux *Mux[Message]) Middleware(middlewares ...Middleware[Message]) *Mux[Message] {
+	*mux.middlewareQty += len(middlewares)
 	handler := &routeHandler[Message]{
 		middlewares: middlewares,
 	}
@@ -187,6 +189,7 @@ func (mux *Mux[Message]) Middleware(middlewares ...Middleware[Message]) *Mux[Mes
 }
 
 func (mux *Mux[Message]) PreMiddleware(handleFuncs ...HandleFunc[Message]) *Mux[Message] {
+	*mux.middlewareQty += len(handleFuncs)
 	handler := &routeHandler[Message]{}
 	for _, h := range handleFuncs {
 		handler.middlewares = append(handler.middlewares, h.PreMiddleware())
@@ -196,6 +199,7 @@ func (mux *Mux[Message]) PreMiddleware(handleFuncs ...HandleFunc[Message]) *Mux[
 }
 
 func (mux *Mux[Message]) PostMiddleware(handleFuncs ...HandleFunc[Message]) *Mux[Message] {
+	*mux.middlewareQty += len(handleFuncs)
 	handler := &routeHandler[Message]{}
 	for _, h := range handleFuncs {
 		handler.middlewares = append(handler.middlewares, h.PostMiddleware())
