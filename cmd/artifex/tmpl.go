@@ -100,7 +100,7 @@ func {{.FileName}}EgressHandler() {{.FileName}}EgressHandleFunc {
 	}
 }
 
-func {{.FileName}}EgressHandleError(message *{{.FileName}}Ingress, _ *Artifex.RouteParam, err error) error {
+func {{.FileName}}EgressHandleError(message *{{.FileName}}Egress, _ *Artifex.RouteParam, err error) error {
 	if err != nil {
 		return err
 	}
