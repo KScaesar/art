@@ -148,7 +148,7 @@ func (hub *Hub[T]) remove(key string) {
 		return
 	}
 	delete(hub.collections, key)
-	hub.stopObj(obj)
+	go hub.stopObj(obj)
 }
 
 func (hub *Hub[T]) StopAll() {

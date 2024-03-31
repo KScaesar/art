@@ -104,7 +104,7 @@ func (adp *Adapter[rMessage, sMessage]) init() error {
 
 	var err error
 	adp.initOnce.Do(func() {
-		err = adp.lifecycle.DoInstall()
+		err = adp.lifecycle.Install()
 		if err != nil {
 			return
 		}
@@ -226,8 +226,10 @@ func (adp *Adapter[rMessage, sMessage]) StopWithMessage(message *sMessage) error
 	}
 	adp.isStop = true
 
-	adp.lifecycle.DoUninstall()
-	return adp.adapterStop(adp, message)
+	adp.lifecycle.AsyncUninstall()
+	err = adp.adapterStop(adp, message)
+	adp.lifecycle.Wait()
+	return err
 }
 
 // RegisterStop returns a channel for receiving the result of the Adapter

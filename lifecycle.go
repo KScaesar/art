@@ -1,9 +1,14 @@
 package Artifex
 
+import (
+	"sync"
+)
+
 // Lifecycle define a management mechanism when obj creation and obj end.
 type Lifecycle struct {
 	installHandlers   []func() error
 	uninstallHandlers []func()
+	wg                sync.WaitGroup
 }
 
 func (life *Lifecycle) AddInstall(installs ...func() error) {
@@ -14,22 +19,38 @@ func (life *Lifecycle) AddUninstall(uninstalls ...func()) {
 	life.uninstallHandlers = append(life.uninstallHandlers, uninstalls...)
 }
 
-func (life *Lifecycle) DoInstall() error {
+func (life *Lifecycle) Install() error {
 	for _, install := range life.installHandlers {
 		err := install()
 		if err != nil {
-			life.DoUninstall()
+			life.Uninstall()
 			return err
 		}
 	}
 	return nil
 }
 
-func (life *Lifecycle) DoUninstall() {
+func (life *Lifecycle) Uninstall() {
 	for _, uninstall := range life.uninstallHandlers {
 		uninstall()
 	}
 	return
+}
+
+func (life *Lifecycle) AsyncUninstall() {
+	for _, h := range life.uninstallHandlers {
+		uninstall := h
+		life.wg.Add(1)
+		go func() {
+			defer life.wg.Done()
+			uninstall()
+		}()
+	}
+	return
+}
+
+func (life *Lifecycle) Wait() {
+	life.wg.Wait()
 }
 
 func (life *Lifecycle) InstallQty() int {
