@@ -121,14 +121,14 @@ import (
 
 type {{.FileName}}PubSub interface {
 	Artifex.IAdapter
-	Send(message *{{.FileName}}Egress) error
+	Send(messages ...*{{.FileName}}Egress) error
 	StopWithMessage(message *{{.FileName}}Egress) error
 	Listen() (err error)
 }
 
 type {{.FileName}}Publisher interface {
 	Artifex.IAdapter
-	Send(message *{{.FileName}}Egress) error
+	Send(messages ...*{{.FileName}}Egress) error
 }
 
 type {{.FileName}}Subscriber interface {

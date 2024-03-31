@@ -197,13 +197,20 @@ func (adp *Adapter[rMessage, sMessage]) listen() error {
 	return nil
 }
 
-func (adp *Adapter[rMessage, sMessage]) Send(message *sMessage) error {
+func (adp *Adapter[rMessage, sMessage]) Send(messages ...*sMessage) error {
 	err := adp.init()
 	if err != nil {
 		return err
 	}
 
-	return adp.adapterSend(adp, message)
+	for _, message := range messages {
+		err := adp.adapterSend(adp, message)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (adp *Adapter[rMessage, sMessage]) StopWithMessage(message *sMessage) error {
