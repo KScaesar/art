@@ -15,7 +15,7 @@ go get -u github.com/KScaesar/Artifex
 ## generate code cli
 
 ```shell
-go install github.com/KScaesar/Artifex/cli@latest
+go install github.com/KScaesar/Artifex/cmd/artifex@latest
 ```
 
 ```
