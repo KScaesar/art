@@ -18,8 +18,8 @@ func New{{.FileName}}Ingress() *{{.FileName}}Ingress {
 }
 
 type {{.FileName}}Ingress struct {
-	MsgId       string
-	IngressMsg []byte
+	MsgId string
+	Bytes []byte
 
 	{{.Subject}} {{.Subject}}
 	ParentInfra any
@@ -60,8 +60,8 @@ func New{{.FileName}}Egress() *{{.FileName}}Egress {
 }
 
 type {{.FileName}}Egress struct {
-	msgId     string
-	EgressMsg []byte
+	msgId string
+	Bytes []byte
 
 	{{.Subject}} {{.Subject}}
 	Metadata maputil.Data
@@ -117,6 +117,56 @@ import (
 	"github.com/KScaesar/Artifex"
 )
 
+//
+
+type {{.FileName}}PubSub interface {
+	Artifex.IAdapter
+	Send(message *{{.FileName}}Egress) error
+	StopWithMessage(message *{{.FileName}}Egress) error
+	Listen() (err error)
+}
+
+type {{.FileName}}Publisher interface {
+	Artifex.IAdapter
+	Send(message *{{.FileName}}Egress) error
+}
+
+type {{.FileName}}Subscriber interface {
+	Artifex.IAdapter
+	Listen() (err error)
+}
+
+//
+
+type {{.FileName}}PubSubHub = Artifex.Hub[{{.FileName}}PubSub]
+
+func New{{.FileName}}PubSubHub() *{{.FileName}}PubSubHub {
+	stop := func(pubsub {{.FileName}}PubSub) error {
+		return pubsub.Stop()
+	}
+	return Artifex.NewHub(stop)
+}
+
+type {{.FileName}}PublisherHub = Artifex.Hub[{{.FileName}}Publisher]
+
+func New{{.FileName}}PublisherHub() *{{.FileName}}PublisherHub {
+	stop := func(publisher {{.FileName}}Publisher) error {
+		return publisher.Stop()
+	}
+	return Artifex.NewHub(stop)
+}
+
+type {{.FileName}}SubscriberHub = Artifex.Hub[{{.FileName}}Subscriber]
+
+func New{{.FileName}}SubscriberHub() *{{.FileName}}SubscriberHub {
+	stop := func(subscriber {{.FileName}}Subscriber) error {
+		return subscriber.Stop()
+	}
+	return Artifex.NewHub(stop)
+}
+
+//
+
 type {{.FileName}}Factory struct {
 	NewMux func() (ingressMux *{{.FileName}}IngressMux, egressMux *{{.FileName}}EgressMux)
 
@@ -125,19 +175,7 @@ type {{.FileName}}Factory struct {
 	SubHub    *{{.FileName}}SubscriberHub
 }
 
-//
-
-type {{.FileName}}PubSub = Artifex.Adapter[{{.FileName}}Ingress, {{.FileName}}Egress]
-type {{.FileName}}PubSubHub = Artifex.Hub[*{{.FileName}}PubSub]
-
-func New{{.FileName}}PubSubHub() *{{.FileName}}PubSubHub {
-	stop := func(pubsub *{{.FileName}}PubSub) error {
-		return pubsub.Stop()
-	}
-	return Artifex.NewHub(stop)
-}
-
-func (f *{{.FileName}}Factory) CreatePubSub() (*{{.FileName}}PubSub, error) {
+func (f *{{.FileName}}Factory) CreatePubSub() ({{.FileName}}PubSub, error) {
 
 	ingressMux, egressMux := f.NewMux()
 
@@ -154,17 +192,19 @@ func (f *{{.FileName}}Factory) CreatePubSub() (*{{.FileName}}PubSub, error) {
 		return nil
 	}, waitNotify, 30)
 
-	opt.WaitPing(func() error {
+	opt.WaitPing(waitNotify, 30, func() error {
 		mu.Lock()
 		defer mu.Unlock()
 		return nil
-	}, waitNotify, 30)
+	})
 
-	opt.AdapterRecv(func(adp *{{.FileName}}PubSub) (*{{.FileName}}Ingress, error) {
+	opt.AdapterRecv(func(adp Artifex.IAdapter) (*{{.FileName}}Ingress, error) {
+		parent := adp.({{.FileName}}PubSub)
+		_ = parent
 		return New{{.FileName}}Ingress(), nil
 	})
 
-	opt.AdapterSend(func(adp *{{.FileName}}PubSub, egress *{{.FileName}}Egress) error {
+	opt.AdapterSend(func(adp Artifex.IAdapter, egress *{{.FileName}}Egress) error {
 		err := egressMux.HandleMessage(egress, nil)
 		if err != nil {
 			return err
@@ -175,7 +215,7 @@ func (f *{{.FileName}}Factory) CreatePubSub() (*{{.FileName}}PubSub, error) {
 		return nil
 	})
 
-	opt.AdapterStop(func(adp *{{.FileName}}PubSub, egress *{{.FileName}}Egress) error {
+	opt.AdapterStop(func(adp Artifex.IAdapter, egress *{{.FileName}}Egress) error {
 		mu.Lock()
 		defer mu.Unlock()
 		return nil
@@ -188,35 +228,25 @@ func (f *{{.FileName}}Factory) CreatePubSub() (*{{.FileName}}PubSub, error) {
 	})
 
 	pubsub := Artifex.NewPubSub(opt)
-	pubsub.
-		AddSpawnHandler(func() error {
-			err := f.PubSubHub.Join(pubsub.Identifier(), pubsub)
-			if err != nil {
-				return err
-			}
-			return nil
-		}).
-		AddExitHandler(func() error {
-			f.PubSubHub.RemoveByKey(pubsub.Identifier())
-			return nil
-		})
+	pubsub.Lifecycle(func(life *Artifex.Lifecycle) {
+		life.AddInstall(
+			func() error {
+				err := f.PubSubHub.Join(pubsub.Identifier(), pubsub)
+				if err != nil {
+					return err
+				}
+				life.AddUninstall(func() {
+					f.PubSubHub.RemoveByKey(pubsub.Identifier())
+				})
+				return nil
+			},
+		)
+	})
 
 	return pubsub, nil
 }
 
-//
-
-type {{.FileName}}Publisher = Artifex.Adapter[struct{}, {{.FileName}}Egress]
-type {{.FileName}}PublisherHub = Artifex.Hub[*{{.FileName}}Publisher]
-
-func New{{.FileName}}PublisherHub() *{{.FileName}}PublisherHub {
-	stop := func(publisher *{{.FileName}}Publisher) error {
-		return publisher.Stop()
-	}
-	return Artifex.NewHub(stop)
-}
-
-func (f *{{.FileName}}Factory) CreatePublisher() (*{{.FileName}}Publisher, error) {
+func (f *{{.FileName}}Factory) CreatePublisher() ({{.FileName}}Publisher, error) {
 
 	_, egressMux := f.NewMux()
 
@@ -225,7 +255,7 @@ func (f *{{.FileName}}Factory) CreatePublisher() (*{{.FileName}}Publisher, error
 		Identifier("").
 		SendPing(func() error { return nil }, waitNotify, 30)
 
-	opt.AdapterSend(func(adp *{{.FileName}}Publisher, egress *{{.FileName}}Egress) error {
+	opt.AdapterSend(func(adp Artifex.IAdapter, egress *{{.FileName}}Egress) error {
 		err := egressMux.HandleMessage(egress, nil)
 		if err != nil {
 			return err
@@ -233,47 +263,34 @@ func (f *{{.FileName}}Factory) CreatePublisher() (*{{.FileName}}Publisher, error
 		return nil
 	})
 
-	opt.AdapterStop(func(adp *{{.FileName}}Publisher, _ *{{.FileName}}Egress) error {
+	opt.AdapterStop(func(adp Artifex.IAdapter, _ *{{.FileName}}Egress) error {
 		return nil
 	})
 
-	var mu sync.Mutex
 	opt.AdapterFixup(0, func() error {
-		mu.Lock()
-		defer mu.Unlock()
 		return nil
 	})
 
 	publisher := Artifex.NewPublisher(opt)
-	publisher.
-		AddSpawnHandler(func() error {
-			err := f.PubHub.Join(publisher.Identifier(), publisher)
-			if err != nil {
-				return err
-			}
-			return nil
-		}).
-		AddExitHandler(func() error {
-			f.PubHub.RemoveByKey(publisher.Identifier())
-			return nil
-		})
+	publisher.Lifecycle(func(life *Artifex.Lifecycle) {
+		life.AddInstall(
+			func() error {
+				err := f.PubHub.Join(publisher.Identifier(), publisher)
+				if err != nil {
+					return err
+				}
+				life.AddUninstall(func() {
+					f.PubHub.RemoveByKey(publisher.Identifier())
+				})
+				return nil
+			},
+		)
+	})
 
 	return publisher, nil
 }
 
-//
-
-type {{.FileName}}Subscriber = Artifex.Adapter[{{.FileName}}Ingress, struct{}]
-type {{.FileName}}SubscriberHub = Artifex.Hub[*{{.FileName}}Subscriber]
-
-func New{{.FileName}}SubscriberHub() *{{.FileName}}SubscriberHub {
-	stop := func(subscriber *{{.FileName}}Subscriber) error {
-		return subscriber.Stop()
-	}
-	return Artifex.NewHub(stop)
-}
-
-func (f *{{.FileName}}Factory) CreateSubscriber() (*{{.FileName}}Subscriber, error) {
+func (f *{{.FileName}}Factory) CreateSubscriber() ({{.FileName}}Subscriber, error) {
 
 	ingressMux, _ := f.NewMux()
 
@@ -283,34 +300,33 @@ func (f *{{.FileName}}Factory) CreateSubscriber() (*{{.FileName}}Subscriber, err
 		HandleRecv(ingressMux.HandleMessage).
 		SendPing(func() error { return nil }, waitNotify, 30)
 
-	opt.AdapterRecv(func(adp *{{.FileName}}Subscriber) (*{{.FileName}}Ingress, error) {
+	opt.AdapterRecv(func(adp Artifex.IAdapter) (*{{.FileName}}Ingress, error) {
 		return New{{.FileName}}Ingress(), nil
 	})
 
-	opt.AdapterStop(func(adp *{{.FileName}}Subscriber, _ *struct{}) error {
+	opt.AdapterStop(func(adp Artifex.IAdapter, _ *struct{}) error {
 		return nil
 	})
 
-	var mu sync.Mutex
 	opt.AdapterFixup(0, func() error {
-		mu.Lock()
-		defer mu.Unlock()
 		return nil
 	})
 
 	subscriber := Artifex.NewSubscriber(opt)
-	subscriber.
-		AddSpawnHandler(func() error {
-			err := f.SubHub.Join(subscriber.Identifier(), subscriber)
-			if err != nil {
-				return err
-			}
-			return nil
-		}).
-		AddExitHandler(func() error {
-			f.SubHub.RemoveByKey(subscriber.Identifier())
-			return nil
-		})
+	subscriber.Lifecycle(func(life *Artifex.Lifecycle) {
+		life.AddInstall(
+			func() error {
+				err := f.SubHub.Join(subscriber.Identifier(), subscriber)
+				if err != nil {
+					return err
+				}
+				life.AddUninstall(func() {
+					f.SubHub.RemoveByKey(subscriber.Identifier())
+				})
+				return nil
+			},
+		)
+	})
 
 	return subscriber, nil
 }

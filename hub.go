@@ -2,7 +2,6 @@ package Artifex
 
 import (
 	"sync"
-	"sync/atomic"
 )
 
 func NewHub[T any](stopObj func(T) error) *Hub[T] {
@@ -22,20 +21,17 @@ type Hub[T any] struct {
 	mu             sync.RWMutex
 
 	stopObj func(T) error
-	isStop  atomic.Bool
+	isStop  bool
 }
 
 func (hub *Hub[T]) Join(key string, obj T) error {
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
-	if hub.isStop.Load() {
+	if hub.isStop {
 		return ErrorWrapWithMessage(ErrClosed, "Artifex hub")
 	}
 
-	_, found := hub.collections[key]
-	if found {
-		hub.remove(key)
-	}
+	hub.remove(key)
 	hub.collections[key] = obj
 	return nil
 }
@@ -43,7 +39,7 @@ func (hub *Hub[T]) Join(key string, obj T) error {
 func (hub *Hub[T]) UpdateByOldKey(oldKey string, update func(T) (freshKey string, err error)) error {
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
-	if hub.isStop.Load() {
+	if hub.isStop {
 		return ErrorWrapWithMessage(ErrClosed, "Artifex hub")
 	}
 
@@ -56,9 +52,10 @@ func (hub *Hub[T]) UpdateByOldKey(oldKey string, update func(T) (freshKey string
 	if err != nil {
 		return err
 	}
+	hub.remove(freshKey)
 
-	hub.collections[freshKey] = obj
 	delete(hub.collections, oldKey)
+	hub.collections[freshKey] = obj
 	return nil
 }
 
@@ -137,8 +134,8 @@ func (hub *Hub[T]) RemoveMulti(filter func(T) bool) {
 }
 
 func (hub *Hub[T]) RemoveMultiByKey(keys []string) {
-	hub.mu.RLock()
-	defer hub.mu.RUnlock()
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
 
 	for i := 0; i < len(keys); i++ {
 		hub.remove(keys[i])
@@ -157,11 +154,11 @@ func (hub *Hub[T]) remove(key string) {
 func (hub *Hub[T]) StopAll() {
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
-	if hub.isStop.Load() {
+	if hub.isStop {
 		return
 	}
+	hub.isStop = true
 
-	hub.isStop.Store(true)
 	for key, _ := range hub.collections {
 		hub.remove(key)
 	}
@@ -170,7 +167,7 @@ func (hub *Hub[T]) StopAll() {
 func (hub *Hub[T]) DoSync(action func(T) (stop bool)) {
 	hub.mu.RLock()
 	defer hub.mu.RUnlock()
-	if hub.isStop.Load() {
+	if hub.isStop {
 		return
 	}
 
@@ -185,7 +182,7 @@ func (hub *Hub[T]) DoSync(action func(T) (stop bool)) {
 func (hub *Hub[T]) DoAsync(action func(T)) {
 	hub.mu.RLock()
 	defer hub.mu.RUnlock()
-	if hub.isStop.Load() {
+	if hub.isStop {
 		return
 	}
 
@@ -226,7 +223,7 @@ func (hub *Hub[T]) Total() int {
 }
 
 func (hub *Hub[T]) SetConcurrencyQty(concurrencyQty int) {
-	if hub.isStop.Load() {
+	if hub.isStop {
 		return
 	}
 	hub.mu.Lock()

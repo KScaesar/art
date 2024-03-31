@@ -28,7 +28,7 @@ Task:
 	if fixup == nil {
 		return backoff.Retry(func() error {
 			if allowStop() {
-				return backoff.Permanent(errors.New("stop reliable task"))
+				return backoff.Permanent(errors.New("task has actively been stopped"))
 			}
 			return task()
 		}, param)
@@ -36,7 +36,7 @@ Task:
 
 	err = backoff.Retry(func() error {
 		if allowStop() {
-			return backoff.Permanent(errors.New("stop reliable task"))
+			return backoff.Permanent(errors.New("task has actively been stopped"))
 		}
 		return fixup()
 	}, param)

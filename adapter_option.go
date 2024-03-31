@@ -14,9 +14,9 @@ func NewSubscriberOption[rMessage any]() (opt *AdapterOption[rMessage, struct{}]
 
 type AdapterOption[rMessage, sMessage any] struct {
 	handleRecv  HandleFunc[rMessage]
-	adapterRecv func(*Adapter[rMessage, sMessage]) (*rMessage, error)
-	adapterSend func(*Adapter[rMessage, sMessage], *sMessage) error
-	adapterStop func(*Adapter[rMessage, sMessage], *sMessage) error
+	adapterRecv func(IAdapter) (*rMessage, error)
+	adapterSend func(IAdapter, *sMessage) error
+	adapterStop func(IAdapter, *sMessage) error
 
 	fixupMaxRetrySecond int
 	adapterFixup        func() error
@@ -31,17 +31,17 @@ func (opt *AdapterOption[rMessage, sMessage]) HandleRecv(handleRecv HandleFunc[r
 	return opt
 }
 
-func (opt *AdapterOption[rMessage, sMessage]) AdapterRecv(adapterRecv func(adp *Adapter[rMessage, sMessage]) (*rMessage, error)) *AdapterOption[rMessage, sMessage] {
+func (opt *AdapterOption[rMessage, sMessage]) AdapterRecv(adapterRecv func(adp IAdapter) (*rMessage, error)) *AdapterOption[rMessage, sMessage] {
 	opt.adapterRecv = adapterRecv
 	return opt
 }
 
-func (opt *AdapterOption[rMessage, sMessage]) AdapterSend(adapterSend func(adp *Adapter[rMessage, sMessage], egress *sMessage) error) *AdapterOption[rMessage, sMessage] {
+func (opt *AdapterOption[rMessage, sMessage]) AdapterSend(adapterSend func(adp IAdapter, egress *sMessage) error) *AdapterOption[rMessage, sMessage] {
 	opt.adapterSend = adapterSend
 	return opt
 }
 
-func (opt *AdapterOption[rMessage, sMessage]) AdapterStop(adapterStop func(adp *Adapter[rMessage, sMessage], egress *sMessage) error) *AdapterOption[rMessage, sMessage] {
+func (opt *AdapterOption[rMessage, sMessage]) AdapterStop(adapterStop func(adp IAdapter, egress *sMessage) error) *AdapterOption[rMessage, sMessage] {
 	opt.adapterStop = adapterStop
 	return opt
 }
@@ -56,8 +56,8 @@ func (opt *AdapterOption[rMessage, sMessage]) AdapterFixup(maxRetrySecond int, a
 //
 // When SendPingWaitPong sends a ping message and waits for a corresponding pong message.
 // SendPeriod = WaitSecond / 2
-func (opt *AdapterOption[rMessage, sMessage]) SendPing(sendPing func() error, waitPong chan error, waitSecond int) *AdapterOption[rMessage, sMessage] {
-	second := waitSecond
+func (opt *AdapterOption[rMessage, sMessage]) SendPing(sendPing func() error, waitPong chan error, waitPongSecond int) *AdapterOption[rMessage, sMessage] {
+	second := waitPongSecond
 	if second <= 0 {
 		second = 30
 	}
@@ -72,8 +72,8 @@ func (opt *AdapterOption[rMessage, sMessage]) SendPing(sendPing func() error, wa
 //
 // When WaitPingSendPong waits for a ping message and response a corresponding pong message.
 // SendPeriod = WaitSecond
-func (opt *AdapterOption[rMessage, sMessage]) WaitPing(sendPong func() error, waitPing chan error, waitSecond int) *AdapterOption[rMessage, sMessage] {
-	second := waitSecond
+func (opt *AdapterOption[rMessage, sMessage]) WaitPing(waitPing chan error, waitPingSecond int, sendPong func() error) *AdapterOption[rMessage, sMessage] {
+	second := waitPingSecond
 	if second <= 0 {
 		second = 30
 	}
