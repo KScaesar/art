@@ -1,1 +1,0 @@
-module github.com/KScaesar/Artifex/example
