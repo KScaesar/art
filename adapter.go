@@ -6,7 +6,7 @@ import (
 	"github.com/gookit/goutil/maputil"
 )
 
-func NewPubSub[rMessage, sMessage any](opt *AdapterOption[rMessage, sMessage]) (pubsub *Adapter[rMessage, sMessage]) {
+func NewPubSub[rMessage, sMessage any](opt *AdapterOption[rMessage, sMessage]) (pubsub *Adapter[rMessage, sMessage], err error) {
 	pubsub = &Adapter[rMessage, sMessage]{
 		pingpong:            opt.pingpong,
 		fixupMaxRetrySecond: opt.fixupMaxRetrySecond,
@@ -20,10 +20,11 @@ func NewPubSub[rMessage, sMessage any](opt *AdapterOption[rMessage, sMessage]) (
 	pubsub.adapterRecv = opt.adapterRecv
 	pubsub.adapterSend = opt.adapterSend
 	pubsub.adapterStop = opt.adapterStop
-	return pubsub
+	pubsub.Lifecycle(opt.lifecycle)
+	return pubsub, pubsub.init()
 }
 
-func NewPublisher[sMessage any](opt *AdapterOption[struct{}, sMessage]) (publisher *Adapter[struct{}, sMessage]) {
+func NewPublisher[sMessage any](opt *AdapterOption[struct{}, sMessage]) (publisher *Adapter[struct{}, sMessage], err error) {
 	publisher = &Adapter[struct{}, sMessage]{
 		pingpong:            opt.pingpong,
 		fixupMaxRetrySecond: opt.fixupMaxRetrySecond,
@@ -37,10 +38,11 @@ func NewPublisher[sMessage any](opt *AdapterOption[struct{}, sMessage]) (publish
 	publisher.adapterRecv = nil
 	publisher.adapterSend = opt.adapterSend
 	publisher.adapterStop = opt.adapterStop
-	return publisher
+	publisher.Lifecycle(opt.lifecycle)
+	return publisher, publisher.init()
 }
 
-func NewSubscriber[rMessage any](opt *AdapterOption[rMessage, struct{}]) (subscriber *Adapter[rMessage, struct{}]) {
+func NewSubscriber[rMessage any](opt *AdapterOption[rMessage, struct{}]) (subscriber *Adapter[rMessage, struct{}], err error) {
 	subscriber = &Adapter[rMessage, struct{}]{
 		pingpong:            opt.pingpong,
 		fixupMaxRetrySecond: opt.fixupMaxRetrySecond,
@@ -54,7 +56,8 @@ func NewSubscriber[rMessage any](opt *AdapterOption[rMessage, struct{}]) (subscr
 	subscriber.adapterRecv = opt.adapterRecv
 	subscriber.adapterSend = nil
 	subscriber.adapterStop = opt.adapterStop
-	return subscriber
+	subscriber.Lifecycle(opt.lifecycle)
+	return subscriber, subscriber.init()
 }
 
 type IAdapter interface {
@@ -94,39 +97,31 @@ type Adapter[rMessage, sMessage any] struct {
 	result    chan error
 	mqStopAll []chan error
 	isStop    bool
-	initOnce  sync.Once
 }
 
 func (adp *Adapter[rMessage, sMessage]) init() error {
-	if adp.isStop {
-		return ErrorWrapWithMessage(ErrClosed, "Artifex adapter")
+	err := adp.lifecycle.Install(adp)
+	if err != nil {
+		return err
 	}
 
-	var err error
-	adp.initOnce.Do(func() {
-		err = adp.lifecycle.Install()
-		if err != nil {
+	go func() {
+		if adp.pingpong == nil {
 			return
 		}
+		if adp.adapterFixup == nil {
+			adp.result <- adp.pingpong(adp.IsStop)
+			return
+		}
+		adp.result <- ReliableTask(
+			func() error { return adp.pingpong(adp.IsStop) },
+			adp.IsStop,
+			adp.fixupMaxRetrySecond,
+			adp.adapterFixup,
+		)
+	}()
 
-		go func() {
-			if adp.pingpong == nil {
-				return
-			}
-			if adp.adapterFixup == nil {
-				adp.result <- adp.pingpong(adp.IsStop)
-				return
-			}
-			adp.result <- ReliableTask(
-				func() error { return adp.pingpong(adp.IsStop) },
-				adp.IsStop,
-				adp.fixupMaxRetrySecond,
-				adp.adapterFixup,
-			)
-		}()
-
-	})
-	return err
+	return nil
 }
 
 func (adp *Adapter[rMessage, sMessage]) Identifier() string {
@@ -152,9 +147,8 @@ func (adp *Adapter[rMessage, sMessage]) Lifecycle(setup func(life *Lifecycle)) {
 }
 
 func (adp *Adapter[rMessage, sMessage]) Listen() (err error) {
-	err = adp.init()
-	if err != nil {
-		return err
+	if adp.isStop {
+		return ErrorWrapWithMessage(ErrClosed, "Artifex adapter")
 	}
 
 	go func() {
@@ -198,9 +192,8 @@ func (adp *Adapter[rMessage, sMessage]) listen() error {
 }
 
 func (adp *Adapter[rMessage, sMessage]) Send(messages ...*sMessage) error {
-	err := adp.init()
-	if err != nil {
-		return err
+	if adp.isStop {
+		return ErrorWrapWithMessage(ErrClosed, "Artifex adapter")
 	}
 
 	for _, message := range messages {
@@ -214,11 +207,6 @@ func (adp *Adapter[rMessage, sMessage]) Send(messages ...*sMessage) error {
 }
 
 func (adp *Adapter[rMessage, sMessage]) StopWithMessage(message *sMessage) error {
-	err := adp.init()
-	if err != nil {
-		return err
-	}
-
 	adp.adpMutex.Lock()
 	defer adp.adpMutex.Unlock()
 	if adp.isStop {
@@ -226,8 +214,8 @@ func (adp *Adapter[rMessage, sMessage]) StopWithMessage(message *sMessage) error
 	}
 	adp.isStop = true
 
-	adp.lifecycle.AsyncUninstall()
-	err = adp.adapterStop(adp, message)
+	adp.lifecycle.AsyncUninstall(adp)
+	err := adp.adapterStop(adp, message)
 	adp.lifecycle.Wait()
 	return err
 }

@@ -1,15 +1,27 @@
 package Artifex
 
 func NewPubSubOption[rMessage, sMessage any]() (opt *AdapterOption[rMessage, sMessage]) {
-	return &AdapterOption[rMessage, sMessage]{}
+	return &AdapterOption[rMessage, sMessage]{
+		lifecycle: func(lifecycle *Lifecycle) {
+			return
+		},
+	}
 }
 
 func NewPublisherOption[sMessage any]() (opt *AdapterOption[struct{}, sMessage]) {
-	return &AdapterOption[struct{}, sMessage]{}
+	return &AdapterOption[struct{}, sMessage]{
+		lifecycle: func(lifecycle *Lifecycle) {
+			return
+		},
+	}
 }
 
 func NewSubscriberOption[rMessage any]() (opt *AdapterOption[rMessage, struct{}]) {
-	return &AdapterOption[rMessage, struct{}]{}
+	return &AdapterOption[rMessage, struct{}]{
+		lifecycle: func(lifecycle *Lifecycle) {
+			return
+		},
+	}
 }
 
 type AdapterOption[rMessage, sMessage any] struct {
@@ -24,6 +36,8 @@ type AdapterOption[rMessage, sMessage any] struct {
 	pingpong func(isStop func() bool) error
 
 	identifier string
+
+	lifecycle func(*Lifecycle)
 }
 
 func (opt *AdapterOption[rMessage, sMessage]) HandleRecv(handleRecv HandleFunc[rMessage]) *AdapterOption[rMessage, sMessage] {
@@ -87,4 +101,8 @@ func (opt *AdapterOption[rMessage, sMessage]) WaitPing(waitPing chan error, wait
 func (opt *AdapterOption[rMessage, sMessage]) Identifier(identifier string) *AdapterOption[rMessage, sMessage] {
 	opt.identifier = identifier
 	return opt
+}
+
+func (opt *AdapterOption[rMessage, sMessage]) Lifecycle(setup func(life *Lifecycle)) {
+	opt.lifecycle = setup
 }

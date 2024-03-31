@@ -227,23 +227,22 @@ func (f *{{.FileName}}Factory) CreatePubSub() ({{.FileName}}PubSub, error) {
 		return nil
 	})
 
-	pubsub := Artifex.NewPubSub(opt)
-	pubsub.Lifecycle(func(life *Artifex.Lifecycle) {
+	opt.Lifecycle(func(life *Artifex.Lifecycle) {
 		life.AddInstall(
-			func() error {
-				err := f.PubSubHub.Join(pubsub.Identifier(), pubsub)
+			func(adp Artifex.IAdapter) error {
+				err := f.PubHub.Join(adp.Identifier(), adp.({{.FileName}}PubSub))
 				if err != nil {
 					return err
 				}
-				life.AddUninstall(func() {
-					f.PubSubHub.RemoveByKey(pubsub.Identifier())
+				life.AddUninstall(func(adp Artifex.IAdapter) {
+					f.PubSubHub.RemoveByKey(adp.Identifier())
 				})
 				return nil
 			},
 		)
 	})
 
-	return pubsub, nil
+	return Artifex.NewPubSub(opt)
 }
 
 func (f *{{.FileName}}Factory) CreatePublisher() ({{.FileName}}Publisher, error) {
@@ -271,23 +270,22 @@ func (f *{{.FileName}}Factory) CreatePublisher() ({{.FileName}}Publisher, error)
 		return nil
 	})
 
-	publisher := Artifex.NewPublisher(opt)
-	publisher.Lifecycle(func(life *Artifex.Lifecycle) {
+	opt.Lifecycle(func(life *Artifex.Lifecycle) {
 		life.AddInstall(
-			func() error {
-				err := f.PubHub.Join(publisher.Identifier(), publisher)
+			func(adp Artifex.IAdapter) error {
+				err := f.PubHub.Join(adp.Identifier(), adp.({{.FileName}}Publisher))
 				if err != nil {
 					return err
 				}
-				life.AddUninstall(func() {
-					f.PubHub.RemoveByKey(publisher.Identifier())
+				life.AddUninstall(func(adp Artifex.IAdapter) {
+					f.PubHub.RemoveByKey(adp.Identifier())
 				})
 				return nil
 			},
 		)
 	})
 
-	return publisher, nil
+	return Artifex.NewPublisher(opt)
 }
 
 func (f *{{.FileName}}Factory) CreateSubscriber() ({{.FileName}}Subscriber, error) {
@@ -312,22 +310,21 @@ func (f *{{.FileName}}Factory) CreateSubscriber() ({{.FileName}}Subscriber, erro
 		return nil
 	})
 
-	subscriber := Artifex.NewSubscriber(opt)
-	subscriber.Lifecycle(func(life *Artifex.Lifecycle) {
+	opt.Lifecycle(func(life *Artifex.Lifecycle) {
 		life.AddInstall(
-			func() error {
-				err := f.SubHub.Join(subscriber.Identifier(), subscriber)
+			func(adp Artifex.IAdapter) error {
+				err := f.SubHub.Join(adp.Identifier(), adp.({{.FileName}}Subscriber))
 				if err != nil {
 					return err
 				}
-				life.AddUninstall(func() {
-					f.SubHub.RemoveByKey(subscriber.Identifier())
+				life.AddUninstall(func(adp Artifex.IAdapter) {
+					f.SubHub.RemoveByKey(adp.Identifier())
 				})
 				return nil
 			},
 		)
 	})
 
-	return subscriber, nil
+	return Artifex.NewSubscriber(opt)
 }
 `

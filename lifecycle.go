@@ -6,44 +6,46 @@ import (
 
 // Lifecycle define a management mechanism when obj creation and obj end.
 type Lifecycle struct {
-	installHandlers   []func() error
-	uninstallHandlers []func()
+	installHandlers   []func(adapter IAdapter) error
+	uninstallHandlers []func(adapter IAdapter)
 	wg                sync.WaitGroup
 }
 
-func (life *Lifecycle) AddInstall(installs ...func() error) {
+func (life *Lifecycle) AddInstall(installs ...func(adp IAdapter) error) *Lifecycle {
 	life.installHandlers = append(life.installHandlers, installs...)
+	return life
 }
 
-func (life *Lifecycle) AddUninstall(uninstalls ...func()) {
+func (life *Lifecycle) AddUninstall(uninstalls ...func(adp IAdapter)) *Lifecycle {
 	life.uninstallHandlers = append(life.uninstallHandlers, uninstalls...)
+	return life
 }
 
-func (life *Lifecycle) Install() error {
+func (life *Lifecycle) Install(adp IAdapter) error {
 	for _, install := range life.installHandlers {
-		err := install()
+		err := install(adp)
 		if err != nil {
-			life.Uninstall()
+			life.Uninstall(adp)
 			return err
 		}
 	}
 	return nil
 }
 
-func (life *Lifecycle) Uninstall() {
+func (life *Lifecycle) Uninstall(adp IAdapter) {
 	for _, uninstall := range life.uninstallHandlers {
-		uninstall()
+		uninstall(adp)
 	}
 	return
 }
 
-func (life *Lifecycle) AsyncUninstall() {
+func (life *Lifecycle) AsyncUninstall(adp IAdapter) {
 	for _, h := range life.uninstallHandlers {
 		uninstall := h
 		life.wg.Add(1)
 		go func() {
 			defer life.wg.Done()
-			uninstall()
+			uninstall(adp)
 		}()
 	}
 	return
