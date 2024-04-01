@@ -1,27 +1,15 @@
 package Artifex
 
 func NewPubSubOption[rMessage, sMessage any]() (opt *AdapterOption[rMessage, sMessage]) {
-	return &AdapterOption[rMessage, sMessage]{
-		lifecycle: func(lifecycle *Lifecycle) {
-			return
-		},
-	}
+	return &AdapterOption[rMessage, sMessage]{}
 }
 
 func NewPublisherOption[sMessage any]() (opt *AdapterOption[struct{}, sMessage]) {
-	return &AdapterOption[struct{}, sMessage]{
-		lifecycle: func(lifecycle *Lifecycle) {
-			return
-		},
-	}
+	return &AdapterOption[struct{}, sMessage]{}
 }
 
 func NewSubscriberOption[rMessage any]() (opt *AdapterOption[rMessage, struct{}]) {
-	return &AdapterOption[rMessage, struct{}]{
-		lifecycle: func(lifecycle *Lifecycle) {
-			return
-		},
-	}
+	return &AdapterOption[rMessage, struct{}]{}
 }
 
 type AdapterOption[rMessage, sMessage any] struct {
@@ -37,7 +25,7 @@ type AdapterOption[rMessage, sMessage any] struct {
 
 	identifier string
 
-	lifecycle func(*Lifecycle)
+	newLifecycle func() *Lifecycle
 }
 
 func (opt *AdapterOption[rMessage, sMessage]) HandleRecv(handleRecv HandleFunc[rMessage]) *AdapterOption[rMessage, sMessage] {
@@ -103,6 +91,14 @@ func (opt *AdapterOption[rMessage, sMessage]) Identifier(identifier string) *Ada
 	return opt
 }
 
-func (opt *AdapterOption[rMessage, sMessage]) Lifecycle(setup func(life *Lifecycle)) {
-	opt.lifecycle = setup
+func (opt *AdapterOption[rMessage, sMessage]) NewLifecycle(newFunc func() *Lifecycle) *AdapterOption[rMessage, sMessage] {
+	opt.newLifecycle = newFunc
+	return opt
+}
+
+func (opt *AdapterOption[rMessage, sMessage]) lifecycle() *Lifecycle {
+	if opt.newLifecycle == nil {
+		return &Lifecycle{}
+	}
+	return opt.newLifecycle()
 }

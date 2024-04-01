@@ -227,20 +227,23 @@ func (f *{{.FileName}}Factory) CreatePubSub() ({{.FileName}}PubSub, error) {
 		return nil
 	})
 
-	opt.Lifecycle(func(life *Artifex.Lifecycle) {
-		life.AddInstall(
+	opt.NewLifecycle(func() *Artifex.Lifecycle {
+		lifecycle := &Artifex.Lifecycle{}
+		lifecycle.AddInitialize(
 			func(adp Artifex.IAdapter) error {
-				err := f.PubHub.Join(adp.Identifier(), adp.({{.FileName}}PubSub))
+				err := f.PubSubHub.Join(adp.Identifier(), adp.({{.FileName}}PubSub))
 				if err != nil {
 					return err
 				}
-				life.AddUninstall(func(adp Artifex.IAdapter) {
+				lifecycle.AddTerminate(func(adp Artifex.IAdapter) {
 					f.PubSubHub.RemoveByKey(adp.Identifier())
 				})
 				return nil
 			},
 		)
+		return lifecycle
 	})
+
 
 	return Artifex.NewPubSub(opt)
 }
@@ -270,19 +273,21 @@ func (f *{{.FileName}}Factory) CreatePublisher() ({{.FileName}}Publisher, error)
 		return nil
 	})
 
-	opt.Lifecycle(func(life *Artifex.Lifecycle) {
-		life.AddInstall(
+	opt.NewLifecycle(func() *Artifex.Lifecycle {
+		lifecycle := &Artifex.Lifecycle{}
+		lifecycle.AddInitialize(
 			func(adp Artifex.IAdapter) error {
 				err := f.PubHub.Join(adp.Identifier(), adp.({{.FileName}}Publisher))
 				if err != nil {
 					return err
 				}
-				life.AddUninstall(func(adp Artifex.IAdapter) {
+				lifecycle.AddTerminate(func(adp Artifex.IAdapter) {
 					f.PubHub.RemoveByKey(adp.Identifier())
 				})
 				return nil
 			},
 		)
+		return lifecycle
 	})
 
 	return Artifex.NewPublisher(opt)
@@ -310,19 +315,21 @@ func (f *{{.FileName}}Factory) CreateSubscriber() ({{.FileName}}Subscriber, erro
 		return nil
 	})
 
-	opt.Lifecycle(func(life *Artifex.Lifecycle) {
-		life.AddInstall(
+	opt.NewLifecycle(func() *Artifex.Lifecycle {
+		lifecycle := &Artifex.Lifecycle{}
+		lifecycle.AddInitialize(
 			func(adp Artifex.IAdapter) error {
 				err := f.SubHub.Join(adp.Identifier(), adp.({{.FileName}}Subscriber))
 				if err != nil {
 					return err
 				}
-				life.AddUninstall(func(adp Artifex.IAdapter) {
+				lifecycle.AddTerminate(func(adp Artifex.IAdapter) {
 					f.SubHub.RemoveByKey(adp.Identifier())
 				})
 				return nil
 			},
 		)
+		return lifecycle
 	})
 
 	return Artifex.NewSubscriber(opt)
