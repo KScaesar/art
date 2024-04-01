@@ -19,7 +19,7 @@ type AdapterOption[rMessage, sMessage any] struct {
 	adapterStop func(IAdapter, *sMessage) error
 
 	fixupMaxRetrySecond int
-	adapterFixup        func() error
+	adapterFixup        func(IAdapter) error
 
 	pingpong func(isStop func() bool) error
 
@@ -48,7 +48,7 @@ func (opt *AdapterOption[rMessage, sMessage]) AdapterStop(adapterStop func(adp I
 	return opt
 }
 
-func (opt *AdapterOption[rMessage, sMessage]) AdapterFixup(maxRetrySecond int, adapterFixup func() error) *AdapterOption[rMessage, sMessage] {
+func (opt *AdapterOption[rMessage, sMessage]) AdapterFixup(maxRetrySecond int, adapterFixup func(IAdapter) error) *AdapterOption[rMessage, sMessage] {
 	opt.fixupMaxRetrySecond = maxRetrySecond
 	opt.adapterFixup = adapterFixup
 	return opt

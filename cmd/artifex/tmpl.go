@@ -223,7 +223,7 @@ func (f *{{.FileName}}Factory) CreatePubSub() ({{.FileName}}PubSub, error) {
 		return nil
 	})
 
-	opt.AdapterFixup(0, func() error {
+	opt.AdapterFixup(0, func(adp Artifex.IAdapter) error {
 		mu.Lock()
 		defer mu.Unlock()
 		return nil
@@ -268,7 +268,7 @@ func (f *{{.FileName}}Factory) CreatePublisher() ({{.FileName}}Publisher, error)
 		return nil
 	})
 
-	opt.AdapterFixup(0, func() error {
+	opt.AdapterFixup(0, func(adp Artifex.IAdapter) error {
 		return nil
 	})
 
@@ -308,7 +308,7 @@ func (f *{{.FileName}}Factory) CreateSubscriber() ({{.FileName}}Subscriber, erro
 		return nil
 	})
 
-	opt.AdapterFixup(0, func() error {
+	opt.AdapterFixup(0, func(adp Artifex.IAdapter) error {
 		return nil
 	})
 

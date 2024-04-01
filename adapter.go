@@ -85,7 +85,7 @@ type Adapter[rMessage, sMessage any] struct {
 	pingpong func(isStop func() bool) error
 
 	fixupMaxRetrySecond int
-	adapterFixup        func() error
+	adapterFixup        func(IAdapter) error
 
 	lifecycle *Lifecycle
 
@@ -116,7 +116,7 @@ func (adp *Adapter[rMessage, sMessage]) init() error {
 			func() error { return adp.pingpong(adp.IsStop) },
 			adp.IsStop,
 			adp.fixupMaxRetrySecond,
-			adp.adapterFixup,
+			func() error { return adp.adapterFixup(adp) },
 		)
 	}()
 
@@ -153,7 +153,12 @@ func (adp *Adapter[rMessage, sMessage]) Listen() (err error) {
 			adp.result <- adp.listen()
 			return
 		}
-		adp.result <- ReliableTask(adp.listen, adp.IsStop, adp.fixupMaxRetrySecond, adp.adapterFixup)
+		adp.result <- ReliableTask(
+			adp.listen,
+			adp.IsStop,
+			adp.fixupMaxRetrySecond,
+			func() error { return adp.adapterFixup(adp) },
+		)
 	}()
 
 	err = <-adp.result
