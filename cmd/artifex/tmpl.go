@@ -173,6 +173,8 @@ type {{.FileName}}Factory struct {
 	PubSubHub *{{.FileName}}PubSubHub
 	PubHub    *{{.FileName}}PublisherHub
 	SubHub    *{{.FileName}}SubscriberHub
+
+	NewLifecycle func() *Artifex.Lifecycle
 }
 
 func (f *{{.FileName}}Factory) CreatePubSub() ({{.FileName}}PubSub, error) {
@@ -227,24 +229,21 @@ func (f *{{.FileName}}Factory) CreatePubSub() ({{.FileName}}PubSub, error) {
 		return nil
 	})
 
-	opt.NewLifecycle(func() *Artifex.Lifecycle {
-		lifecycle := &Artifex.Lifecycle{}
-		lifecycle.AddInitialize(
-			func(adp Artifex.IAdapter) error {
-				err := f.PubSubHub.Join(adp.Identifier(), adp.({{.FileName}}PubSub))
-				if err != nil {
-					return err
-				}
-				lifecycle.AddTerminate(func(adp Artifex.IAdapter) {
-					f.PubSubHub.RemoveByKey(adp.Identifier())
-				})
-				return nil
-			},
-		)
-		return lifecycle
-	})
+	lifecycle := f.NewLifecycle()
+	lifecycle.AddInitialize(
+		func(adp Artifex.IAdapter) error {
+			err := f.PubSubHub.Join(adp.Identifier(), adp.({{.FileName}}PubSub))
+			if err != nil {
+				return err
+			}
+			lifecycle.AddTerminate(func(adp Artifex.IAdapter) {
+				f.PubSubHub.RemoveByKey(adp.Identifier())
+			})
+			return nil
+		},
+	)
 
-
+	opt.NewLifecycle(func() *Artifex.Lifecycle { return lifecycle })
 	return Artifex.NewPubSub(opt)
 }
 
@@ -273,23 +272,21 @@ func (f *{{.FileName}}Factory) CreatePublisher() ({{.FileName}}Publisher, error)
 		return nil
 	})
 
-	opt.NewLifecycle(func() *Artifex.Lifecycle {
-		lifecycle := &Artifex.Lifecycle{}
-		lifecycle.AddInitialize(
-			func(adp Artifex.IAdapter) error {
-				err := f.PubHub.Join(adp.Identifier(), adp.({{.FileName}}Publisher))
-				if err != nil {
-					return err
-				}
-				lifecycle.AddTerminate(func(adp Artifex.IAdapter) {
-					f.PubHub.RemoveByKey(adp.Identifier())
-				})
-				return nil
-			},
-		)
-		return lifecycle
-	})
+	lifecycle := f.NewLifecycle()
+	lifecycle.AddInitialize(
+		func(adp Artifex.IAdapter) error {
+			err := f.PubHub.Join(adp.Identifier(), adp.({{.FileName}}Publisher))
+			if err != nil {
+				return err
+			}
+			lifecycle.AddTerminate(func(adp Artifex.IAdapter) {
+				f.PubHub.RemoveByKey(adp.Identifier())
+			})
+			return nil
+		},
+	)
 
+	opt.NewLifecycle(func() *Artifex.Lifecycle { return lifecycle })
 	return Artifex.NewPublisher(opt)
 }
 
@@ -315,23 +312,21 @@ func (f *{{.FileName}}Factory) CreateSubscriber() ({{.FileName}}Subscriber, erro
 		return nil
 	})
 
-	opt.NewLifecycle(func() *Artifex.Lifecycle {
-		lifecycle := &Artifex.Lifecycle{}
-		lifecycle.AddInitialize(
-			func(adp Artifex.IAdapter) error {
-				err := f.SubHub.Join(adp.Identifier(), adp.({{.FileName}}Subscriber))
-				if err != nil {
-					return err
-				}
-				lifecycle.AddTerminate(func(adp Artifex.IAdapter) {
-					f.SubHub.RemoveByKey(adp.Identifier())
-				})
-				return nil
-			},
-		)
-		return lifecycle
-	})
+	lifecycle := f.NewLifecycle()
+	lifecycle.AddInitialize(
+		func(adp Artifex.IAdapter) error {
+			err := f.SubHub.Join(adp.Identifier(), adp.({{.FileName}}Subscriber))
+			if err != nil {
+				return err
+			}
+			lifecycle.AddTerminate(func(adp Artifex.IAdapter) {
+				f.SubHub.RemoveByKey(adp.Identifier())
+			})
+			return nil
+		},
+	)
 
+	opt.NewLifecycle(func() *Artifex.Lifecycle { return lifecycle })
 	return Artifex.NewSubscriber(opt)
 }
 `
