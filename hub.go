@@ -17,7 +17,9 @@ func NewHub[T any](stopObj func(T) error) *Hub[T] {
 //	preventing resource usage or avoid frequent context switches.
 type Hub[T any] struct {
 	collections    map[string]T
+	collections2   sync.Map
 	concurrencyQty int
+	bucket         chan struct{}
 	mu             sync.RWMutex
 
 	stopObj func(T) error
@@ -33,6 +35,23 @@ func (hub *Hub[T]) Join(key string, obj T) error {
 
 	hub.remove(key)
 	hub.collections[key] = obj
+	return nil
+}
+
+func (hub *Hub[T]) Join2(key string, obj T) error {
+	if hub.isStop {
+		return ErrorWrapWithMessage(ErrClosed, "Artifex hub")
+	}
+
+	_, loaded := hub.collections2.LoadOrStore(key, obj)
+	if !loaded {
+		return nil
+	}
+
+	for loaded {
+		hub.remove2(key)
+		_, loaded = hub.collections2.LoadOrStore(key, obj)
+	}
 	return nil
 }
 
@@ -151,6 +170,14 @@ func (hub *Hub[T]) remove(key string) {
 	go hub.stopObj(obj)
 }
 
+func (hub *Hub[T]) remove2(key string) {
+	obj, loaded := hub.collections2.LoadAndDelete(key)
+	if !loaded {
+		return
+	}
+	go hub.stopObj(obj.(T))
+}
+
 func (hub *Hub[T]) StopAll() {
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
@@ -186,7 +213,6 @@ func (hub *Hub[T]) DoAsync(action func(T)) {
 		return
 	}
 
-	var bucket chan struct{}
 	for _, v := range hub.collections {
 		obj := v
 		if hub.concurrencyQty <= 0 {
@@ -194,11 +220,10 @@ func (hub *Hub[T]) DoAsync(action func(T)) {
 			continue
 		}
 
-		bucket = make(chan struct{}, hub.concurrencyQty)
-		bucket <- struct{}{}
+		hub.bucket <- struct{}{}
 		go func() {
 			defer func() {
-				<-bucket
+				<-hub.bucket
 			}()
 			action(obj)
 		}()
@@ -223,10 +248,11 @@ func (hub *Hub[T]) Total() int {
 }
 
 func (hub *Hub[T]) SetConcurrencyQty(concurrencyQty int) {
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
 	if hub.isStop {
 		return
 	}
-	hub.mu.Lock()
-	defer hub.mu.Unlock()
 	hub.concurrencyQty = concurrencyQty
+	hub.bucket = make(chan struct{}, concurrencyQty)
 }
