@@ -141,8 +141,8 @@ type {{.FileName}}Subscriber interface {
 type {{.FileName}}PubSubHub = Artifex.Hub[{{.FileName}}PubSub]
 
 func New{{.FileName}}PubSubHub() *{{.FileName}}PubSubHub {
-	stop := func(pubsub {{.FileName}}PubSub) error {
-		return pubsub.Stop()
+	stop := func(pubsub {{.FileName}}PubSub) {
+		pubsub.Stop()
 	}
 	return Artifex.NewHub(stop)
 }
@@ -150,8 +150,8 @@ func New{{.FileName}}PubSubHub() *{{.FileName}}PubSubHub {
 type {{.FileName}}PublisherHub = Artifex.Hub[{{.FileName}}Publisher]
 
 func New{{.FileName}}PublisherHub() *{{.FileName}}PublisherHub {
-	stop := func(publisher {{.FileName}}Publisher) error {
-		return publisher.Stop()
+	stop := func(publisher {{.FileName}}Publisher) {
+		publisher.Stop()
 	}
 	return Artifex.NewHub(stop)
 }
@@ -159,8 +159,8 @@ func New{{.FileName}}PublisherHub() *{{.FileName}}PublisherHub {
 type {{.FileName}}SubscriberHub = Artifex.Hub[{{.FileName}}Subscriber]
 
 func New{{.FileName}}SubscriberHub() *{{.FileName}}SubscriberHub {
-	stop := func(subscriber {{.FileName}}Subscriber) error {
-		return subscriber.Stop()
+	stop := func(subscriber {{.FileName}}Subscriber) {
+		subscriber.Stop()
 	}
 	return Artifex.NewHub(stop)
 }
@@ -237,7 +237,7 @@ func (f *{{.FileName}}Factory) CreatePubSub() ({{.FileName}}PubSub, error) {
 				return err
 			}
 			lifecycle.AddTerminate(func(adp Artifex.IAdapter) {
-				f.PubSubHub.RemoveByKey(adp.Identifier())
+				go f.PubSubHub.RemoveByKey(adp.Identifier())
 			})
 			return nil
 		},
@@ -280,7 +280,7 @@ func (f *{{.FileName}}Factory) CreatePublisher() ({{.FileName}}Publisher, error)
 				return err
 			}
 			lifecycle.AddTerminate(func(adp Artifex.IAdapter) {
-				f.PubHub.RemoveByKey(adp.Identifier())
+				go f.PubHub.RemoveByKey(adp.Identifier())
 			})
 			return nil
 		},
@@ -320,7 +320,7 @@ func (f *{{.FileName}}Factory) CreateSubscriber() ({{.FileName}}Subscriber, erro
 				return err
 			}
 			lifecycle.AddTerminate(func(adp Artifex.IAdapter) {
-				f.SubHub.RemoveByKey(adp.Identifier())
+				go f.SubHub.RemoveByKey(adp.Identifier())
 			})
 			return nil
 		},

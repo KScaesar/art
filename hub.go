@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 )
 
-func NewHub[T any](stopObj func(T) error) *Hub[T] {
+func NewHub[T any](stopObj func(T)) *Hub[T] {
 	return &Hub[T]{
 		stopObj: stopObj,
 	}
@@ -20,7 +20,7 @@ type Hub[T any] struct {
 	concurrencyQty atomic.Int32
 	bucket         chan struct{}
 
-	stopObj func(T) error
+	stopObj func(T)
 	isStop  atomic.Bool
 }
 
@@ -138,7 +138,7 @@ func (hub *Hub[T]) remove(key string) {
 	if !loaded {
 		return
 	}
-	go hub.stopObj(obj.(T))
+	hub.stopObj(obj.(T))
 }
 
 func (hub *Hub[T]) StopAll() {
