@@ -12,7 +12,7 @@ func Benchmark_Hub_Join(b *testing.B) {
 	type Obj struct{}
 	obj := &Obj{}
 
-	stopObj := func(t *Obj) error { return nil }
+	stopObj := func(t *Obj) { return }
 	hub := NewHub(stopObj)
 	b.StartTimer()
 
@@ -28,7 +28,7 @@ func Benchmark_Hub_UpdateByOldKey(b *testing.B) {
 	b.StopTimer()
 	type Obj struct{}
 
-	stopObj := func(t *Obj) error { return nil }
+	stopObj := func(t *Obj) { return }
 	hub := NewHub(stopObj)
 
 	var keys []string
@@ -54,9 +54,9 @@ func Benchmark_Hub_UpdateByOldKey(b *testing.B) {
 		}
 	})
 
+	// cpu: Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz
 	// UpdateByOldKey
 	// Benchmark_Hub_UpdateByOldKey-12    	 1638529	       689.2 ns/op	     135 B/op	       4 allocs/op
-
 	// UpdateByOldKey2
 	// Benchmark_Hub_UpdateByOldKey-12    	 4955065	       264.9 ns/op	     144 B/op	       5 allocs/op
 }
