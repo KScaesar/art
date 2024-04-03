@@ -7,7 +7,8 @@ import (
 
 func NewHub[T any](stopObj func(T)) *Hub[T] {
 	return &Hub[T]{
-		stopObj: stopObj,
+		stopObj:  stopObj,
+		waitStop: make(chan struct{}),
 	}
 }
 
@@ -20,8 +21,10 @@ type Hub[T any] struct {
 	concurrencyQty atomic.Int32
 	bucket         chan struct{}
 
-	stopObj func(T)
-	isStop  atomic.Bool
+	stopObj  func(T)
+	isStop   atomic.Bool
+	stopOnce sync.Once
+	waitStop chan struct{}
 }
 
 func (hub *Hub[T]) Join(key string, obj T) error {
@@ -151,6 +154,14 @@ func (hub *Hub[T]) StopAll() {
 		hub.remove(key.(string))
 		return true
 	})
+
+	hub.stopOnce.Do(func() {
+		close(hub.waitStop)
+	})
+}
+
+func (hub *Hub[T]) WaitStopAll() chan struct{} {
+	return hub.waitStop
 }
 
 // DoSync
