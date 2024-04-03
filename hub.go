@@ -191,6 +191,7 @@ func (hub *Hub[T]) DoAsync(action func(T)) {
 
 		if hub.concurrencyQty.Load() <= 0 {
 			go action(obj)
+			return true
 		}
 
 		hub.bucket <- struct{}{}
