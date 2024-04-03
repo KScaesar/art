@@ -9,13 +9,13 @@ import (
 func NewPubSub[rMessage, sMessage any](opt *AdapterOption[rMessage, sMessage]) (pubsub *Adapter[rMessage, sMessage], err error) {
 	pubsub = &Adapter[rMessage, sMessage]{
 		pingpong:            opt.pingpong,
+		recvResult:          make(chan error, 2),
 		fixupMaxRetrySecond: opt.fixupMaxRetrySecond,
 		adapterFixup:        opt.adapterFixup,
+		lifecycle:           opt.lifecycle(),
 		identifier:          opt.identifier,
 		appData:             make(maputil.Data),
-		result:              make(chan error, 2),
-		mqStopAll:           make([]chan error, 0),
-		lifecycle:           opt.lifecycle(),
+		waitStop:            make(chan struct{}),
 	}
 	pubsub.handleRecv = opt.handleRecv
 	pubsub.adapterRecv = opt.adapterRecv
@@ -27,13 +27,14 @@ func NewPubSub[rMessage, sMessage any](opt *AdapterOption[rMessage, sMessage]) (
 func NewPublisher[sMessage any](opt *AdapterOption[struct{}, sMessage]) (publisher *Adapter[struct{}, sMessage], err error) {
 	publisher = &Adapter[struct{}, sMessage]{
 		pingpong:            opt.pingpong,
+		recvResult:          make(chan error, 2),
 		fixupMaxRetrySecond: opt.fixupMaxRetrySecond,
 		adapterFixup:        opt.adapterFixup,
+		lifecycle:           opt.lifecycle(),
+		adpMutex:            sync.RWMutex{},
 		identifier:          opt.identifier,
 		appData:             make(maputil.Data),
-		result:              make(chan error, 2),
-		mqStopAll:           make([]chan error, 0),
-		lifecycle:           opt.lifecycle(),
+		waitStop:            make(chan struct{}),
 	}
 	publisher.handleRecv = nil
 	publisher.adapterRecv = nil
@@ -45,13 +46,13 @@ func NewPublisher[sMessage any](opt *AdapterOption[struct{}, sMessage]) (publish
 func NewSubscriber[rMessage any](opt *AdapterOption[rMessage, struct{}]) (subscriber *Adapter[rMessage, struct{}], err error) {
 	subscriber = &Adapter[rMessage, struct{}]{
 		pingpong:            opt.pingpong,
+		recvResult:          make(chan error, 2),
 		fixupMaxRetrySecond: opt.fixupMaxRetrySecond,
 		adapterFixup:        opt.adapterFixup,
+		lifecycle:           opt.lifecycle(),
 		identifier:          opt.identifier,
 		appData:             make(maputil.Data),
-		result:              make(chan error, 2),
-		mqStopAll:           make([]chan error, 0),
-		lifecycle:           opt.lifecycle(),
+		waitStop:            make(chan struct{}),
 	}
 	subscriber.handleRecv = opt.handleRecv
 	subscriber.adapterRecv = opt.adapterRecv
@@ -66,14 +67,13 @@ type IAdapter interface {
 	Update(update func(id *string, appData maputil.Data))
 	AddTerminate(terminates ...func(adp IAdapter))
 
-	// RegisterStop returns a channel for receiving the result of the Adapter
-	// If the Adapter has been already Stopped,
-	// it returns a channel containing an error message indicating the Adapter is closed.
-	//
-	// Once notified, the channel will be closed immediately.
-	RegisterStop() <-chan error
-	IsStop() bool
 	Stop() error
+
+	// IsStop is used for polling
+	IsStop() bool
+
+	// WaitStop is used for event push
+	WaitStop() chan struct{}
 }
 
 type Adapter[rMessage, sMessage any] struct {
@@ -82,7 +82,9 @@ type Adapter[rMessage, sMessage any] struct {
 	adapterSend func(IAdapter, *sMessage) error
 	adapterStop func(IAdapter, *sMessage) error
 
-	pingpong func(isStop func() bool) error
+	// WaitPingSendPong or SendPingWaitPong
+	pingpong   func(isStop func() bool) error
+	recvResult chan error
 
 	fixupMaxRetrySecond int
 	adapterFixup        func(IAdapter) error
@@ -93,9 +95,8 @@ type Adapter[rMessage, sMessage any] struct {
 	identifier string
 	appData    maputil.Data
 
-	result    chan error
-	mqStopAll []chan error
-	isStop    bool
+	isStop   bool
+	waitStop chan struct{}
 }
 
 func (adp *Adapter[rMessage, sMessage]) init() error {
@@ -108,11 +109,20 @@ func (adp *Adapter[rMessage, sMessage]) init() error {
 		if adp.pingpong == nil {
 			return
 		}
+
+		var Err error
+		defer func() {
+			if !adp.isStop {
+				adp.Stop()
+			}
+			adp.recvResult <- Err
+		}()
+
 		if adp.adapterFixup == nil {
-			adp.result <- adp.pingpong(adp.IsStop)
+			Err = adp.pingpong(adp.IsStop)
 			return
 		}
-		adp.result <- ReliableTask(
+		Err = ReliableTask(
 			func() error { return adp.pingpong(adp.IsStop) },
 			adp.IsStop,
 			adp.fixupMaxRetrySecond,
@@ -149,11 +159,19 @@ func (adp *Adapter[rMessage, sMessage]) Listen() (err error) {
 	}
 
 	go func() {
+		var Err error
+		defer func() {
+			if !adp.isStop {
+				adp.Stop()
+			}
+			adp.recvResult <- Err
+		}()
+
 		if adp.adapterFixup == nil {
-			adp.result <- adp.listen()
+			Err = adp.listen()
 			return
 		}
-		adp.result <- ReliableTask(
+		Err = ReliableTask(
 			adp.listen,
 			adp.IsStop,
 			adp.fixupMaxRetrySecond,
@@ -161,19 +179,7 @@ func (adp *Adapter[rMessage, sMessage]) Listen() (err error) {
 		)
 	}()
 
-	err = <-adp.result
-	adp.Stop()
-	go func() {
-		adp.adpMutex.Lock()
-		defer adp.adpMutex.Unlock()
-
-		for _, notifyStop := range adp.mqStopAll {
-			notifyStop <- err
-			close(notifyStop)
-		}
-		adp.mqStopAll = make([]chan error, 0)
-	}()
-	return err
+	return <-adp.recvResult
 }
 
 func (adp *Adapter[rMessage, sMessage]) listen() error {
@@ -214,39 +220,27 @@ func (adp *Adapter[rMessage, sMessage]) StopWithMessage(message *sMessage) error
 	if adp.isStop {
 		return ErrorWrapWithMessage(ErrClosed, "Artifex adapter")
 	}
-	adp.isStop = true
 
 	adp.lifecycle.asyncTerminate(adp)
 	err := adp.adapterStop(adp, message)
 	adp.lifecycle.wait()
+
+	// 確保所有關閉任務都執行結束
+	// 才定義為 isStop=true
+	adp.isStop = true
+	close(adp.waitStop)
 	return err
 }
 
-// RegisterStop returns a channel for receiving the result of the Adapter
-// If the Adapter has been already Stopped,
-// it returns a channel containing an error message indicating the Adapter is closed.
-//
-// Once notified, the channel will be closed immediately.
-func (adp *Adapter[rMessage, sMessage]) RegisterStop() <-chan error {
-	adp.adpMutex.Lock()
-	defer adp.adpMutex.Unlock()
-
-	ch := make(chan error, 1)
-	if adp.isStop {
-		ch <- ErrorWrapWithMessage(ErrClosed, "Artifex adapter")
-		close(ch)
-		return ch
-	}
-
-	adp.mqStopAll = append(adp.mqStopAll, ch)
-	return ch
+func (adp *Adapter[rMessage, sMessage]) Stop() error {
+	var empty *sMessage
+	return adp.StopWithMessage(empty)
 }
 
 func (adp *Adapter[rMessage, sMessage]) IsStop() bool {
 	return adp.isStop
 }
 
-func (adp *Adapter[rMessage, sMessage]) Stop() error {
-	var empty *sMessage
-	return adp.StopWithMessage(empty)
+func (adp *Adapter[rMessage, sMessage]) WaitStop() chan struct{} {
+	return adp.waitStop
 }

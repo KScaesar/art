@@ -4,7 +4,7 @@ import (
 	"sync"
 )
 
-// Lifecycle define a management mechanism when init obj and terminate obj.
+// Lifecycle define a management mechanism when init obj and syncTerminate obj.
 type Lifecycle struct {
 	initMutex    sync.Mutex
 	initHandlers []func(adapter IAdapter) error
@@ -35,14 +35,14 @@ func (life *Lifecycle) initialize(adp IAdapter) error {
 	for _, init := range life.initHandlers {
 		err := init(adp)
 		if err != nil {
-			life.terminate(adp)
+			life.syncTerminate(adp)
 			return err
 		}
 	}
 	return nil
 }
 
-func (life *Lifecycle) terminate(adp IAdapter) {
+func (life *Lifecycle) syncTerminate(adp IAdapter) {
 	life.terminateMutex.Lock()
 	defer life.terminateMutex.Unlock()
 
