@@ -43,14 +43,12 @@ func (hub *Hub[T]) Join2(key string, obj T) error {
 		return ErrorWrapWithMessage(ErrClosed, "Artifex hub")
 	}
 
-	_, loaded := hub.collections2.LoadOrStore(key, obj)
-	if !loaded {
-		return nil
-	}
-
+	loaded := true
 	for loaded {
-		hub.remove2(key)
 		_, loaded = hub.collections2.LoadOrStore(key, obj)
+		if loaded {
+			hub.remove2(key)
+		}
 	}
 	return nil
 }
@@ -58,9 +56,6 @@ func (hub *Hub[T]) Join2(key string, obj T) error {
 func (hub *Hub[T]) UpdateByOldKey(oldKey string, update func(T) (freshKey string, err error)) error {
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
-	if hub.isStop {
-		return ErrorWrapWithMessage(ErrClosed, "Artifex hub")
-	}
 
 	obj, found := hub.collections[oldKey]
 	if !found {
@@ -71,10 +66,28 @@ func (hub *Hub[T]) UpdateByOldKey(oldKey string, update func(T) (freshKey string
 	if err != nil {
 		return err
 	}
-	hub.remove(freshKey)
 
 	delete(hub.collections, oldKey)
 	hub.collections[freshKey] = obj
+	return nil
+}
+
+func (hub *Hub[T]) UpdateByOldKey2(oldKey string, update func(T) (freshKey string, err error)) error {
+	obj, ok := hub.collections2.Load(oldKey)
+	if !ok {
+		return ErrorWrapWithMessage(ErrNotFound, "key=%v not exist in hub", oldKey)
+	}
+
+	freshKey, err := update(obj.(T))
+	if err != nil {
+		return err
+	}
+
+	hub.collections2.Delete(oldKey)
+	_, ok = hub.collections2.Load(freshKey)
+	if !ok {
+		hub.collections2.Store(freshKey, obj)
+	}
 	return nil
 }
 
