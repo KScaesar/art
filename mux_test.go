@@ -488,10 +488,11 @@ func TestMux_SetDefaultHandler_when_wildcard(t *testing.T) {
 	recorder := []string{}
 	newSubject := func(msg *testcaseMessage) (string, error) { return msg.subject, nil }
 	mux := NewMux[testcaseMessage](".", newSubject).
+		Middleware(Recover[testcaseMessage]()).
 		SetDefaultHandler(func(message *testcaseMessage, _ *RouteParam) error {
 			recorder = append(recorder, message.body+" default")
 			return nil
-		}).EnableRecover()
+		})
 
 	v1 := mux.Group("v1")
 
@@ -641,25 +642,25 @@ func TestMux_RouteParam_when_wildcard_subject(t *testing.T) {
 	}
 }
 
-func TestMessageMux_EnableRecover(t *testing.T) {
-	type testcaseEnableRecover struct {
+func TestMessageMux_Recover(t *testing.T) {
+	type testcaseRecover struct {
 		subject string
 		body    string
 	}
 
-	newSubject := func(msg *testcaseEnableRecover) (string, error) {
+	newSubject := func(msg *testcaseRecover) (string, error) {
 		return msg.subject, nil
 	}
 
 	SetDefaultLogger(SilentLogger())
-	mux := NewMux[testcaseEnableRecover]("/", newSubject).
-		EnableRecover().
-		SetDefaultHandler(func(_ *testcaseEnableRecover, _ *RouteParam) error {
+	mux := NewMux[testcaseRecover]("/", newSubject).
+		Middleware(Recover[testcaseRecover]()).
+		SetDefaultHandler(func(_ *testcaseRecover, _ *RouteParam) error {
 			panic("testcase")
 			return nil
 		})
 
-	message := &testcaseEnableRecover{
+	message := &testcaseRecover{
 		subject: "create_order",
 		body:    "",
 	}

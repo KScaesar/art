@@ -1,7 +1,6 @@
 package Artifex
 
 import (
-	"runtime/debug"
 	"strconv"
 
 	"github.com/gookit/goutil/maputil"
@@ -231,23 +230,4 @@ func (mux *Mux[Message]) SetErrorHandler(errorHandler func(*Message, *RouteParam
 
 func (mux *Mux[Message]) GetSubjectAndHandler() (subjects, functions []string) {
 	return mux.node.endpoint()
-}
-
-func (mux *Mux[Message]) EnableRecover() *Mux[Message] {
-	logger := DefaultLogger()
-
-	return mux.Middleware(func(next HandleFunc[Message]) HandleFunc[Message] {
-		return func(message *Message, route *RouteParam) error {
-
-			defer func() {
-				if r := recover(); r != nil {
-					subject, _ := mux.node.getSubject(message)
-					logger.Error("%q recovered from panic: %v\n", subject, r)
-					logger.Error("call stack: %v", string(debug.Stack()))
-				}
-			}()
-
-			return next(message, route)
-		}
-	})
 }
