@@ -150,10 +150,7 @@ func (node *trie[M]) handleMessage(subject string, cursor int, path *routeHandle
 		if err != nil {
 			return err
 		}
-		subject, err = path.getSubject(msg)
-		if err != nil {
-			return err
-		}
+		subject = path.getSubject(msg)
 	}
 
 	var wildcardStart int
@@ -186,10 +183,7 @@ func (node *trie[M]) handleMessage(subject string, cursor int, path *routeHandle
 			if err != nil {
 				return err
 			}
-			subject, err = path.getSubject(msg)
-			if err != nil {
-				return err
-			}
+			subject = path.getSubject(msg)
 		}
 	}
 

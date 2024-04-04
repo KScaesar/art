@@ -71,7 +71,7 @@ func LinkMiddlewares[Message any](handler HandleFunc[Message], middlewares ...Mi
 
 //
 
-type NewSubjectFunc[Message any] func(*Message) (string, error)
+type NewSubjectFunc[Message any] func(*Message) string
 
 // NewMux
 // If routeDelimiter is an empty string, RouteParam cannot be used.
@@ -85,7 +85,6 @@ func NewMux[Message any](routeDelimiter string, getSubject NewSubjectFunc[Messag
 	var qty int
 	mux := &Mux[Message]{
 		node:           newTrie[Message](routeDelimiter),
-		errorHandler:   func(_ *Message, _ *RouteParam, err error) error { return err },
 		routeDelimiter: routeDelimiter,
 		middlewareQty:  &qty,
 	}
@@ -100,7 +99,6 @@ func NewMux[Message any](routeDelimiter string, getSubject NewSubjectFunc[Messag
 // Message represents a high-level abstraction data structure containing metadata (e.g. header) + body
 type Mux[Message any] struct {
 	node           *trie[Message]
-	errorHandler   func(*Message, *RouteParam, error) error
 	routeDelimiter string
 	middlewareQty  *int
 
@@ -127,10 +125,6 @@ func (mux *Mux[Message]) HandleMessage(message *Message, route *RouteParam) (err
 		}()
 	}
 
-	defer func() {
-		err = mux.errorHandler(message, route, err)
-	}()
-
 	path := &routeHandler[Message]{
 		middlewares: make([]Middleware[Message], 0, *mux.middlewareQty),
 	}
@@ -139,10 +133,7 @@ func (mux *Mux[Message]) HandleMessage(message *Message, route *RouteParam) (err
 		return mux.node.handleMessage("", 0, path, message, route)
 	}
 
-	subject, err := mux.node.getSubject(message)
-	if err != nil {
-		return err
-	}
+	subject := mux.node.getSubject(message)
 	return mux.node.handleMessage(subject, 0, path, message, route)
 }
 
@@ -163,7 +154,6 @@ func (mux *Mux[Message]) Group(groupName string) *Mux[Message] {
 	groupNode := mux.node.addRoute(groupName, 0, handler)
 	return &Mux[Message]{
 		node:           groupNode,
-		errorHandler:   mux.errorHandler,
 		routeDelimiter: mux.routeDelimiter,
 		middlewareQty:  mux.middlewareQty,
 		messagePool:    mux.messagePool,
@@ -233,11 +223,6 @@ func (mux *Mux[Message]) SetNotFoundHandler(h HandleFunc[Message]) *Mux[Message]
 		notFoundHandler: h,
 	}
 	mux.node.addRoute("", 0, handler)
-	return mux
-}
-
-func (mux *Mux[Message]) SetErrorHandler(errorHandler func(*Message, *RouteParam, error) error) *Mux[Message] {
-	mux.errorHandler = errorHandler
 	return mux
 }
 

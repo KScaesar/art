@@ -4,7 +4,7 @@ import (
 	"runtime/debug"
 )
 
-func Recover[Message any]() Middleware[Message] {
+func MW_Recover[Message any]() Middleware[Message] {
 	logger := DefaultLogger()
 	return func(next HandleFunc[Message]) HandleFunc[Message] {
 		return func(message *Message, route *RouteParam) error {
@@ -17,6 +17,21 @@ func Recover[Message any]() Middleware[Message] {
 			}()
 
 			return next(message, route)
+		}
+	}
+}
+
+func MW_Error[Message any](getSubject NewSubjectFunc[Message]) Middleware[Message] {
+	logger := DefaultLogger()
+	return func(next HandleFunc[Message]) HandleFunc[Message] {
+		return func(message *Message, route *RouteParam) error {
+			subject := getSubject(message)
+			err := next(message, route)
+			if err != nil {
+				logger.Error("handle %v fail: %v", subject, err)
+			}
+			logger.Info("handle %v success", subject)
+			return nil
 		}
 	}
 }

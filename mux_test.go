@@ -17,8 +17,8 @@ func TestMessageMux_HandleMessage(t *testing.T) {
 	}
 	recorder := &bytes.Buffer{}
 
-	getSubject := func(message *redisMessage) (string, error) {
-		return message.channel, nil
+	getSubject := func(message *redisMessage) string {
+		return message.channel
 	}
 
 	mux := NewMux[redisMessage]("", getSubject).
@@ -58,7 +58,7 @@ func TestLinkMiddlewares_when_wildcard(t *testing.T) {
 	}
 
 	recorder := []string{}
-	newSubject := func(msg *testcaseMessage) (string, error) { return msg.subject, nil }
+	newSubject := func(msg *testcaseMessage) string { return msg.subject }
 	mux := NewMux[testcaseMessage](".", newSubject)
 
 	v1 := mux.Group("v1")
@@ -203,8 +203,8 @@ hello_world_decoratorA
 }
 
 func TestMessageMux_Transform_when_only_defaultHandler(t *testing.T) {
-	newSubject := func(msg *testcaseTransformMessage) (string, error) {
-		return "/" + strconv.Itoa(msg.level0TypeId), nil
+	newSubject := func(msg *testcaseTransformMessage) string {
+		return "/" + strconv.Itoa(msg.level0TypeId)
 	}
 
 	mux := NewMux[testcaseTransformMessage]("/", newSubject)
@@ -232,8 +232,8 @@ func TestMessageMux_Transform(t *testing.T) {
 		return nil
 	}
 
-	newSubject := func(msg *testcaseTransformMessage) (string, error) {
-		return "/" + strconv.Itoa(msg.level0TypeId), nil
+	newSubject := func(msg *testcaseTransformMessage) string {
+		return "/" + strconv.Itoa(msg.level0TypeId)
 	}
 	mux := NewMux[testcaseTransformMessage]("/", newSubject)
 
@@ -342,7 +342,7 @@ func TestMessageMux_Group(t *testing.T) {
 		return nil
 	}
 
-	newSubject := func(msg *testcaseGroupMessage) (string, error) { return string(msg.subject), nil }
+	newSubject := func(msg *testcaseGroupMessage) string { return string(msg.subject) }
 	mux := NewMux[testcaseGroupMessage]("/", newSubject)
 
 	mux.PreMiddleware(func(message *testcaseGroupMessage, route *RouteParam) error {
@@ -465,7 +465,7 @@ func TestMux_SetDefaultHandler(t *testing.T) {
 	}
 
 	isCalled := false
-	newSubject := func(msg *testcaseDefaultHandler) (string, error) { return string(msg.subject), nil }
+	newSubject := func(msg *testcaseDefaultHandler) string { return string(msg.subject) }
 	mux := NewMux[testcaseDefaultHandler]("/", newSubject).
 		SetDefaultHandler(func(message *testcaseDefaultHandler, route *RouteParam) error {
 			isCalled = true
@@ -486,9 +486,9 @@ func TestMux_SetDefaultHandler_when_wildcard(t *testing.T) {
 	}
 
 	recorder := []string{}
-	newSubject := func(msg *testcaseMessage) (string, error) { return msg.subject, nil }
+	newSubject := func(msg *testcaseMessage) string { return msg.subject }
 	mux := NewMux[testcaseMessage](".", newSubject).
-		Middleware(Recover[testcaseMessage]()).
+		Middleware(MW_Recover[testcaseMessage]()).
 		SetDefaultHandler(func(message *testcaseMessage, _ *RouteParam) error {
 			recorder = append(recorder, message.body+" default")
 			return nil
@@ -556,7 +556,7 @@ func TestMux_RouteParam_when_wildcard_subject(t *testing.T) {
 		body    string
 	}
 
-	newSubject := func(msg *testcaseRouteParam) (string, error) { return string(msg.subject), nil }
+	newSubject := func(msg *testcaseRouteParam) string { return string(msg.subject) }
 	mux := NewMux[testcaseRouteParam]("/", newSubject)
 
 	actual := []string{}
@@ -648,13 +648,13 @@ func TestMessageMux_Recover(t *testing.T) {
 		body    string
 	}
 
-	newSubject := func(msg *testcaseRecover) (string, error) {
-		return msg.subject, nil
+	newSubject := func(msg *testcaseRecover) string {
+		return msg.subject
 	}
 
 	SetDefaultLogger(SilentLogger())
 	mux := NewMux[testcaseRecover]("/", newSubject).
-		Middleware(Recover[testcaseRecover]()).
+		Middleware(MW_Recover[testcaseRecover]()).
 		SetDefaultHandler(func(_ *testcaseRecover, _ *RouteParam) error {
 			panic("testcase")
 			return nil
