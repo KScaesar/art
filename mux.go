@@ -2,6 +2,7 @@ package Artifex
 
 import (
 	"strconv"
+	"sync"
 
 	"github.com/gookit/goutil/maputil"
 )
@@ -102,12 +103,22 @@ type Mux[Message any] struct {
 	errorHandler   func(*Message, *RouteParam, error) error
 	routeDelimiter string
 	middlewareQty  *int
+
+	messagePool  *sync.Pool
+	resetMessage func(*Message)
 }
 
 // HandleMessage to handle various messages
 //
 // - route parameter can nil
 func (mux *Mux[Message]) HandleMessage(message *Message, route *RouteParam) (err error) {
+	if mux.messagePool != nil {
+		defer func() {
+			mux.resetMessage(message)
+			mux.messagePool.Put(message)
+		}()
+	}
+
 	if route == nil {
 		route = routeParamPool.Get()
 		defer func() {
@@ -155,6 +166,8 @@ func (mux *Mux[Message]) Group(groupName string) *Mux[Message] {
 		errorHandler:   mux.errorHandler,
 		routeDelimiter: mux.routeDelimiter,
 		middlewareQty:  mux.middlewareQty,
+		messagePool:    mux.messagePool,
+		resetMessage:   mux.resetMessage,
 	}
 }
 
@@ -225,6 +238,12 @@ func (mux *Mux[Message]) SetNotFoundHandler(h HandleFunc[Message]) *Mux[Message]
 
 func (mux *Mux[Message]) SetErrorHandler(errorHandler func(*Message, *RouteParam, error) error) *Mux[Message] {
 	mux.errorHandler = errorHandler
+	return mux
+}
+
+func (mux *Mux[Message]) SetMessagePool(pool *sync.Pool, reset func(*Message)) *Mux[Message] {
+	mux.messagePool = pool
+	mux.resetMessage = reset
 	return mux
 }
 
