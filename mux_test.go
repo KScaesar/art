@@ -224,14 +224,17 @@ func TestMessageMux_Transform_when_only_defaultHandler(t *testing.T) {
 func TestMessageMux_Transform(t *testing.T) {
 	recorder := []string{}
 	record := func(message *testcaseTransformMessage, route *RouteParam) error {
-		recorder = append(recorder, message.body)
+		recorder = append(recorder, message.subject)
 		return nil
 	}
 
-	newSubject := func(msg *testcaseTransformMessage) string {
-		return "/" + strconv.Itoa(msg.level0TypeId)
-	}
-	mux := NewMux[testcaseTransformMessage]("/", newSubject)
+	newSubject := func(msg *testcaseTransformMessage) string { return msg.subject }
+	mux := NewMux[testcaseTransformMessage]("/", newSubject).
+		PreMiddleware(
+			func(message *testcaseTransformMessage, route *RouteParam) error {
+				message.subject = "!" + message.subject + "!"
+				return nil
+			})
 
 	mux.HandlerByNumber(2, record)
 
@@ -241,7 +244,7 @@ func TestMessageMux_Transform(t *testing.T) {
 		GroupByNumber(5).Transform(testcaseTransformLevel2).
 		PreMiddleware(
 			func(message *testcaseTransformMessage, route *RouteParam) error {
-				message.body = "^" + message.body + "^"
+				message.subject = "^" + message.subject + "^"
 				return nil
 			}).
 		HandlerByNumber(1, record).
@@ -250,7 +253,7 @@ func TestMessageMux_Transform(t *testing.T) {
 	mux.GroupByNumber(4).Transform(testcaseTransformLevel1).
 		PreMiddleware(
 			func(message *testcaseTransformMessage, route *RouteParam) error {
-				message.body = "_" + message.body + "_"
+				message.subject = "_" + message.subject + "_"
 				return nil
 			}).
 		HandlerByNumber(1, record).
@@ -272,17 +275,17 @@ func TestMessageMux_Transform(t *testing.T) {
 	}
 
 	expectedRecords := []string{
-		"msg 2/",
-		"msg 3/1/",
-		"^TransformLevel2 5/1/^",
-		"_msg 4/2/_",
+		"!/2!",
+		"!/3/1!",
+		"^!/3/5/1!^",
+		"_!/4/2!_",
 	}
 
 	messages := []*testcaseTransformMessage{
-		{2, -1, "msg 2/"},
-		{3, 1, "msg 3/1/"},
-		{3, 5, "1"},
-		{4, 2, "msg 4/2/"},
+		{"/2", 2, -1, "msg /2"},
+		{"/3", 3, 1, "msg /3/1"},
+		{"/3", 3, 5, "1"},
+		{"/4", 4, 2, "msg /4/2"},
 	}
 
 	for i, message := range messages {
@@ -302,6 +305,7 @@ func testcaseTransformLevel1(msg *testcaseTransformMessage, route *RouteParam) (
 	old := msg
 	msg.level0TypeId = old.level1TypeId
 	msg.level1TypeId = 0
+	msg.subject += "/" + strconv.Itoa(msg.level0TypeId)
 	return nil
 }
 
@@ -310,16 +314,16 @@ func testcaseTransformLevel2(msg *testcaseTransformMessage, route *RouteParam) (
 	if err != nil {
 		return err
 	}
-	originalLevel1TypeId := msg.level0TypeId
 
 	msg.level0TypeId = level2TypeId
 	msg.level1TypeId = 0
-	msg.body = fmt.Sprintf("TransformLevel2 %v/%v/", originalLevel1TypeId, level2TypeId)
 
+	msg.subject += "/" + strconv.Itoa(msg.level0TypeId)
 	return nil
 }
 
 type testcaseTransformMessage struct {
+	subject      string
 	level0TypeId int
 	level1TypeId int
 	body         string

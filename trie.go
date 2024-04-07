@@ -194,7 +194,6 @@ func (node *trie[M]) handleMessage(subject string, cursor int, message *M, route
 
 	for cursor <= len(subject) {
 		if current.transform != nil {
-			cursor = 0
 			err = current.transform(message, route)
 			if err != nil {
 				return err
