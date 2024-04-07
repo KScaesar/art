@@ -4,15 +4,22 @@ import (
 	"runtime/debug"
 )
 
-func MW_Recover[Message any]() Middleware[Message] {
-	logger := DefaultLogger()
+type MW[Message any] struct {
+	Logger Logger
+}
+
+func (mw MW[Message]) Recover() Middleware[Message] {
+	if mw.Logger == nil {
+		mw.Logger = DefaultLogger()
+	}
+
 	return func(next HandleFunc[Message]) HandleFunc[Message] {
 		return func(message *Message, route *RouteParam) error {
 
 			defer func() {
 				if r := recover(); r != nil {
-					logger.Error("recovered from panic: %v", r)
-					logger.Error("call stack: %v", string(debug.Stack()))
+					mw.Logger.Error("recovered from panic: %v", r)
+					mw.Logger.Error("call stack: %v", string(debug.Stack()))
 				}
 			}()
 
@@ -21,16 +28,21 @@ func MW_Recover[Message any]() Middleware[Message] {
 	}
 }
 
-func MW_Error[Message any](getSubject NewSubjectFunc[Message]) Middleware[Message] {
-	logger := DefaultLogger()
+func (mw MW[Message]) HandleError(getSubject NewSubjectFunc[Message]) Middleware[Message] {
+	if mw.Logger == nil {
+		mw.Logger = DefaultLogger()
+	}
+
 	return func(next HandleFunc[Message]) HandleFunc[Message] {
 		return func(message *Message, route *RouteParam) error {
 			subject := getSubject(message)
+
 			err := next(message, route)
 			if err != nil {
-				logger.Error("handle %v fail: %v", subject, err)
+				mw.Logger.Error("handle %v fail: %v", subject, err)
 			}
-			logger.Info("handle %v success", subject)
+			mw.Logger.Info("handle %v success", subject)
+
 			return nil
 		}
 	}

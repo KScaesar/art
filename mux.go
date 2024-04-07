@@ -99,6 +99,8 @@ type Mux[Message any] struct {
 	node           *trie[Message]
 	routeDelimiter string
 
+	handleError Middleware[Message]
+
 	messagePool  *sync.Pool
 	resetMessage func(*Message)
 }
@@ -121,6 +123,13 @@ func (mux *Mux[Message]) HandleMessage(message *Message, route *RouteParam) (err
 			routeParamPool.Put(route)
 		}()
 	}
+
+	defer func() {
+		if mux.handleError != nil {
+			h := func(_ *Message, _ *RouteParam) error { return err }
+			err = LinkMiddlewares(h, mux.handleError)(message, route)
+		}
+	}()
 
 	if mux.node.transform != nil {
 		return mux.node.handleMessage("", 0, message, route)
@@ -228,6 +237,11 @@ func (mux *Mux[Message]) SetNotFoundHandler(h HandleFunc[Message]) *Mux[Message]
 
 	path := &pathHandler[Message]{}
 	mux.node.addRoute("", 0, param, path)
+	return mux
+}
+
+func (mux *Mux[Message]) SetHandleError(handleError Middleware[Message]) *Mux[Message] {
+	mux.handleError = handleError
 	return mux
 }
 
