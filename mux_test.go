@@ -34,7 +34,7 @@ func TestMessageMux_HandleMessage(t *testing.T) {
 	// expect
 	expected := `topic=hello, payload={"data":"world"}`
 
-	// routeHandler
+	// paramHandler
 	dto := &redisMessage{
 		ctx:     context.Background(),
 		body:    []byte(`{"data":"world"}`),
@@ -82,10 +82,6 @@ func TestLinkMiddlewares_when_wildcard(t *testing.T) {
 			recorder = append(recorder, message.body)
 			return nil
 		})
-
-	subjects, _ := mux.GetSubjectAndHandler()
-	_ = subjects
-	// t.Logf("subjects=%v", subjects)
 
 	expectedResponse := []string{
 		"! v1.devops.book.6263334908 {kind}",
@@ -268,10 +264,10 @@ func TestMessageMux_Transform(t *testing.T) {
 		"/4/1", "/4/2", "/4/4",
 	}
 
-	gotSubjects, _ := mux.GetSubjectAndHandler()
-	for i, gotSubject := range gotSubjects {
-		if gotSubject != expectedSubjects[i] {
-			t.Errorf("unexpected output: got %s, want %s", gotSubject, expectedSubjects[i])
+	endpoints := mux.Endpoints()
+	for i, endpoint := range endpoints {
+		if endpoint[0] != expectedSubjects[i] {
+			t.Errorf("unexpected output: got %s, want %s", endpoint[0], expectedSubjects[i])
 		}
 	}
 
@@ -391,10 +387,10 @@ func TestMessageMux_Group(t *testing.T) {
 		"/topic5/game1", "/topic5/game2/kindA", "/topic5/game3/kindX", "/topic5/game3/kindY", "/topic5/game3/v2/kindX", "/topic5/game3/v3/kindY",
 	}
 
-	gotSubjects, _ := mux.GetSubjectAndHandler()
-	for i, gotSubject := range gotSubjects {
-		if gotSubject != expectedSubjects[i] {
-			t.Errorf("unexpected output: got %s, want %s", gotSubject, expectedSubjects[i])
+	endpoints := mux.Endpoints()
+	for i, endpoint := range endpoints {
+		if endpoint[0] != expectedSubjects[i] {
+			t.Errorf("unexpected output: got %s, want %s", endpoint[0], expectedSubjects[i])
 		}
 	}
 
@@ -516,10 +512,6 @@ func TestMux_SetDefaultHandler_when_wildcard(t *testing.T) {
 			return nil
 		})
 
-	subjects, _ := mux.GetSubjectAndHandler()
-	_ = subjects
-	// t.Logf("subjects=%v", subjects)
-
 	expectedResponse := []string{
 		"! v1.devops.book.6263334908 {kind}",
 		"! v1.dev.book.1449373321 {kind}",
@@ -600,10 +592,10 @@ func TestMux_RouteParam_when_wildcard_subject(t *testing.T) {
 		"{kind}/book/{book_id}",
 	}
 
-	gotSubjects, _ := mux.GetSubjectAndHandler()
-	for i, gotSubject := range gotSubjects {
-		if gotSubject != expectedSubjects[i] {
-			t.Errorf("unexpected output: got %s, want %s", gotSubject, expectedSubjects[i])
+	endpoints := mux.Endpoints()
+	for i, endpoint := range endpoints {
+		if endpoint[0] != expectedSubjects[i] {
+			t.Errorf("unexpected output: got %s, want %s", endpoint[0], expectedSubjects[i])
 		}
 	}
 

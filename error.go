@@ -7,12 +7,12 @@ import (
 )
 
 var (
-	ErrUniversal            = NewCustomError(2000, "universal error")
-	ErrClosed               = NewCustomError(2001, "service has been closed")
-	ErrNotFound             = NewCustomError(2100, "not found")
-	ErrNotFoundSubjectOfMux = NewCustomError(2101, "not found subject mux")
-	ErrInvalidParameter     = NewCustomError(2200, "invalid parameter")
-	ErrTimeout              = NewCustomError(2300, "timeout")
+	ErrUniversal        = NewCustomError(2000, "universal error")
+	ErrClosed           = NewCustomError(2001, "service has been closed")
+	ErrNotFound         = NewCustomError(2100, "not found")
+	ErrNotFoundSubject  = NewCustomError(2101, "not found subject mux")
+	ErrInvalidParameter = NewCustomError(2200, "invalid parameter")
+	ErrTimeout          = NewCustomError(2300, "timeout")
 )
 
 func ConvertErrNetwork(err error) error {
