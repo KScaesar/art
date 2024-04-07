@@ -130,22 +130,25 @@ func (mux *Mux[Message]) HandleMessage(message *Message, route *RouteParam) (err
 	return mux.node.handleMessage(subject, 0, message, route)
 }
 
-func (mux *Mux[Message]) Handler(subject string, h HandleFunc[Message]) *Mux[Message] {
+func (mux *Mux[Message]) Handler(subject string, h HandleFunc[Message], mw ...Middleware[Message]) *Mux[Message] {
 	param := &paramHandler[Message]{
 		handler: h,
 	}
-	path := &pathHandler[Message]{}
-	mux.node.addRoute(subject, 0, param, path)
+	if mw != nil {
+		param.handler = LinkMiddlewares(param.handler, mw...)
+		param.handlerName = functionName(h)
+	}
+
+	mux.node.addRoute(subject, 0, param, &pathHandler[Message]{})
 	return mux
 }
 
-func (mux *Mux[Message]) HandlerByNumber(subject int, h HandleFunc[Message]) *Mux[Message] {
-	return mux.Handler(mux.routeDelimiter+strconv.Itoa(subject), h)
+func (mux *Mux[Message]) HandlerByNumber(subject int, h HandleFunc[Message], mw ...Middleware[Message]) *Mux[Message] {
+	return mux.Handler(mux.routeDelimiter+strconv.Itoa(subject), h, mw...)
 }
 
 func (mux *Mux[Message]) Group(groupName string) *Mux[Message] {
-	path := &pathHandler[Message]{}
-	groupNode := mux.node.addRoute(groupName, 0, nil, path)
+	groupNode := mux.node.addRoute(groupName, 0, nil, &pathHandler[Message]{})
 	return &Mux[Message]{
 		node:           groupNode,
 		routeDelimiter: mux.routeDelimiter,
@@ -162,8 +165,8 @@ func (mux *Mux[Message]) Transform(transform HandleFunc[Message]) *Mux[Message] 
 	param := &paramHandler[Message]{
 		transform: transform,
 	}
-	path := &pathHandler[Message]{}
-	mux.node.addRoute("", 0, param, path)
+
+	mux.node.addRoute("", 0, param, &pathHandler[Message]{})
 	return mux
 }
 
@@ -171,8 +174,8 @@ func (mux *Mux[Message]) SetSubjectFunc(getSubject NewSubjectFunc[Message]) *Mux
 	param := &paramHandler[Message]{
 		getSubject: getSubject,
 	}
-	path := &pathHandler[Message]{}
-	mux.node.addRoute("", 0, param, path)
+
+	mux.node.addRoute("", 0, param, &pathHandler[Message]{})
 	return mux
 }
 
@@ -180,8 +183,8 @@ func (mux *Mux[Message]) Middleware(middlewares ...Middleware[Message]) *Mux[Mes
 	param := &paramHandler[Message]{
 		middlewares: middlewares,
 	}
-	path := &pathHandler[Message]{}
-	mux.node.addRoute("", 0, param, path)
+
+	mux.node.addRoute("", 0, param, &pathHandler[Message]{})
 	return mux
 }
 
@@ -190,8 +193,8 @@ func (mux *Mux[Message]) PreMiddleware(handleFuncs ...HandleFunc[Message]) *Mux[
 	for _, h := range handleFuncs {
 		param.middlewares = append(param.middlewares, h.PreMiddleware())
 	}
-	path := &pathHandler[Message]{}
-	mux.node.addRoute("", 0, param, path)
+
+	mux.node.addRoute("", 0, param, &pathHandler[Message]{})
 	return mux
 }
 
@@ -200,17 +203,21 @@ func (mux *Mux[Message]) PostMiddleware(handleFuncs ...HandleFunc[Message]) *Mux
 	for _, h := range handleFuncs {
 		param.middlewares = append(param.middlewares, h.PostMiddleware())
 	}
-	path := &pathHandler[Message]{}
-	mux.node.addRoute("", 0, param, path)
+
+	mux.node.addRoute("", 0, param, &pathHandler[Message]{})
 	return mux
 }
 
-func (mux *Mux[Message]) SetDefaultHandler(h HandleFunc[Message]) *Mux[Message] {
+func (mux *Mux[Message]) SetDefaultHandler(h HandleFunc[Message], mw ...Middleware[Message]) *Mux[Message] {
 	param := &paramHandler[Message]{
 		defaultHandler: h,
 	}
-	path := &pathHandler[Message]{}
-	mux.node.addRoute("", 0, param, path)
+	if mw != nil {
+		param.defaultHandler = LinkMiddlewares(param.defaultHandler, mw...)
+		param.defaultHandlerName = functionName(h)
+	}
+
+	mux.node.addRoute("", 0, param, &pathHandler[Message]{})
 	return mux
 }
 
@@ -218,6 +225,7 @@ func (mux *Mux[Message]) SetNotFoundHandler(h HandleFunc[Message]) *Mux[Message]
 	param := &paramHandler[Message]{
 		notFoundHandler: h,
 	}
+
 	path := &pathHandler[Message]{}
 	mux.node.addRoute("", 0, param, path)
 	return mux
