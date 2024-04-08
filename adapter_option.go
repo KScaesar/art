@@ -1,5 +1,11 @@
 package Artifex
 
+import (
+	"sync"
+
+	"github.com/gookit/goutil/maputil"
+)
+
 func NewPubSubOption[rMessage, sMessage any]() (opt *AdapterOption[rMessage, sMessage]) {
 	return &AdapterOption[rMessage, sMessage]{}
 }
@@ -26,6 +32,67 @@ type AdapterOption[rMessage, sMessage any] struct {
 	identifier string
 
 	newLifecycle func() *Lifecycle
+}
+
+func (opt *AdapterOption[rMessage, sMessage]) BuildPubSub() (*Adapter[rMessage, sMessage], error) {
+	pubsub := &Adapter[rMessage, sMessage]{
+		pingpong:            opt.pingpong,
+		recvResult:          make(chan error, 2),
+		fixupMaxRetrySecond: opt.fixupMaxRetrySecond,
+		adapterFixup:        opt.adapterFixup,
+		lifecycle:           opt.lifecycle(),
+		identifier:          opt.identifier,
+		appData:             make(maputil.Data),
+		waitStop:            make(chan struct{}),
+	}
+
+	// must
+	pubsub.handleRecv = opt.handleRecv
+	pubsub.adapterRecv = opt.adapterRecv
+	pubsub.adapterSend = opt.adapterSend
+	pubsub.adapterStop = opt.adapterStop
+	return pubsub, pubsub.init()
+}
+
+func (opt *AdapterOption[rMessage, sMessage]) BuildPublisher() (*Adapter[rMessage, sMessage], error) {
+	publisher := &Adapter[rMessage, sMessage]{
+		pingpong:            opt.pingpong,
+		recvResult:          make(chan error, 2),
+		fixupMaxRetrySecond: opt.fixupMaxRetrySecond,
+		adapterFixup:        opt.adapterFixup,
+		lifecycle:           opt.lifecycle(),
+		adpMutex:            sync.RWMutex{},
+		identifier:          opt.identifier,
+		appData:             make(maputil.Data),
+		waitStop:            make(chan struct{}),
+	}
+
+	// must
+	publisher.handleRecv = nil
+	publisher.adapterRecv = nil
+	publisher.adapterSend = opt.adapterSend
+	publisher.adapterStop = opt.adapterStop
+	return publisher, publisher.init()
+}
+
+func (opt *AdapterOption[rMessage, sMessage]) BuildSubscriber() (*Adapter[rMessage, sMessage], error) {
+	subscriber := &Adapter[rMessage, sMessage]{
+		pingpong:            opt.pingpong,
+		recvResult:          make(chan error, 2),
+		fixupMaxRetrySecond: opt.fixupMaxRetrySecond,
+		adapterFixup:        opt.adapterFixup,
+		lifecycle:           opt.lifecycle(),
+		identifier:          opt.identifier,
+		appData:             make(maputil.Data),
+		waitStop:            make(chan struct{}),
+	}
+
+	// must
+	subscriber.handleRecv = opt.handleRecv
+	subscriber.adapterRecv = opt.adapterRecv
+	subscriber.adapterSend = nil
+	subscriber.adapterStop = opt.adapterStop
+	return subscriber, subscriber.init()
 }
 
 func (opt *AdapterOption[rMessage, sMessage]) HandleRecv(handleRecv HandleFunc[rMessage]) *AdapterOption[rMessage, sMessage] {
@@ -64,9 +131,7 @@ func (opt *AdapterOption[rMessage, sMessage]) SendPing(sendPing func() error, wa
 		second = 30
 	}
 
-	opt.pingpong = func(isStop func() bool) error {
-		return SendPingWaitPong(sendPing, waitPong, isStop, second)
-	}
+	opt.pingpong = func(isStop func() bool) error { return SendPingWaitPong(sendPing, waitPong, isStop, second) }
 	return opt
 }
 
@@ -80,9 +145,7 @@ func (opt *AdapterOption[rMessage, sMessage]) WaitPing(waitPing chan error, wait
 		second = 30
 	}
 
-	opt.pingpong = func(isStop func() bool) error {
-		return WaitPingSendPong(waitPing, sendPong, isStop, second)
-	}
+	opt.pingpong = func(isStop func() bool) error { return WaitPingSendPong(waitPing, sendPong, isStop, second) }
 	return opt
 }
 

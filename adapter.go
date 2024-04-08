@@ -6,61 +6,6 @@ import (
 	"github.com/gookit/goutil/maputil"
 )
 
-func NewPubSub[rMessage, sMessage any](opt *AdapterOption[rMessage, sMessage]) (pubsub *Adapter[rMessage, sMessage], err error) {
-	pubsub = &Adapter[rMessage, sMessage]{
-		pingpong:            opt.pingpong,
-		recvResult:          make(chan error, 2),
-		fixupMaxRetrySecond: opt.fixupMaxRetrySecond,
-		adapterFixup:        opt.adapterFixup,
-		lifecycle:           opt.lifecycle(),
-		identifier:          opt.identifier,
-		appData:             make(maputil.Data),
-		waitStop:            make(chan struct{}),
-	}
-	pubsub.handleRecv = opt.handleRecv
-	pubsub.adapterRecv = opt.adapterRecv
-	pubsub.adapterSend = opt.adapterSend
-	pubsub.adapterStop = opt.adapterStop
-	return pubsub, pubsub.init()
-}
-
-func NewPublisher[sMessage any](opt *AdapterOption[struct{}, sMessage]) (publisher *Adapter[struct{}, sMessage], err error) {
-	publisher = &Adapter[struct{}, sMessage]{
-		pingpong:            opt.pingpong,
-		recvResult:          make(chan error, 2),
-		fixupMaxRetrySecond: opt.fixupMaxRetrySecond,
-		adapterFixup:        opt.adapterFixup,
-		lifecycle:           opt.lifecycle(),
-		adpMutex:            sync.RWMutex{},
-		identifier:          opt.identifier,
-		appData:             make(maputil.Data),
-		waitStop:            make(chan struct{}),
-	}
-	publisher.handleRecv = nil
-	publisher.adapterRecv = nil
-	publisher.adapterSend = opt.adapterSend
-	publisher.adapterStop = opt.adapterStop
-	return publisher, publisher.init()
-}
-
-func NewSubscriber[rMessage any](opt *AdapterOption[rMessage, struct{}]) (subscriber *Adapter[rMessage, struct{}], err error) {
-	subscriber = &Adapter[rMessage, struct{}]{
-		pingpong:            opt.pingpong,
-		recvResult:          make(chan error, 2),
-		fixupMaxRetrySecond: opt.fixupMaxRetrySecond,
-		adapterFixup:        opt.adapterFixup,
-		lifecycle:           opt.lifecycle(),
-		identifier:          opt.identifier,
-		appData:             make(maputil.Data),
-		waitStop:            make(chan struct{}),
-	}
-	subscriber.handleRecv = opt.handleRecv
-	subscriber.adapterRecv = opt.adapterRecv
-	subscriber.adapterSend = nil
-	subscriber.adapterStop = opt.adapterStop
-	return subscriber, subscriber.init()
-}
-
 type IAdapter interface {
 	Identifier() string
 	Query(query func(id string, appData maputil.Data))

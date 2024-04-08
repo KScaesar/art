@@ -30,27 +30,19 @@ type {{.FileName}}IngressMiddleware = Artifex.Middleware[{{.FileName}}Ingress]
 type {{.FileName}}IngressMux = Artifex.Mux[{{.FileName}}Ingress]
 
 func New{{.FileName}}IngressMux() *{{.FileName}}IngressMux {
-	get{{.Subject}} := func(message *{{.FileName}}Ingress) (string, error) {
+	get{{.Subject}} := func(message *{{.FileName}}Ingress) string {
 		// TODO
-		return "", nil
+		return ""
 	}
 
 	mux := Artifex.NewMux("/", get{{.Subject}})
-	mux.Handler("ingress", {{.FileName}}IngressHandler())
 	return mux
 }
 
-func {{.FileName}}IngressHandler() {{.FileName}}IngressHandleFunc {
-	return func(message *{{.FileName}}Ingress, _ *Artifex.RouteParam) error {
+func {{.FileName}}IngressSkip() {{.FileName}}IngressHandleFunc {
+	return func(_ *{{.FileName}}Ingress, _ *Artifex.RouteParam) (err error) {
 		return nil
 	}
-}
-
-func {{.FileName}}IngressHandleError(message *{{.FileName}}Ingress, _ *Artifex.RouteParam, err error) error {
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 //
@@ -84,28 +76,21 @@ type {{.FileName}}EgressMiddleware = Artifex.Middleware[{{.FileName}}Egress]
 type {{.FileName}}EgressMux = Artifex.Mux[{{.FileName}}Egress]
 
 func New{{.FileName}}EgressMux() *{{.FileName}}EgressMux {
-	get{{.Subject}} := func(message *{{.FileName}}Egress) (string, error) {
+	get{{.Subject}} := func(message *{{.FileName}}Egress) string {
 		// TODO
-		return "", nil
+		return ""
 	}
 
 	mux := Artifex.NewMux("/", get{{.Subject}})
-	mux.Handler("egress", {{.FileName}}EgressHandler())
 	return mux
 }
 
-func {{.FileName}}EgressHandler() {{.FileName}}EgressHandleFunc {
-	return func(message *{{.FileName}}Egress, _ *Artifex.RouteParam) error {
+func {{.FileName}}EgressSkip() {{.FileName}}EgressHandleFunc {
+	return func(_ *{{.FileName}}Egress, _ *Artifex.RouteParam) (err error) {
 		return nil
 	}
 }
 
-func {{.FileName}}EgressHandleError(message *{{.FileName}}Egress, _ *Artifex.RouteParam, err error) error {
-	if err != nil {
-		return err
-	}
-	return nil
-}
 `
 
 const PubSubTmpl = `
@@ -242,9 +227,9 @@ func (f *{{.FileName}}Factory) CreatePubSub() ({{.FileName}}PubSub, error) {
 			return nil
 		},
 	)
-
 	opt.NewLifecycle(func() *Artifex.Lifecycle { return lifecycle })
-	return Artifex.NewPubSub(opt)
+
+	return opt.BuildPubSub()
 }
 
 func (f *{{.FileName}}Factory) CreatePublisher() ({{.FileName}}Publisher, error) {
@@ -285,9 +270,9 @@ func (f *{{.FileName}}Factory) CreatePublisher() ({{.FileName}}Publisher, error)
 			return nil
 		},
 	)
-
 	opt.NewLifecycle(func() *Artifex.Lifecycle { return lifecycle })
-	return Artifex.NewPublisher(opt)
+
+	return opt.BuildPublisher()
 }
 
 func (f *{{.FileName}}Factory) CreateSubscriber() ({{.FileName}}Subscriber, error) {
@@ -325,8 +310,8 @@ func (f *{{.FileName}}Factory) CreateSubscriber() ({{.FileName}}Subscriber, erro
 			return nil
 		},
 	)
-
 	opt.NewLifecycle(func() *Artifex.Lifecycle { return lifecycle })
-	return Artifex.NewSubscriber(opt)
+
+	return opt.BuildSubscriber()
 }
 `
