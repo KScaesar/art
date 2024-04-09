@@ -28,7 +28,7 @@ func (mw MW[Message]) Recover() Middleware[Message] {
 	}
 }
 
-func (mw MW[Message]) HandleError(getSubject NewSubjectFunc[Message]) Middleware[Message] {
+func (mw MW[Message]) PrintError(getSubject NewSubjectFunc[Message]) Middleware[Message] {
 	if mw.Logger == nil {
 		mw.Logger = DefaultLogger()
 	}

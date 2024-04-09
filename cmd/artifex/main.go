@@ -18,7 +18,8 @@ func main() {
 
 func PrintHelp(detail bool) {
 	const example = `help: 
-    artifex gen -dir ./ -pkg infra -f kafka -s Topic
+    artifex gen -dir  ./    -pkg  infra    -f  kafka -s  Topic
+    artifex gen -dir {Path} -pkg {Package} -f {File} -s {Subject}
 `
 	const text = `
 -dir  Generate code to dir

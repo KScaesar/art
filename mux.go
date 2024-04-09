@@ -217,6 +217,12 @@ func (mux *Mux[Message]) PostMiddleware(handleFuncs ...HandleFunc[Message]) *Mux
 	return mux
 }
 
+// SetDefaultHandler
+// When a subject cannot be found, execute the 'Default'.
+//
+// "The difference between 'Default' and 'NotFound' is
+// that the 'Default' handler will utilize middleware,
+// whereas 'NotFound' won't use middleware."
 func (mux *Mux[Message]) SetDefaultHandler(h HandleFunc[Message], mw ...Middleware[Message]) *Mux[Message] {
 	param := &paramHandler[Message]{
 		defaultHandler: h,
@@ -230,6 +236,12 @@ func (mux *Mux[Message]) SetDefaultHandler(h HandleFunc[Message], mw ...Middlewa
 	return mux
 }
 
+// SetNotFoundHandler
+// When a subject cannot be found, execute the 'NotFound'.
+//
+// "The difference between 'Default' and 'NotFound' is
+// that the 'Default' handler will utilize middleware,
+// whereas 'NotFound' won't use middleware."
 func (mux *Mux[Message]) SetNotFoundHandler(h HandleFunc[Message]) *Mux[Message] {
 	param := &paramHandler[Message]{
 		notFoundHandler: h,
