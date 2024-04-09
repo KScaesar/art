@@ -73,6 +73,14 @@ func LinkMiddlewares[Message any](handler HandleFunc[Message], middlewares ...Mi
 
 type NewSubjectFunc[Message any] func(*Message) string
 
+func DefaultMux[Message any](getSubject NewSubjectFunc[Message]) *Mux[Message] {
+	mux := NewMux[Message]("/", getSubject)
+	middleware := MW[Message]{}
+	mux.Middleware(middleware.Recover())
+	mux.SetHandleError(middleware.PrintError(getSubject))
+	return mux
+}
+
 // NewMux
 // If routeDelimiter is an empty string, RouteParam cannot be used.
 // routeDelimiter can only be set to a string of length 1.

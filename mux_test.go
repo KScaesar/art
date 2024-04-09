@@ -488,7 +488,7 @@ func TestMux_SetDefaultHandler_when_wildcard(t *testing.T) {
 	recorder := []string{}
 	newSubject := func(msg *testcaseMessage) string { return msg.subject }
 	mux := NewMux[testcaseMessage](".", newSubject).
-		Middleware(MW_Recover[testcaseMessage]()).
+		Middleware(MW[testcaseMessage]{}.Recover()).
 		SetDefaultHandler(func(message *testcaseMessage, _ *RouteParam) error {
 			recorder = append(recorder, message.body+" default")
 			return nil
@@ -650,7 +650,7 @@ func TestMessageMux_Recover(t *testing.T) {
 
 	SetDefaultLogger(SilentLogger())
 	mux := NewMux[testcaseRecover]("/", newSubject).
-		Middleware(MW_Recover[testcaseRecover]()).
+		Middleware(MW[testcaseRecover]{}.Recover()).
 		SetDefaultHandler(func(_ *testcaseRecover, _ *RouteParam) error {
 			panic("testcase")
 			return nil

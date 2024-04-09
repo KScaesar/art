@@ -12,10 +12,6 @@ func NewHub[T any](stopObj func(T)) *Hub[T] {
 	}
 }
 
-// Hub
-//
-//	concurrencyQty controls how many tasks can run simultaneously,
-//	preventing resource usage or avoid frequent context switches.
 type Hub[T any] struct {
 	collections    sync.Map
 	concurrencyQty atomic.Int32
@@ -224,6 +220,9 @@ func (hub *Hub[T]) Total() int {
 	return hub.Count(filter)
 }
 
+// SetConcurrencyQty
+// concurrencyQty controls how many tasks can run simultaneously,
+// preventing resource usage or avoid frequent context switches.
 func (hub *Hub[T]) SetConcurrencyQty(concurrencyQty int) {
 	if hub.isStop.Load() {
 		return
