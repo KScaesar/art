@@ -13,7 +13,7 @@ func main() {
 	getSubject := func(msg *MyMessage) string { return msg.Subject }
 	mux := Artifex.NewMux[MyMessage](routeDelimiter, getSubject)
 
-	builtInMiddleware := Artifex.MW[MyMessage]{Artifex.NewLogger(false, Artifex.LogLevelDebug)}
+	builtInMiddleware := Artifex.MW[MyMessage]{Logger: Artifex.NewLogger(false, Artifex.LogLevelDebug)}
 	mux.SetHandleError(builtInMiddleware.PrintError(getSubject))
 
 	// When a subject cannot be found, execute the 'Default'

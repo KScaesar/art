@@ -1,7 +1,8 @@
 # Artifex
 
 The key features of Artifex are:
-- Message Routes Group
+- Routes Group
+- Routes Parameter: `/users/{user_id}/orders/{order_id}`
 - Extendable: middleware support
 - Universal: message-driven architecture, stream processing ...etc, use it for whatever you need.
 - Adapter Lifecycle Management
@@ -46,7 +47,7 @@ One example like the following:
 [Example](./example/main.go)
 
 [Go Playground
-](https://go.dev/play/p/8YJ2zMCWDy6)
+](https://go.dev/play/p/q-vu3_d8Ws7)
 
 ```go
 package main
