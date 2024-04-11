@@ -59,7 +59,10 @@ func (hub *Hub[T]) UpdateByOldKey(oldKey string, update func(T) (freshKey string
 
 func (hub *Hub[T]) FindByKey(key string) (obj T, found bool) {
 	value, ok := hub.collections.Load(key)
-	return value.(T), ok
+	if ok {
+		return value.(T), true
+	}
+	return obj, false
 }
 
 // If filter returns true, find target
