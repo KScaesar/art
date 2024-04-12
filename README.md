@@ -13,11 +13,9 @@ Simplifying Message Handling in Go.
 
 I believe that most Go developers have used the Gin HTTP package, and my favorite part of it is the way Message HandleFunc are written.
 
-This approach not only follows the Single Responsibility Principle (SRP) but also simplifies the addition of new features through middleware, meeting the requirements of the Open-Closed Principle (OCP).
+This approach not only adheres to the Single Responsibility Principle (SRP) but also utilizes middleware design to make the code more extensible, meeting the criteria of the Open-Closed Principle (OCP).
 
 In everyday work, we not only handle HTTP messages but also utilize other backend common messaging methods such as Redis, RabbitMQ, WebSocket, SSE, and Kafka.
-
-However, in Go, the mentioned open-source packages usually don't provide a built-in way to design Message HandleFunc pattern.  
 
 Unfortunately, I often encounter code that is difficult to maintain, written using basic switch-case or if-else statements, in my work.
 
@@ -43,8 +41,10 @@ for {
 }
 ```
 
+In Go, these foundational open-source packages typically don't offer a built-in method to achieve HandleFunc design patterns.
+
 Therefore, I developed a message mux (multiplexing) based on generics,  
-aiming to transform message handling from any adapter into a pattern similar to Gin's HandleFunc.
+hoping to transform message handling from any adapter into a pattern similar to Gin's HandleFunc.
 
 ## Installation go package
 
