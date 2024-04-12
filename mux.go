@@ -132,12 +132,12 @@ func (mux *Mux[Message]) HandleMessage(message *Message, route *RouteParam) (err
 		}()
 	}
 
-	defer func() {
-		if mux.handleError != nil {
+	if mux.handleError != nil {
+		defer func() {
 			h := func(_ *Message, _ *RouteParam) error { return err }
 			err = LinkMiddlewares(h, mux.handleError)(message, route)
-		}
-	}()
+		}()
+	}
 
 	if mux.node.transform != nil {
 		return mux.node.handleMessage("", 0, message, route)
