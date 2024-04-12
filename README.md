@@ -13,7 +13,7 @@ Simplifying Message Handling in Go.
 
 I believe that most Go developers have used the Gin HTTP package, and my favorite part of it is the way Message HandleFunc are written.
 
-This approach not only adheres to the Single Responsibility Principle (SRP) but also utilizes middleware design to make the code more extensible, meeting the criteria of the Open-Closed Principle (OCP).
+This approach not only satisfies the Single Responsibility Principle (SRP) but also utilizes middleware design to enhance the code's extensibility, fulfilling the requirements of the Open-Closed Principle (OCP).
 
 In everyday work, we not only handle HTTP messages but also utilize other backend common messaging methods such as Redis, RabbitMQ, WebSocket, SSE, and Kafka.
 
