@@ -223,7 +223,7 @@ func (f *{{.FileName}}Factory) CreatePubSub() ({{.FileName}}PubSub, error) {
 				return err
 			}
 			lifecycle.AddTerminate(func(adp Artifex.IAdapter) {
-				go f.PubSubHub.RemoveByKey(adp.Identifier())
+				go f.PubSubHub.RemoveOne(func(pubsub {{.FileName}}PubSub) bool { return pubsub == adp })
 			})
 			return nil
 		},
@@ -266,7 +266,8 @@ func (f *{{.FileName}}Factory) CreatePublisher() ({{.FileName}}Publisher, error)
 				return err
 			}
 			lifecycle.AddTerminate(func(adp Artifex.IAdapter) {
-				go f.PubHub.RemoveByKey(adp.Identifier())
+				go f.PubHub.RemoveOne(func(pub {{.FileName}}Publisher) bool { return pub == adp })
+
 			})
 			return nil
 		},
@@ -306,7 +307,7 @@ func (f *{{.FileName}}Factory) CreateSubscriber() ({{.FileName}}Subscriber, erro
 				return err
 			}
 			lifecycle.AddTerminate(func(adp Artifex.IAdapter) {
-				go f.SubHub.RemoveByKey(adp.Identifier())
+				go f.SubHub.RemoveOne(func(sub {{.FileName}}Subscriber) bool { return sub == adp })
 			})
 			return nil
 		},
