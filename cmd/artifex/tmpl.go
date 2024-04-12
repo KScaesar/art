@@ -18,8 +18,8 @@ func New{{.FileName}}Ingress() *{{.FileName}}Ingress {
 }
 
 type {{.FileName}}Ingress struct {
-	MsgId string
-	Bytes []byte
+	MsgId    string
+	ByteBody []byte
 
 	{{.Subject}} {{.Subject}}
 	ParentInfra any
@@ -52,8 +52,9 @@ func New{{.FileName}}Egress() *{{.FileName}}Egress {
 }
 
 type {{.FileName}}Egress struct {
-	msgId string
-	Bytes []byte
+	msgId      string
+	ByteBody   []byte
+	StringBody string
 
 	{{.Subject}} {{.Subject}}
 	Metadata maputil.Data
