@@ -14,14 +14,14 @@ type Lifecycle struct {
 	wg                sync.WaitGroup
 }
 
-func (life *Lifecycle) AddInitialize(inits ...func(adp IAdapter) error) *Lifecycle {
+func (life *Lifecycle) OnOpen(inits ...func(adp IAdapter) error) *Lifecycle {
 	life.initMutex.Lock()
 	defer life.initMutex.Unlock()
 	life.initHandlers = append(life.initHandlers, inits...)
 	return life
 }
 
-func (life *Lifecycle) AddTerminate(terminates ...func(adp IAdapter)) *Lifecycle {
+func (life *Lifecycle) OnStop(terminates ...func(adp IAdapter)) *Lifecycle {
 	life.terminateMutex.Lock()
 	defer life.terminateMutex.Unlock()
 	life.terminateHandlers = append(life.terminateHandlers, terminates...)

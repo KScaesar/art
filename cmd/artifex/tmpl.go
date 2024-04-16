@@ -220,13 +220,13 @@ func (f *{{.FileName}}Factory) CreatePubSub() ({{.FileName}}PubSub, error) {
 		return nil, err
 	}
 
-	lifecycle.AddInitialize(
+	lifecycle.OnOpen(
 		func(adp Artifex.IAdapter) error {
 			err := f.PubSubHub.Join(adp.Identifier(), adp.({{.FileName}}PubSub))
 			if err != nil {
 				return err
 			}
-			lifecycle.AddTerminate(func(adp Artifex.IAdapter) {
+			lifecycle.OnStop(func(adp Artifex.IAdapter) {
 				go f.PubSubHub.RemoveOne(func(pubsub {{.FileName}}PubSub) bool { return pubsub == adp })
 			})
 			return nil
@@ -246,7 +246,11 @@ func (f *{{.FileName}}Factory) CreatePublisher() ({{.FileName}}Publisher, error)
 		Identifier("").
 		SendPing(func() error { return nil }, waitNotify, 30)
 
+	var mu sync.Mutex
 	opt.AdapterSend(func(adp Artifex.IAdapter, egress *{{.FileName}}Egress) error {
+		mu.Lock()
+		defer mu.Unlock()
+
 		err := egressMux.HandleMessage(egress, nil)
 		if err != nil {
 			return err
@@ -267,13 +271,13 @@ func (f *{{.FileName}}Factory) CreatePublisher() ({{.FileName}}Publisher, error)
 		return nil, err
 	}
 
-	lifecycle.AddInitialize(
+	lifecycle.OnOpen(
 		func(adp Artifex.IAdapter) error {
 			err := f.PubHub.Join(adp.Identifier(), adp.({{.FileName}}Publisher))
 			if err != nil {
 				return err
 			}
-			lifecycle.AddTerminate(func(adp Artifex.IAdapter) {
+			lifecycle.OnStop(func(adp Artifex.IAdapter) {
 				go f.PubHub.RemoveOne(func(pub {{.FileName}}Publisher) bool { return pub == adp })
 			})
 			return nil
@@ -311,13 +315,13 @@ func (f *{{.FileName}}Factory) CreateSubscriber() ({{.FileName}}Subscriber, erro
 		return nil, err
 	}
 
-	lifecycle.AddInitialize(
+	lifecycle.OnOpen(
 		func(adp Artifex.IAdapter) error {
 			err := f.SubHub.Join(adp.Identifier(), adp.({{.FileName}}Subscriber))
 			if err != nil {
 				return err
 			}
-			lifecycle.AddTerminate(func(adp Artifex.IAdapter) {
+			lifecycle.OnStop(func(adp Artifex.IAdapter) {
 				go f.SubHub.RemoveOne(func(sub {{.FileName}}Subscriber) bool { return sub == adp })
 			})
 			return nil

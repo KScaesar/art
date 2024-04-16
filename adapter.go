@@ -10,15 +10,11 @@ type IAdapter interface {
 	Identifier() string
 	Query(query func(id string, appData maputil.Data))
 	Update(update func(id *string, appData maputil.Data))
-	AddTerminate(terminates ...func(adp IAdapter))
 
+	OnStop(terminates ...func(adp IAdapter))
 	Stop() error
-
-	// IsStop is used for polling
-	IsStop() bool
-
-	// WaitStop is used for event push
-	WaitStop() chan struct{}
+	IsStop() bool            // IsStop is used for polling
+	WaitStop() chan struct{} // WaitStop is used for event push
 }
 
 type Adapter[rMessage, sMessage any] struct {
@@ -94,8 +90,8 @@ func (adp *Adapter[rMessage, sMessage]) Update(update func(id *string, appData m
 	update(&adp.identifier, adp.appData)
 }
 
-func (adp *Adapter[rMessage, sMessage]) AddTerminate(terminates ...func(adp IAdapter)) {
-	adp.lifecycle.AddTerminate(terminates...)
+func (adp *Adapter[rMessage, sMessage]) OnStop(terminates ...func(adp IAdapter)) {
+	adp.lifecycle.OnStop(terminates...)
 }
 
 func (adp *Adapter[rMessage, sMessage]) Listen() (err error) {
