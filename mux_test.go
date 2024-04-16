@@ -261,10 +261,10 @@ func TestMessageMux_Transform(t *testing.T) {
 		HandlerByNumber(4, record)
 
 	expectedSubjects := []string{
-		"/2",
-		"/3/1", "/3/2",
-		"/3/5/1", "/3/5/2",
-		"/4/1", "/4/2", "/4/4",
+		"2/",
+		"3/1/", "3/2/",
+		"3/5/1/", "3/5/2/",
+		"4/1/", "4/2/", "4/4/",
 	}
 
 	endpoints := mux.Endpoints()
@@ -275,17 +275,17 @@ func TestMessageMux_Transform(t *testing.T) {
 	}
 
 	expectedRecords := []string{
-		"!/2!",
-		"!/3/1!",
-		"^!/3/5/1!^",
-		"_!/4/2!_",
+		"!2/!",
+		"!3/1/!",
+		"^!3/5/1/!^",
+		"_!4/2/!_",
 	}
 
 	messages := []*testcaseTransformMessage{
-		{"/2", 2, -1, "msg /2"},
-		{"/3", 3, 1, "msg /3/1"},
-		{"/3", 3, 5, "1"},
-		{"/4", 4, 2, "msg /4/2"},
+		{"2/", 2, -1, "msg 2/"},
+		{"3/", 3, 1, "msg 3/1/"},
+		{"3/", 3, 5, "1"},
+		{"4/", 4, 2, "msg 4/2/"},
 	}
 
 	for i, message := range messages {
@@ -305,7 +305,7 @@ func testcaseTransformLevel1(msg *testcaseTransformMessage, route *RouteParam) (
 	old := msg
 	msg.level0TypeId = old.level1TypeId
 	msg.level1TypeId = 0
-	msg.subject += "/" + strconv.Itoa(msg.level0TypeId)
+	msg.subject += strconv.Itoa(msg.level0TypeId) + "/"
 	return nil
 }
 
@@ -318,7 +318,7 @@ func testcaseTransformLevel2(msg *testcaseTransformMessage, route *RouteParam) (
 	msg.level0TypeId = level2TypeId
 	msg.level1TypeId = 0
 
-	msg.subject += "/" + strconv.Itoa(msg.level0TypeId)
+	msg.subject += strconv.Itoa(msg.level0TypeId) + "/"
 	return nil
 }
 

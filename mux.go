@@ -161,7 +161,7 @@ func (mux *Mux[Message]) Handler(subject string, h HandleFunc[Message], mw ...Mi
 }
 
 func (mux *Mux[Message]) HandlerByNumber(subject int, h HandleFunc[Message], mw ...Middleware[Message]) *Mux[Message] {
-	return mux.Handler(mux.routeDelimiter+strconv.Itoa(subject), h, mw...)
+	return mux.Handler(strconv.Itoa(subject)+mux.routeDelimiter, h, mw...)
 }
 
 func (mux *Mux[Message]) Group(groupName string) *Mux[Message] {
@@ -175,7 +175,7 @@ func (mux *Mux[Message]) Group(groupName string) *Mux[Message] {
 }
 
 func (mux *Mux[Message]) GroupByNumber(groupName int) *Mux[Message] {
-	return mux.Group(mux.routeDelimiter + strconv.Itoa(groupName))
+	return mux.Group(strconv.Itoa(groupName) + mux.routeDelimiter)
 }
 
 func (mux *Mux[Message]) Transform(transform HandleFunc[Message]) *Mux[Message] {
