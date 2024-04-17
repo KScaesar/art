@@ -198,8 +198,8 @@ func (f *{{.FileName}}Factory) CreatePubSub() (pubsub {{.FileName}}PubSub, err e
 		return New{{.FileName}}Ingress(), nil
 	})
 
-	opt.AdapterSend(func(adp Artifex.IAdapter, egress *{{.FileName}}Egress) error {
-		err := egressMux.HandleMessage(egress, nil)
+	opt.AdapterSend(func(adp Artifex.IAdapter, message *{{.FileName}}Egress) error {
+		err := egressMux.HandleMessage(message, nil)
 		if err != nil {
 			return err
 		}
