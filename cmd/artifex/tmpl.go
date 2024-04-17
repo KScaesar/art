@@ -40,7 +40,7 @@ func New{{.FileName}}IngressMux() *{{.FileName}}IngressMux {
 }
 
 func {{.FileName}}IngressSkip() {{.FileName}}IngressHandleFunc {
-	return func(_ *{{.FileName}}Ingress, _ *Artifex.RouteParam) (err error) {
+	return func(message *{{.FileName}}Ingress, route *Artifex.RouteParam) (err error) {
 		return nil
 	}
 }
@@ -87,7 +87,7 @@ func New{{.FileName}}EgressMux() *{{.FileName}}EgressMux {
 }
 
 func {{.FileName}}EgressSkip() {{.FileName}}EgressHandleFunc {
-	return func(_ *{{.FileName}}Egress, _ *Artifex.RouteParam) (err error) {
+	return func(message *{{.FileName}}Egress, route *Artifex.RouteParam) (err error) {
 		return nil
 	}
 }
