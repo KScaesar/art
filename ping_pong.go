@@ -41,7 +41,7 @@ func WaitPingSendPong(waitPing <-chan error, sendPong func() error, isStop func(
 	return nil
 }
 
-func SendPingWaitPong(sendPing func() error, waitPong <-chan error, isStop func() bool, waitPongSecond int) error {
+func SendPingWaitPong(sendPing func() error, waitPong <-chan error, isStopped func() bool, waitPongSecond int) error {
 	waitPongTime := time.Duration(waitPongSecond) * time.Second
 	sendPingPeriod := waitPongTime / 2
 
@@ -54,10 +54,10 @@ func SendPingWaitPong(sendPing func() error, waitPong <-chan error, isStop func(
 		sendPingTicker := time.NewTicker(sendPingPeriod)
 		defer sendPingTicker.Stop()
 
-		for !isStop() {
+		for !isStopped() {
 			select {
 			case <-sendPingTicker.C:
-				if isStop() {
+				if isStopped() {
 					result <- nil
 					return
 				}
@@ -79,10 +79,10 @@ func SendPingWaitPong(sendPing func() error, waitPong <-chan error, isStop func(
 		waitPongTimer := time.NewTimer(waitPongTime)
 		defer waitPongTimer.Stop()
 
-		for !isStop() {
+		for !isStopped() {
 			select {
 			case <-waitPongTimer.C:
-				if isStop() {
+				if isStopped() {
 					result <- nil
 					return
 				}

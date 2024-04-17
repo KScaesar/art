@@ -13,7 +13,7 @@ type IAdapter interface {
 
 	OnStop(terminates ...func(adp IAdapter))
 	Stop() error
-	IsStop() bool            // IsStop is used for polling
+	IsStopped() bool         // IsStop is used for polling
 	WaitStop() chan struct{} // WaitStop is used for event push
 }
 
@@ -30,14 +30,13 @@ type Adapter[rMessage, sMessage any] struct {
 	fixupMaxRetrySecond int
 	adapterFixup        func(IAdapter) error
 
-	lifecycle *Lifecycle
-
 	adpMutex   sync.RWMutex
 	identifier string
 	appData    maputil.Data
 
-	isStop   bool
-	waitStop chan struct{}
+	lifecycle *Lifecycle
+	isStopped bool
+	waitStop  chan struct{}
 }
 
 func (adp *Adapter[rMessage, sMessage]) init() error {
@@ -53,19 +52,19 @@ func (adp *Adapter[rMessage, sMessage]) init() error {
 
 		var Err error
 		defer func() {
-			if !adp.isStop {
+			if !adp.isStopped {
 				adp.Stop()
 			}
 			adp.recvResult <- Err
 		}()
 
 		if adp.adapterFixup == nil {
-			Err = adp.pingpong(adp.IsStop)
+			Err = adp.pingpong(adp.IsStopped)
 			return
 		}
 		Err = ReliableTask(
-			func() error { return adp.pingpong(adp.IsStop) },
-			adp.IsStop,
+			func() error { return adp.pingpong(adp.IsStopped) },
+			adp.IsStopped,
 			adp.fixupMaxRetrySecond,
 			func() error { return adp.adapterFixup(adp) },
 		)
@@ -95,14 +94,14 @@ func (adp *Adapter[rMessage, sMessage]) OnStop(terminates ...func(adp IAdapter))
 }
 
 func (adp *Adapter[rMessage, sMessage]) Listen() (err error) {
-	if adp.isStop {
+	if adp.isStopped {
 		return ErrorWrapWithMessage(ErrClosed, "Artifex adapter")
 	}
 
 	go func() {
 		var Err error
 		defer func() {
-			if !adp.isStop {
+			if !adp.isStopped {
 				adp.Stop()
 			}
 			adp.recvResult <- Err
@@ -114,7 +113,7 @@ func (adp *Adapter[rMessage, sMessage]) Listen() (err error) {
 		}
 		Err = ReliableTask(
 			adp.listen,
-			adp.IsStop,
+			adp.IsStopped,
 			adp.fixupMaxRetrySecond,
 			func() error { return adp.adapterFixup(adp) },
 		)
@@ -124,10 +123,10 @@ func (adp *Adapter[rMessage, sMessage]) Listen() (err error) {
 }
 
 func (adp *Adapter[rMessage, sMessage]) listen() error {
-	for !adp.isStop {
+	for !adp.isStopped {
 		message, err := adp.adapterRecv(adp)
 
-		if adp.isStop {
+		if adp.isStopped {
 			return nil
 		}
 
@@ -141,7 +140,7 @@ func (adp *Adapter[rMessage, sMessage]) listen() error {
 }
 
 func (adp *Adapter[rMessage, sMessage]) Send(messages ...*sMessage) error {
-	if adp.isStop {
+	if adp.isStopped {
 		return ErrorWrapWithMessage(ErrClosed, "Artifex adapter")
 	}
 
@@ -158,18 +157,16 @@ func (adp *Adapter[rMessage, sMessage]) Send(messages ...*sMessage) error {
 func (adp *Adapter[rMessage, sMessage]) StopWithMessage(message *sMessage) error {
 	adp.adpMutex.Lock()
 	defer adp.adpMutex.Unlock()
-	if adp.isStop {
+	if adp.isStopped {
 		return ErrorWrapWithMessage(ErrClosed, "Artifex adapter")
 	}
 
 	adp.lifecycle.asyncTerminate(adp)
+	adp.isStopped = true
+	close(adp.waitStop)
 	err := adp.adapterStop(adp, message)
 	adp.lifecycle.wait()
 
-	// 確保所有關閉任務都執行結束
-	// 才定義為 isStop=true
-	adp.isStop = true
-	close(adp.waitStop)
 	return err
 }
 
@@ -178,8 +175,8 @@ func (adp *Adapter[rMessage, sMessage]) Stop() error {
 	return adp.StopWithMessage(empty)
 }
 
-func (adp *Adapter[rMessage, sMessage]) IsStop() bool {
-	return adp.isStop
+func (adp *Adapter[rMessage, sMessage]) IsStopped() bool {
+	return adp.isStopped
 }
 
 func (adp *Adapter[rMessage, sMessage]) WaitStop() chan struct{} {
