@@ -154,16 +154,19 @@ func New{{.FileName}}SubscriberHub() *{{.FileName}}SubscriberHub {
 //
 
 type {{.FileName}}Factory struct {
-	NewMux func() (ingressMux *{{.FileName}}IngressMux, egressMux *{{.FileName}}EgressMux)
-
+	NewMux    func() (*{{.FileName}}IngressMux, *{{.FileName}}EgressMux)
 	PubSubHub *{{.FileName}}PubSubHub
-	PubHub    *{{.FileName}}PublisherHub
-	SubHub    *{{.FileName}}SubscriberHub
+
+	NewIngressMux func() *{{.FileName}}IngressMux
+	SubHub        *{{.FileName}}SubscriberHub
+
+	NewEgressMux func() *{{.FileName}}EgressMux
+	PubHub       *{{.FileName}}PublisherHub
 
 	NewLifecycle func() (*Artifex.Lifecycle, error)
 }
 
-func (f *{{.FileName}}Factory) CreatePubSub() ({{.FileName}}PubSub, error) {
+func (f *{{.FileName}}Factory) CreatePubSub() (pubsub {{.FileName}}PubSub, err error) {
 
 	ingressMux, egressMux := f.NewMux()
 
@@ -215,11 +218,15 @@ func (f *{{.FileName}}Factory) CreatePubSub() ({{.FileName}}PubSub, error) {
 		return nil
 	})
 
-	lifecycle, err := f.NewLifecycle()
-	if err != nil {
-		return nil, err
+	var lifecycle *Artifex.Lifecycle
+	if f.NewLifecycle != nil {
+		lifecycle, err = f.NewLifecycle()
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		lifecycle = new(Artifex.Lifecycle)
 	}
-
 	lifecycle.OnOpen(
 		func(adp Artifex.IAdapter) error {
 			err := f.PubSubHub.Join(adp.Identifier(), adp.({{.FileName}}PubSub))
@@ -237,9 +244,9 @@ func (f *{{.FileName}}Factory) CreatePubSub() ({{.FileName}}PubSub, error) {
 	return opt.BuildPubSub()
 }
 
-func (f *{{.FileName}}Factory) CreatePublisher() ({{.FileName}}Publisher, error) {
+func (f *{{.FileName}}Factory) CreatePublisher() (pub {{.FileName}}Publisher, err error) {
 
-	_, egressMux := f.NewMux()
+	egressMux := f.NewEgressMux()
 
 	waitNotify := make(chan error, 1)
 	opt := Artifex.NewPublisherOption[{{.FileName}}Egress]().
@@ -266,11 +273,15 @@ func (f *{{.FileName}}Factory) CreatePublisher() ({{.FileName}}Publisher, error)
 		return nil
 	})
 
-	lifecycle, err := f.NewLifecycle()
-	if err != nil {
-		return nil, err
+	var lifecycle *Artifex.Lifecycle
+	if f.NewLifecycle != nil {
+		lifecycle, err = f.NewLifecycle()
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		lifecycle = new(Artifex.Lifecycle)
 	}
-
 	lifecycle.OnOpen(
 		func(adp Artifex.IAdapter) error {
 			err := f.PubHub.Join(adp.Identifier(), adp.({{.FileName}}Publisher))
@@ -288,9 +299,9 @@ func (f *{{.FileName}}Factory) CreatePublisher() ({{.FileName}}Publisher, error)
 	return opt.BuildPublisher()
 }
 
-func (f *{{.FileName}}Factory) CreateSubscriber() ({{.FileName}}Subscriber, error) {
+func (f *{{.FileName}}Factory) CreateSubscriber() (sub {{.FileName}}Subscriber, err error) {
 
-	ingressMux, _ := f.NewMux()
+	ingressMux := f.NewIngressMux()
 
 	waitNotify := make(chan error, 1)
 	opt := Artifex.NewSubscriberOption[{{.FileName}}Ingress]().
@@ -310,11 +321,15 @@ func (f *{{.FileName}}Factory) CreateSubscriber() ({{.FileName}}Subscriber, erro
 		return nil
 	})
 
-	lifecycle, err := f.NewLifecycle()
-	if err != nil {
-		return nil, err
+	var lifecycle *Artifex.Lifecycle
+	if f.NewLifecycle != nil {
+		lifecycle, err = f.NewLifecycle()
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		lifecycle = new(Artifex.Lifecycle)
 	}
-
 	lifecycle.OnOpen(
 		func(adp Artifex.IAdapter) error {
 			err := f.SubHub.Join(adp.Identifier(), adp.({{.FileName}}Subscriber))
