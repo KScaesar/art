@@ -1,11 +1,25 @@
 # Artifex
 
-The key features of Artifex are:
+- [Features](#Features)
+- [Installation go package](#installation-go-package)
+- [Why Create This Package](#why-create-this-package)
+- [Usage example](#usage-example)
+- [Advanced usage](#advanced-usage)
+
+## Features
+
 - Routes Group
 - Routes Parameter: `/users/{user_id}/orders/{order_id}`
 - Extendable: middleware support
 - Universal: message-driven architecture, stream processing ...etc, use it for whatever you need.
 - Adapter Lifecycle Management
+
+
+## Installation go package
+
+```shell
+go get -u github.com/KScaesar/Artifex
+```
 
 ## Why Create This Package
 
@@ -45,12 +59,6 @@ In Go, these foundational open-source packages typically don't offer a built-in 
 
 Therefore, I developed a message mux (multiplexing) based on generics,  
 hoping to transform message handling from any adapter into a pattern similar to Gin's HandleFunc.
-
-## Installation go package
-
-```shell
-go get -u github.com/KScaesar/Artifex
-```
 
 ## Usage example
 
@@ -119,8 +127,9 @@ Generate code cli is used to generate template code for `message.go` and `adapte
 Modify the template content according to the requirements,  
 select PubSub, Publisher, or Subscriber as needed, and delete unused code.
 
-- [Publisher SSE Adapter Example](https://github.com/KScaesar/Artifex-Adapter?tab=readme-ov-file#sse)
-
+- [Artifex-Adapter](https://github.com/KScaesar/Artifex-Adapter?tab=readme-ov-file#artifex-adapter)
+    - [SSE: Publisher Example](https://github.com/KScaesar/Artifex-Adapter?tab=readme-ov-file#sse)
+    - [Rabbitmq: Publisher Subscriber Example](https://github.com/KScaesar/Artifex-Adapter?tab=readme-ov-file#rabbitmq)
 
 ```shell
 go install github.com/KScaesar/Artifex/cmd/artifex@latest
