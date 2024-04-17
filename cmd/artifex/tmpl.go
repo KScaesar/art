@@ -130,7 +130,8 @@ func New{{.FileName}}PubSubHub() *{{.FileName}}PubSubHub {
 	stop := func(pubsub {{.FileName}}PubSub) {
 		pubsub.Stop()
 	}
-	return Artifex.NewHub(stop)
+	hub := Artifex.NewHub(stop)
+	return hub
 }
 
 type {{.FileName}}PublisherHub = Artifex.Hub[{{.FileName}}Publisher]
@@ -139,7 +140,8 @@ func New{{.FileName}}PublisherHub() *{{.FileName}}PublisherHub {
 	stop := func(publisher {{.FileName}}Publisher) {
 		publisher.Stop()
 	}
-	return Artifex.NewHub(stop)
+	hub := Artifex.NewHub(stop)
+	return hub
 }
 
 type {{.FileName}}SubscriberHub = Artifex.Hub[{{.FileName}}Subscriber]
@@ -148,7 +150,8 @@ func New{{.FileName}}SubscriberHub() *{{.FileName}}SubscriberHub {
 	stop := func(subscriber {{.FileName}}Subscriber) {
 		subscriber.Stop()
 	}
-	return Artifex.NewHub(stop)
+	hub := Artifex.NewHub(stop)
+	return hub
 }
 
 //
