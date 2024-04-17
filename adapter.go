@@ -13,7 +13,7 @@ type IAdapter interface {
 
 	OnStop(terminates ...func(adp IAdapter))
 	Stop() error
-	IsStopped() bool         // IsStop is used for polling
+	IsStopped() bool         // IsStopped is used for polling
 	WaitStop() chan struct{} // WaitStop is used for event push
 }
 
