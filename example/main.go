@@ -16,21 +16,26 @@ func main() {
 	builtInMiddleware := Artifex.MW[MyMessage]{Logger: Artifex.NewLogger(false, Artifex.LogLevelDebug)}
 	mux.SetHandleError(builtInMiddleware.PrintError(getSubject))
 
+	// Note:
+	// Before registering handler, middleware must be defined;
+	// otherwise, the handler won't be able to use middleware.
+	mux.Middleware(builtInMiddleware.Recover())
+
 	// When a subject cannot be found, execute the 'Default'
 	mux.SetDefaultHandler(DefaultHandler)
 
-	v1 := mux.Group("v1/").
-		PreMiddleware(HandleAuth())
+	v1 := mux.Group("v1/").Middleware(HandleAuth().PreMiddleware())
+
 	v1.Handler("Hello/{user}", Hello)
 
 	db := make(map[string]any)
 	v1.Handler("UpdatedProductPrice/{brand}", UpdatedProductPrice(db))
 
 	// Endpoints:
-	// [ ".*"                             , "main.DefaultHandler"]
-	// [ "v1/Hello/{user}"                , "main.Hello"]
-	// [ "v1/UpdatedProductPrice/{brand}" , "main.main.UpdatedProductPrice.func4"]
-	fmt.Println("Endpoints:", mux.Endpoints())
+	// [Artifex] subject=".*"                                f="main.DefaultHandler"
+	// [Artifex] subject="v1/Hello/{user}"                   f="main.Hello"
+	// [Artifex] subject="v1/UpdatedProductPrice/{brand}"    f="main.main.UpdatedProductPrice.func5"
+	mux.PrintEndpoints(func(subject, fn string) { fmt.Printf("[Artifex] subject=%-35q f=%q\n", subject, fn) })
 
 	intervalSecond := 2
 	Listen(mux, intervalSecond)
@@ -150,7 +155,7 @@ func Hello(message *MyMessage, route *Artifex.RouteParam) error {
 	return nil
 }
 
-func UpdatedProductPrice(db map[string]any) func(message *MyMessage, route *Artifex.RouteParam) error {
+func UpdatedProductPrice(db map[string]any) Artifex.HandleFunc[MyMessage] {
 	return func(message *MyMessage, route *Artifex.RouteParam) error {
 		brand := route.Str("brand")
 		db[brand] = message.Bytes

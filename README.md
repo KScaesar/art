@@ -33,32 +33,9 @@ In everyday work, we not only handle HTTP messages but also utilize other backen
 
 Unfortunately, I often encounter code that is difficult to maintain, written using basic switch-case or if-else statements, in my work.
 
-```
-for {
-	message, err := adapter.Recv()
-	if err != nil {
-		return
-	}
-
-	subject:= getSubject(message)
-	switch subject {
-	case "topic1":
-		handleTopic1()
-	case "channel2":
-		handleChannel2()
-	case "routingKey3":
-		handleRoutingKey3()
-	case "eventType4":
-		handleWebsocketEventType4()
-	...
-	}
-}
-```
-
 In Go, these foundational open-source packages typically don't offer a built-in method to achieve HandleFunc design patterns.
 
-Therefore, I developed a message mux (multiplexing) based on generics,  
-hoping to transform message handling from any adapter into a pattern similar to Gin's HandleFunc.
+Therefore, I developed a message mux (multiplexer) based on generics, aiming to establish a message handling pattern similar to gin's HandleFunc.
 
 ## Usage example
 
@@ -67,9 +44,9 @@ One example like the following:
 [Example](./example/main.go)
 
 [Go Playground
-](https://go.dev/play/p/q-vu3_d8Ws7)
+](https://go.dev/play/p/sfKJiA970Qe)
 
-```go
+```
 package main
 
 type MyMessage struct {
@@ -82,24 +59,29 @@ func main() {
 	getSubject := func(msg *MyMessage) string { return msg.Subject }
 	mux := Artifex.NewMux[MyMessage](routeDelimiter, getSubject)
 
-	builtInMiddleware := Artifex.MW[MyMessage]{Artifex.NewLogger(false, Artifex.LogLevelDebug)}
+	builtInMiddleware := Artifex.MW[MyMessage]{Logger: Artifex.NewLogger(false, Artifex.LogLevelDebug)}
 	mux.SetHandleError(builtInMiddleware.PrintError(getSubject))
+
+	// Note:
+	// Before registering handler, middleware must be defined;
+	// otherwise, the handler won't be able to use middleware.
+	mux.Middleware(builtInMiddleware.Recover())
 
 	// When a subject cannot be found, execute the 'Default'
 	mux.SetDefaultHandler(DefaultHandler)
 
-	v1 := mux.Group("v1/").
-		PreMiddleware(HandleAuth())
+	v1 := mux.Group("v1/").Middleware(HandleAuth().PreMiddleware())
+
 	v1.Handler("Hello/{user}", Hello)
 
 	db := make(map[string]any)
 	v1.Handler("UpdatedProductPrice/{brand}", UpdatedProductPrice(db))
 
 	// Endpoints:
-	// [ ".*"                             , "main.DefaultHandler"]
-	// [ "v1/Hello/{user}"                , "main.Hello"]
-	// [ "v1/UpdatedProductPrice/{brand}" , "main.main.UpdatedProductPrice.func4"]
-	fmt.Println("Endpoints:", mux.Endpoints())
+	// [Artifex] subject=".*"                                f="main.DefaultHandler"
+	// [Artifex] subject="v1/Hello/{user}"                   f="main.Hello"
+	// [Artifex] subject="v1/UpdatedProductPrice/{brand}"    f="main.main.UpdatedProductPrice.func5"
+	mux.PrintEndpoints(func(subject, fn string) { fmt.Printf("[Artifex] subject=%-35q f=%q\n", subject, fn) })
 
 	intervalSecond := 2
 	Listen(mux, intervalSecond)
@@ -116,6 +98,17 @@ func Listen(mux *Artifex.Mux[MyMessage], second int) {
 
 		mux.HandleMessage(message, nil)
 		fmt.Println()
+	}
+}
+
+// type HandleFunc[Message any] func(message *Message, route *RouteParam) error
+
+func UpdatedProductPrice(db map[string]any) Artifex.HandleFunc[MyMessage] {
+	return func(message *MyMessage, route *Artifex.RouteParam) error {
+		brand := route.Str("brand")
+		db[brand] = message.Bytes
+		fmt.Printf("UpdatedProductPrice: saved db: brand=%v\n", brand)
+		return nil
 	}
 }
 ```

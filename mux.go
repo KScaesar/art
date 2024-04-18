@@ -178,6 +178,10 @@ func (mux *Mux[Message]) GroupByNumber(groupName int) *Mux[Message] {
 	return mux.Group(strconv.Itoa(groupName) + mux.routeDelimiter)
 }
 
+// Transform
+// Originally, the message passed through the mux would only call 'getSubject' once.
+// However, if there is a definition of Transform,
+// when the message passes through the Transform function, 'getSubject' will be called again.
 func (mux *Mux[Message]) Transform(transform HandleFunc[Message]) *Mux[Message] {
 	param := &paramHandler[Message]{
 		transform: transform,
@@ -196,6 +200,8 @@ func (mux *Mux[Message]) SetSubjectFunc(getSubject NewSubjectFunc[Message]) *Mux
 	return mux
 }
 
+// Middleware
+// Before registering handler, middleware must be defined; otherwise, the handler won't be able to use middleware.
 func (mux *Mux[Message]) Middleware(middlewares ...Middleware[Message]) *Mux[Message] {
 	param := &paramHandler[Message]{
 		middlewares: middlewares,
@@ -276,4 +282,10 @@ func (mux *Mux[Message]) SetMessagePool(pool *sync.Pool, reset func(*Message)) *
 // pair[0] = subject, pair[1] = function.
 func (mux *Mux[Message]) Endpoints() [][2]string {
 	return mux.node.endpoint()
+}
+
+func (mux *Mux[Message]) PrintEndpoints(print func(subject, fn string)) {
+	for _, v := range mux.Endpoints() {
+		print(v[0], v[1])
+	}
 }
