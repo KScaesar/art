@@ -35,7 +35,7 @@ Unfortunately, I often encounter code that is difficult to maintain, written usi
 
 In Go, these foundational open-source packages typically don't offer a built-in method to achieve HandleFunc design patterns.
 
-Therefore, I developed a message mux (multiplexer) based on generics, aiming to establish a message handling pattern similar to gin's HandleFunc.
+Therefore, I create the message mux (multiplexer) based on generics, aiming to establish a message handling pattern similar to gin's HandleFunc.
 
 ## Usage example
 
