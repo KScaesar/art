@@ -21,7 +21,7 @@ type Adapter[rMessage, sMessage any] struct {
 	handleRecv  HandleFunc[rMessage]
 	adapterRecv func(IAdapter) (*rMessage, error)
 	adapterSend func(IAdapter, *sMessage) error
-	adapterStop func(IAdapter, *sMessage) error
+	adapterStop func(IAdapter) error
 
 	// WaitPingSendPong or SendPingWaitPong
 	pingpong   func(isStop func() bool) error
@@ -154,7 +154,7 @@ func (adp *Adapter[rMessage, sMessage]) Send(messages ...*sMessage) error {
 	return nil
 }
 
-func (adp *Adapter[rMessage, sMessage]) StopWithMessage(message *sMessage) error {
+func (adp *Adapter[rMessage, sMessage]) Stop() error {
 	adp.adpMutex.Lock()
 	defer adp.adpMutex.Unlock()
 	if adp.isStopped {
@@ -164,15 +164,9 @@ func (adp *Adapter[rMessage, sMessage]) StopWithMessage(message *sMessage) error
 	adp.lifecycle.asyncTerminate(adp)
 	adp.isStopped = true
 	close(adp.waitStop)
-	err := adp.adapterStop(adp, message)
+	err := adp.adapterStop(adp)
 	adp.lifecycle.wait()
-
 	return err
-}
-
-func (adp *Adapter[rMessage, sMessage]) Stop() error {
-	var empty *sMessage
-	return adp.StopWithMessage(empty)
 }
 
 func (adp *Adapter[rMessage, sMessage]) IsStopped() bool {

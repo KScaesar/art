@@ -22,7 +22,7 @@ type AdapterOption[rMessage, sMessage any] struct {
 	handleRecv  HandleFunc[rMessage]
 	adapterRecv func(IAdapter) (*rMessage, error)
 	adapterSend func(IAdapter, *sMessage) error
-	adapterStop func(IAdapter, *sMessage) error
+	adapterStop func(IAdapter) error
 
 	fixupMaxRetrySecond int
 	adapterFixup        func(IAdapter) error
@@ -95,22 +95,27 @@ func (opt *AdapterOption[rMessage, sMessage]) BuildSubscriber() (*Adapter[rMessa
 	return subscriber, subscriber.init()
 }
 
+func (opt *AdapterOption[rMessage, sMessage]) Identifier(identifier string) *AdapterOption[rMessage, sMessage] {
+	opt.identifier = identifier
+	return opt
+}
+
 func (opt *AdapterOption[rMessage, sMessage]) HandleRecv(handleRecv HandleFunc[rMessage]) *AdapterOption[rMessage, sMessage] {
 	opt.handleRecv = handleRecv
 	return opt
 }
 
-func (opt *AdapterOption[rMessage, sMessage]) AdapterRecv(adapterRecv func(adp IAdapter) (*rMessage, error)) *AdapterOption[rMessage, sMessage] {
+func (opt *AdapterOption[rMessage, sMessage]) AdapterRecv(adapterRecv func(adp IAdapter) (message *rMessage, err error)) *AdapterOption[rMessage, sMessage] {
 	opt.adapterRecv = adapterRecv
 	return opt
 }
 
-func (opt *AdapterOption[rMessage, sMessage]) AdapterSend(adapterSend func(adp IAdapter, egress *sMessage) error) *AdapterOption[rMessage, sMessage] {
+func (opt *AdapterOption[rMessage, sMessage]) AdapterSend(adapterSend func(adp IAdapter, message *sMessage) error) *AdapterOption[rMessage, sMessage] {
 	opt.adapterSend = adapterSend
 	return opt
 }
 
-func (opt *AdapterOption[rMessage, sMessage]) AdapterStop(adapterStop func(adp IAdapter, egress *sMessage) error) *AdapterOption[rMessage, sMessage] {
+func (opt *AdapterOption[rMessage, sMessage]) AdapterStop(adapterStop func(adp IAdapter) error) *AdapterOption[rMessage, sMessage] {
 	opt.adapterStop = adapterStop
 	return opt
 }
@@ -146,11 +151,6 @@ func (opt *AdapterOption[rMessage, sMessage]) WaitPing(waitPing chan error, wait
 	}
 
 	opt.pingpong = func(isStop func() bool) error { return WaitPingSendPong(waitPing, sendPong, isStop, second) }
-	return opt
-}
-
-func (opt *AdapterOption[rMessage, sMessage]) Identifier(identifier string) *AdapterOption[rMessage, sMessage] {
-	opt.identifier = identifier
 	return opt
 }
 

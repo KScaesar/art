@@ -108,7 +108,6 @@ import (
 type {{.FileName}}PubSub interface {
 	Artifex.IAdapter
 	Send(messages ...*{{.FileName}}Egress) error
-	StopWithMessage(message *{{.FileName}}Egress) error
 	Listen() (err error)
 }
 
@@ -166,7 +165,7 @@ type {{.FileName}}Factory struct {
 	NewEgressMux func() *{{.FileName}}EgressMux
 	PubHub       *{{.FileName}}PublisherHub
 
-	NewLifecycle func() (*Artifex.Lifecycle, error)
+	AdapterLifecycle func(lifecycle *Artifex.Lifecycle)
 }
 
 func (f *{{.FileName}}Factory) CreatePubSub() (pubsub {{.FileName}}PubSub, err error) {
@@ -209,7 +208,7 @@ func (f *{{.FileName}}Factory) CreatePubSub() (pubsub {{.FileName}}PubSub, err e
 		return nil
 	})
 
-	opt.AdapterStop(func(adp Artifex.IAdapter, egress *{{.FileName}}Egress) error {
+	opt.AdapterStop(func(adp Artifex.IAdapter) error {
 		mu.Lock()
 		defer mu.Unlock()
 		return nil
@@ -221,15 +220,7 @@ func (f *{{.FileName}}Factory) CreatePubSub() (pubsub {{.FileName}}PubSub, err e
 		return nil
 	})
 
-	var lifecycle *Artifex.Lifecycle
-	if f.NewLifecycle != nil {
-		lifecycle, err = f.NewLifecycle()
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		lifecycle = new(Artifex.Lifecycle)
-	}
+	lifecycle := new(Artifex.Lifecycle)
 	lifecycle.OnOpen(
 		func(adp Artifex.IAdapter) error {
 			err := f.PubSubHub.Join(adp.Identifier(), adp.({{.FileName}}PubSub))
@@ -242,6 +233,7 @@ func (f *{{.FileName}}Factory) CreatePubSub() (pubsub {{.FileName}}PubSub, err e
 			return nil
 		},
 	)
+	f.AdapterLifecycle(lifecycle)
 	opt.NewLifecycle(func() *Artifex.Lifecycle { return lifecycle })
 
 	return opt.BuildPubSub()
@@ -257,18 +249,18 @@ func (f *{{.FileName}}Factory) CreatePublisher() (pub {{.FileName}}Publisher, er
 		SendPing(func() error { return nil }, waitNotify, 30)
 
 	var mu sync.Mutex
-	opt.AdapterSend(func(adp Artifex.IAdapter, egress *{{.FileName}}Egress) error {
+	opt.AdapterSend(func(adp Artifex.IAdapter, message *{{.FileName}}Egress) error {
 		mu.Lock()
 		defer mu.Unlock()
 
-		err := egressMux.HandleMessage(egress, nil)
+		err := egressMux.HandleMessage(message, nil)
 		if err != nil {
 			return err
 		}
 		return nil
 	})
 
-	opt.AdapterStop(func(adp Artifex.IAdapter, _ *{{.FileName}}Egress) error {
+	opt.AdapterStop(func(adp Artifex.IAdapter) error {
 		return nil
 	})
 
@@ -276,15 +268,7 @@ func (f *{{.FileName}}Factory) CreatePublisher() (pub {{.FileName}}Publisher, er
 		return nil
 	})
 
-	var lifecycle *Artifex.Lifecycle
-	if f.NewLifecycle != nil {
-		lifecycle, err = f.NewLifecycle()
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		lifecycle = new(Artifex.Lifecycle)
-	}
+	lifecycle := new(Artifex.Lifecycle)
 	lifecycle.OnOpen(
 		func(adp Artifex.IAdapter) error {
 			err := f.PubHub.Join(adp.Identifier(), adp.({{.FileName}}Publisher))
@@ -297,6 +281,7 @@ func (f *{{.FileName}}Factory) CreatePublisher() (pub {{.FileName}}Publisher, er
 			return nil
 		},
 	)
+	f.AdapterLifecycle(lifecycle)
 	opt.NewLifecycle(func() *Artifex.Lifecycle { return lifecycle })
 
 	return opt.BuildPublisher()
@@ -316,7 +301,7 @@ func (f *{{.FileName}}Factory) CreateSubscriber() (sub {{.FileName}}Subscriber, 
 		return New{{.FileName}}Ingress(), nil
 	})
 
-	opt.AdapterStop(func(adp Artifex.IAdapter, _ *struct{}) error {
+	opt.AdapterStop(func(adp Artifex.IAdapter) error {
 		return nil
 	})
 
@@ -324,15 +309,7 @@ func (f *{{.FileName}}Factory) CreateSubscriber() (sub {{.FileName}}Subscriber, 
 		return nil
 	})
 
-	var lifecycle *Artifex.Lifecycle
-	if f.NewLifecycle != nil {
-		lifecycle, err = f.NewLifecycle()
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		lifecycle = new(Artifex.Lifecycle)
-	}
+	lifecycle := new(Artifex.Lifecycle)
 	lifecycle.OnOpen(
 		func(adp Artifex.IAdapter) error {
 			err := f.SubHub.Join(adp.Identifier(), adp.({{.FileName}}Subscriber))
@@ -345,6 +322,7 @@ func (f *{{.FileName}}Factory) CreateSubscriber() (sub {{.FileName}}Subscriber, 
 			return nil
 		},
 	)
+	f.AdapterLifecycle(lifecycle)
 	opt.NewLifecycle(func() *Artifex.Lifecycle { return lifecycle })
 
 	return opt.BuildSubscriber()
