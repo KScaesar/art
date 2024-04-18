@@ -20,10 +20,10 @@ func New{{.FileName}}Ingress() *{{.FileName}}Ingress {
 }
 
 type {{.FileName}}Ingress struct {
-	MsgId    string
-	ByteBody []byte
+	MsgId string
+	Body  []byte
 
-	{{.Subject}} {{.Subject}}
+	Subject     string
 	ParentInfra any
 
 	ctx context.Context
@@ -47,7 +47,7 @@ type {{.FileName}}IngressMux = Artifex.Mux[{{.FileName}}Ingress]
 func New{{.FileName}}IngressMux() *{{.FileName}}IngressMux {
 	get{{.Subject}} := func(message *{{.FileName}}Ingress) string {
 
-		return message.{{.Subject}}
+		return message.Subject
 	}
 
 	mux := Artifex.NewMux("/", get{{.Subject}})
@@ -62,20 +62,19 @@ func {{.FileName}}IngressSkip() {{.FileName}}IngressHandleFunc {
 
 //
 
-func New{{.FileName}}Egress(s {{.Subject}}, message any) *{{.FileName}}Egress {
+func New{{.FileName}}Egress(subject {{.Subject}}, message any) *{{.FileName}}Egress {
 	return &{{.FileName}}Egress{
-		{{.Subject}}:  s,
+		Subject:  subject,
 		Metadata: make(map[string]any),
 		AppMsg:   message,
 	}
 }
 
 type {{.FileName}}Egress struct {
-	msgId      string
-	ByteBody   []byte
-	StringBody string
+	msgId string
+	Body  []byte
 
-	{{.Subject}} {{.Subject}}
+	Subject  string
 	Metadata maputil.Data
 	AppMsg   any
 
@@ -111,7 +110,7 @@ type {{.FileName}}EgressMux = Artifex.Mux[{{.FileName}}Egress]
 func New{{.FileName}}EgressMux() *{{.FileName}}EgressMux {
 	get{{.Subject}} := func(message *{{.FileName}}Egress) string {
 
-		return message.{{.Subject}}
+		return message.Subject
 	}
 
 	mux := Artifex.NewMux("/", get{{.Subject}})
