@@ -6,12 +6,7 @@ import (
 
 func NewPubSubOption[rMessage, sMessage any]() (opt *AdapterOption[rMessage, sMessage]) {
 	return &AdapterOption[rMessage, sMessage]{
-		identifier:  "",
-		handleRecv:  nil,
-		adapterRecv: nil,
-		adapterSend: nil,
-		adapterStop: nil,
-		lifecycle:   new(Lifecycle),
+		lifecycle: new(Lifecycle),
 	}
 }
 
@@ -38,10 +33,7 @@ func (opt *AdapterOption[rMessage, sMessage]) BuildPubSub() (*Adapter[rMessage, 
 
 func NewPublisherOption[sMessage any]() (opt *AdapterOption[struct{}, sMessage]) {
 	return &AdapterOption[struct{}, sMessage]{
-		identifier:  "",
-		adapterSend: nil,
-		adapterStop: nil,
-		lifecycle:   new(Lifecycle),
+		lifecycle: new(Lifecycle),
 	}
 }
 
@@ -65,11 +57,7 @@ func (opt *AdapterOption[rMessage, sMessage]) BuildPublisher() (*Adapter[rMessag
 
 func NewSubscriberOption[rMessage any]() (opt *AdapterOption[rMessage, struct{}]) {
 	return &AdapterOption[rMessage, struct{}]{
-		identifier:  "",
-		handleRecv:  nil,
-		adapterRecv: nil,
-		adapterStop: nil,
-		lifecycle:   new(Lifecycle),
+		lifecycle: new(Lifecycle),
 	}
 }
 

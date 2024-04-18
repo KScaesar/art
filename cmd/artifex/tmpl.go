@@ -46,8 +46,8 @@ type {{.FileName}}IngressMux = Artifex.Mux[{{.FileName}}Ingress]
 
 func New{{.FileName}}IngressMux() *{{.FileName}}IngressMux {
 	get{{.Subject}} := func(message *{{.FileName}}Ingress) string {
-		// TODO
-		return ""
+
+		return message.{{.Subject}}
 	}
 
 	mux := Artifex.NewMux("/", get{{.Subject}})
@@ -110,8 +110,8 @@ type {{.FileName}}EgressMux = Artifex.Mux[{{.FileName}}Egress]
 
 func New{{.FileName}}EgressMux() *{{.FileName}}EgressMux {
 	get{{.Subject}} := func(message *{{.FileName}}Egress) string {
-		// TODO
-		return ""
+
+		return message.{{.Subject}}
 	}
 
 	mux := Artifex.NewMux("/", get{{.Subject}})
