@@ -4,6 +4,8 @@ const MsgTmpl = `
 package {{.Package}}
 
 import (
+	"context"
+
 	"github.com/gookit/goutil/maputil"
 
 	"github.com/KScaesar/Artifex"
@@ -23,6 +25,19 @@ type {{.FileName}}Ingress struct {
 
 	{{.Subject}} {{.Subject}}
 	ParentInfra any
+
+	ctx context.Context
+}
+
+func (in *{{.FileName}}Ingress) Context() context.Context {
+	if in.ctx != nil {
+		return in.ctx
+	}
+	return context.Background()
+}
+
+func (in *{{.FileName}}Ingress) SetContext(ctx context.Context) {
+	in.ctx = ctx
 }
 
 type {{.FileName}}IngressHandleFunc = Artifex.HandleFunc[{{.FileName}}Ingress]
@@ -47,8 +62,12 @@ func {{.FileName}}IngressSkip() {{.FileName}}IngressHandleFunc {
 
 //
 
-func New{{.FileName}}Egress() *{{.FileName}}Egress {
-	return &{{.FileName}}Egress{}
+func New{{.FileName}}Egress(s {{.Subject}}, message any) *{{.FileName}}Egress {
+	return &{{.FileName}}Egress{
+		{{.Subject}}:  s,
+		Metadata: make(map[string]any),
+		AppMsg:   message,
+	}
 }
 
 type {{.FileName}}Egress struct {
@@ -59,17 +78,30 @@ type {{.FileName}}Egress struct {
 	{{.Subject}} {{.Subject}}
 	Metadata maputil.Data
 	AppMsg   any
+
+	ctx context.Context
 }
 
 func (e *{{.FileName}}Egress) MsgId() string {
 	if e.msgId == "" {
-		return ""
+		return Artifex.GenerateRandomCode(12)
 	}
 	return e.msgId
 }
 
 func (e *{{.FileName}}Egress) SetMsgId(msgId string) {
 	e.msgId = msgId
+}
+
+func (e *{{.FileName}}Egress) Context() context.Context {
+	if e.ctx != nil {
+		return e.ctx
+	}
+	return context.Background()
+}
+
+func (e *{{.FileName}}Egress) SetContext(ctx context.Context) {
+	e.ctx = ctx
 }
 
 type {{.FileName}}EgressHandleFunc = Artifex.HandleFunc[{{.FileName}}Egress]
@@ -165,7 +197,7 @@ type {{.FileName}}Factory struct {
 	NewEgressMux func() *{{.FileName}}EgressMux
 	PubHub       *{{.FileName}}PublisherHub
 
-	AdapterLifecycle func(lifecycle *Artifex.Lifecycle)
+	Lifecycle func(lifecycle *Artifex.Lifecycle)
 }
 
 func (f *{{.FileName}}Factory) CreatePubSub() (pubsub {{.FileName}}PubSub, err error) {
@@ -220,21 +252,21 @@ func (f *{{.FileName}}Factory) CreatePubSub() (pubsub {{.FileName}}PubSub, err e
 		return nil
 	})
 
-	lifecycle := new(Artifex.Lifecycle)
-	lifecycle.OnOpen(
-		func(adp Artifex.IAdapter) error {
+	opt.Lifecycle(func(life *Artifex.Lifecycle) {
+		life.OnOpen(func(adp Artifex.IAdapter) error {
 			err := f.PubSubHub.Join(adp.Identifier(), adp.({{.FileName}}PubSub))
 			if err != nil {
 				return err
 			}
-			lifecycle.OnStop(func(adp Artifex.IAdapter) {
+			life.OnStop(func(adp Artifex.IAdapter) {
 				go f.PubSubHub.RemoveOne(func(pubsub {{.FileName}}PubSub) bool { return pubsub == adp })
 			})
 			return nil
-		},
-	)
-	f.AdapterLifecycle(lifecycle)
-	opt.NewLifecycle(func() *Artifex.Lifecycle { return lifecycle })
+		})
+		if f.Lifecycle != nil {
+			f.Lifecycle(life)
+		}
+	})
 
 	return opt.BuildPubSub()
 }
@@ -268,21 +300,21 @@ func (f *{{.FileName}}Factory) CreatePublisher() (pub {{.FileName}}Publisher, er
 		return nil
 	})
 
-	lifecycle := new(Artifex.Lifecycle)
-	lifecycle.OnOpen(
-		func(adp Artifex.IAdapter) error {
+	opt.Lifecycle(func(life *Artifex.Lifecycle) {
+		life.OnOpen(func(adp Artifex.IAdapter) error {
 			err := f.PubHub.Join(adp.Identifier(), adp.({{.FileName}}Publisher))
 			if err != nil {
 				return err
 			}
-			lifecycle.OnStop(func(adp Artifex.IAdapter) {
+			life.OnStop(func(adp Artifex.IAdapter) {
 				go f.PubHub.RemoveOne(func(pub {{.FileName}}Publisher) bool { return pub == adp })
 			})
 			return nil
-		},
-	)
-	f.AdapterLifecycle(lifecycle)
-	opt.NewLifecycle(func() *Artifex.Lifecycle { return lifecycle })
+		})
+		if f.Lifecycle != nil {
+			f.Lifecycle(life)
+		}
+	})
 
 	return opt.BuildPublisher()
 }
@@ -309,21 +341,21 @@ func (f *{{.FileName}}Factory) CreateSubscriber() (sub {{.FileName}}Subscriber, 
 		return nil
 	})
 
-	lifecycle := new(Artifex.Lifecycle)
-	lifecycle.OnOpen(
-		func(adp Artifex.IAdapter) error {
+	opt.Lifecycle(func(life *Artifex.Lifecycle) {
+		life.OnOpen(func(adp Artifex.IAdapter) error {
 			err := f.SubHub.Join(adp.Identifier(), adp.({{.FileName}}Subscriber))
 			if err != nil {
 				return err
 			}
-			lifecycle.OnStop(func(adp Artifex.IAdapter) {
+			life.OnStop(func(adp Artifex.IAdapter) {
 				go f.SubHub.RemoveOne(func(sub {{.FileName}}Subscriber) bool { return sub == adp })
 			})
 			return nil
-		},
-	)
-	f.AdapterLifecycle(lifecycle)
-	opt.NewLifecycle(func() *Artifex.Lifecycle { return lifecycle })
+		})
+		if f.Lifecycle != nil {
+			f.Lifecycle(life)
+		}
+	})
 
 	return opt.BuildSubscriber()
 }

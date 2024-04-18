@@ -17,14 +17,24 @@ type Lifecycle struct {
 func (life *Lifecycle) OnOpen(inits ...func(adp IAdapter) error) *Lifecycle {
 	life.initMutex.Lock()
 	defer life.initMutex.Unlock()
-	life.initHandlers = append(life.initHandlers, inits...)
+	for _, init := range inits {
+		if init == nil {
+			continue
+		}
+		life.initHandlers = append(life.initHandlers, init)
+	}
 	return life
 }
 
 func (life *Lifecycle) OnStop(terminates ...func(adp IAdapter)) *Lifecycle {
 	life.terminateMutex.Lock()
 	defer life.terminateMutex.Unlock()
-	life.terminateHandlers = append(life.terminateHandlers, terminates...)
+	for _, terminate := range terminates {
+		if terminate == nil {
+			continue
+		}
+		life.terminateHandlers = append(life.terminateHandlers, terminate)
+	}
 	return life
 }
 
