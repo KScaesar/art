@@ -46,7 +46,7 @@ One example like the following:
 [Go Playground
 ](https://go.dev/play/p/sfKJiA970Qe)
 
-```
+```go
 package main
 
 type MyMessage struct {
