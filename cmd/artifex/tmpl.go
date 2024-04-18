@@ -30,10 +30,10 @@ type {{.FileName}}Ingress struct {
 }
 
 func (in *{{.FileName}}Ingress) Context() context.Context {
-	if in.ctx != nil {
-		return in.ctx
+	if in.ctx == nil {
+		in.ctx = context.Background()
 	}
-	return context.Background()
+	return in.ctx
 }
 
 func (in *{{.FileName}}Ingress) SetContext(ctx context.Context) {
@@ -84,7 +84,7 @@ type {{.FileName}}Egress struct {
 
 func (e *{{.FileName}}Egress) MsgId() string {
 	if e.msgId == "" {
-		return Artifex.GenerateRandomCode(12)
+		e.msgId = Artifex.GenerateUlid()
 	}
 	return e.msgId
 }
@@ -94,10 +94,10 @@ func (e *{{.FileName}}Egress) SetMsgId(msgId string) {
 }
 
 func (e *{{.FileName}}Egress) Context() context.Context {
-	if e.ctx != nil {
-		return e.ctx
+	if e.ctx == nil {
+		e.ctx = context.Background()
 	}
-	return context.Background()
+	return e.ctx
 }
 
 func (e *{{.FileName}}Egress) SetContext(ctx context.Context) {

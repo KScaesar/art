@@ -2,14 +2,6 @@ package Artifex
 
 import (
 	"sync"
-
-	"github.com/gookit/goutil/maputil"
-)
-
-var (
-	routeParamPool = newPool(func() *RouteParam {
-		return &RouteParam{make(maputil.Data)}
-	})
 )
 
 func newPool[T any](newFn func() T) *pool[T] {

@@ -7,6 +7,10 @@ import (
 	"github.com/gookit/goutil/maputil"
 )
 
+var routeParamPool = newPool(func() *RouteParam {
+	return &RouteParam{make(maputil.Data)}
+})
+
 // RouteParam are used to capture values from subject.
 // These parameters represent resources or identifiers.
 //
