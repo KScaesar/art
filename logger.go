@@ -1,9 +1,13 @@
 package Artifex
 
 import (
+	"encoding"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -34,20 +38,20 @@ var level_to_name = map[LogLevel]string{
 // Logger
 
 type Logger interface {
-	Debug(format string, a ...interface{})
-	Info(format string, a ...interface{})
-	Warn(format string, a ...interface{})
-	Error(format string, a ...interface{})
-	Fatal(format string, a ...interface{})
+	Debug(format string, a ...any)
+	Info(format string, a ...any)
+	Warn(format string, a ...any)
+	Error(format string, a ...any)
+	Fatal(format string, a ...any)
 
 	SetLogLevel(level LogLevel)
 	LogLevel() LogLevel
 	WithCallDepth(externalDepth uint) Logger
-	WithKeyValue(key string, v string) Logger
+	WithKeyValue(key string, v any) Logger
 }
 
 var (
-	defaultLogger Logger = NewLogger(true, LogLevelDebug)
+	defaultLogger Logger = NewWriterLogger(os.Stdout, true, LogLevelDebug)
 )
 
 func SetDefaultLogger(l Logger) {
@@ -59,6 +63,10 @@ func DefaultLogger() Logger {
 }
 
 func NewLogger(printPath bool, level LogLevel) Logger {
+	return NewWriterLogger(os.Stdout, printPath, level)
+}
+
+func NewWriterLogger(w io.Writer, printPath bool, level LogLevel) Logger {
 	flag := log.Lmsgprefix | log.LstdFlags
 
 	if printPath {
@@ -68,16 +76,14 @@ func NewLogger(printPath bool, level LogLevel) Logger {
 	internalDepth := 2
 
 	return stdLogger{
-		debug:             log.New(os.Stdout, "[Debug] ", flag),
-		info:              log.New(os.Stdout, "[Info ] ", flag),
-		warn:              log.New(os.Stdout, "[Warn ] ", flag),
-		err:               log.New(os.Stdout, "[Error] ", flag),
-		fatal:             log.New(os.Stdout, "[Fatal] ", flag),
+		debug:             log.New(w, "[Debug] ", flag),
+		info:              log.New(w, "[Info ] ", flag),
+		warn:              log.New(w, "[Warn ] ", flag),
+		err:               log.New(w, "[Error] ", flag),
+		fatal:             log.New(w, "[Fatal] ", flag),
 		internalCallDepth: internalDepth,
 		logLevel:          &level,
-
-		contextKey:  []string{},
-		contextInfo: newContextInfo(),
+		content:           newContent(),
 	}
 }
 
@@ -89,49 +95,42 @@ type stdLogger struct {
 	fatal             *log.Logger
 	internalCallDepth int
 	logLevel          *LogLevel
-
-	contextKey  []string
-	contextInfo contextInfo
+	content           content
 }
 
-func (l stdLogger) Debug(format string, a ...interface{}) {
+func (l stdLogger) Debug(format string, a ...any) {
 	if *l.logLevel > LogLevelDebug {
 		return
 	}
-	format = l.processPreformat(format)
-	l.debug.Output(l.internalCallDepth, fmt.Sprintf(format, a...))
+	l.debug.Output(l.internalCallDepth, encode(l.content, format, a))
 }
 
-func (l stdLogger) Info(format string, a ...interface{}) {
+func (l stdLogger) Info(format string, a ...any) {
 	if *l.logLevel > LogLevelInfo {
 		return
 	}
-	format = l.processPreformat(format)
-	l.info.Output(l.internalCallDepth, fmt.Sprintf(format, a...))
+	l.info.Output(l.internalCallDepth, encode(l.content, format, a))
 }
 
-func (l stdLogger) Warn(format string, a ...interface{}) {
+func (l stdLogger) Warn(format string, a ...any) {
 	if *l.logLevel > LogLevelWarn {
 		return
 	}
-	format = l.processPreformat(format)
-	l.warn.Output(l.internalCallDepth, fmt.Sprintf(format, a...))
+	l.warn.Output(l.internalCallDepth, encode(l.content, format, a))
 }
 
-func (l stdLogger) Error(format string, a ...interface{}) {
+func (l stdLogger) Error(format string, a ...any) {
 	if *l.logLevel > LogLevelError {
 		return
 	}
-	format = l.processPreformat(format)
-	l.err.Output(l.internalCallDepth, fmt.Sprintf(format, a...))
+	l.err.Output(l.internalCallDepth, encode(l.content, format, a))
 }
 
-func (l stdLogger) Fatal(format string, a ...interface{}) {
+func (l stdLogger) Fatal(format string, a ...any) {
 	if *l.logLevel > LogLevelFatal {
 		return
 	}
-	format = l.processPreformat(format)
-	l.fatal.Output(l.internalCallDepth, fmt.Sprintf(format, a...))
+	l.fatal.Output(l.internalCallDepth, encode(l.content, format, a))
 	os.Exit(1)
 }
 
@@ -148,67 +147,118 @@ func (l stdLogger) WithCallDepth(externalDepth uint) Logger {
 	return l
 }
 
-func (l stdLogger) processPreformat(format string) string {
-	b := strings.Builder{}
-
-	for _, key := range l.contextKey {
-		value := l.contextInfo.get(key)
-		if value == "" {
-			continue
-		}
-
-		b.WriteString(key)
-		b.WriteString("=")
-		b.WriteString(value)
-		b.WriteString(" ")
-	}
-
-	b.WriteString(format)
-	return b.String()
-}
-
-func (l stdLogger) WithKeyValue(key string, v string) Logger {
+func (l stdLogger) WithKeyValue(key string, v any) Logger {
 	if key == "" {
 		return l
 	}
-
-	keys := make([]string, len(l.contextKey))
-	copy(keys, l.contextKey)
-	l.contextKey = append(keys, key)
-	l.contextInfo = l.contextInfo.copyAndSet(key, v)
+	l.content = l.content.deepCopyAndSet(key, v)
 	return l
 }
 
 //
 
-func newContextInfo() map[string]string {
-	return make(map[string]string)
-}
-
-type contextInfo map[string]string
-
-func (ctx contextInfo) copy() contextInfo {
-	source := ctx
-	size := len(source)
-	target := make(map[string]string, size)
-	for key, v := range source {
-		target[key] = v
+func newContent() content {
+	return content{
+		keys:     make([]string, 0, 4),
+		contents: make(map[string]string, 4),
 	}
-	return target
 }
 
-func (ctx contextInfo) set(key, v string) {
-	ctx[key] = v
+type content struct {
+	keys     []string
+	contents map[string]string
 }
 
-func (ctx contextInfo) copyAndSet(key, v string) contextInfo {
-	target := ctx.copy()
-	target.set(key, v)
-	return target
+func (c content) deepCopy() content {
+	size := len(c.keys)
+
+	keys := make([]string, size, cap(c.keys))
+	copy(keys, c.keys)
+
+	contents := make(map[string]string, size)
+	for key, v := range c.contents {
+		contents[key] = v
+	}
+
+	return content{keys: keys, contents: contents}
 }
 
-func (ctx contextInfo) get(key string) string {
-	return ctx[key]
+func (c content) deepCopyAndSet(key string, v any) content {
+	if key == "" {
+		return c
+	}
+
+	fresh := c.deepCopy()
+
+	// set
+	fresh.keys = append(fresh.keys, key)
+	fresh.contents[key] = anyToString(v)
+
+	return fresh
+}
+
+func encode(c content, format string, other ...any) string {
+	builder := &strings.Builder{}
+	for _, key := range c.keys {
+		if c.contents[key] == "" {
+			continue
+		}
+		builder.WriteString(key)
+		builder.WriteString("=")
+		builder.WriteString(c.contents[key])
+		builder.WriteString(" ")
+	}
+	fmt.Fprintf(builder, format, other...)
+	return builder.String()
+}
+
+func anyToString(v any) string {
+	switch val := v.(type) {
+	case string:
+		return val
+	case bool:
+		return strconv.FormatBool(val)
+	case int:
+		return strconv.Itoa(val)
+	case int8:
+		return strconv.FormatInt(int64(val), 10)
+	case int16:
+		return strconv.FormatInt(int64(val), 10)
+	case int32:
+		return strconv.FormatInt(int64(val), 10)
+	case int64:
+		return strconv.FormatInt(val, 10)
+	case uint:
+		return strconv.FormatUint(uint64(val), 10)
+	case uint8:
+		return strconv.FormatUint(uint64(val), 10)
+	case uint16:
+		return strconv.FormatUint(uint64(val), 10)
+	case uint32:
+		return strconv.FormatUint(uint64(val), 10)
+	case uint64:
+		return strconv.FormatUint(val, 10)
+	case float32:
+		return strconv.FormatFloat(float64(val), 'f', -1, 32)
+	case float64:
+		return strconv.FormatFloat(val, 'f', -1, 64)
+	case error:
+		return val.Error()
+	case fmt.Stringer:
+		return val.String()
+	case encoding.TextMarshaler:
+		text, err := val.MarshalText()
+		if err != nil {
+			return fmt.Sprintf("%v", v)
+		}
+		return string(text)
+	default:
+		bData, err := json.Marshal(val)
+		if err != nil {
+			return fmt.Sprintf("%v", v)
+		}
+		return string(bData)
+	}
 }
 
 //
@@ -219,27 +269,23 @@ func SilentLogger() Logger {
 
 type silentLogger struct{}
 
-func (l silentLogger) LogLevel() LogLevel {
-	return 0
-}
-
-func (silentLogger) Debug(format string, a ...interface{}) {
+func (silentLogger) Debug(format string, a ...any) {
 	return
 }
 
-func (silentLogger) Info(format string, a ...interface{}) {
+func (silentLogger) Info(format string, a ...any) {
 	return
 }
 
-func (silentLogger) Warn(format string, a ...interface{}) {
+func (silentLogger) Warn(format string, a ...any) {
 	return
 }
 
-func (silentLogger) Error(format string, a ...interface{}) {
+func (silentLogger) Error(format string, a ...any) {
 	return
 }
 
-func (silentLogger) Fatal(format string, a ...interface{}) {
+func (silentLogger) Fatal(format string, a ...any) {
 	return
 }
 
@@ -247,10 +293,14 @@ func (silentLogger) SetLogLevel(level LogLevel) {
 	return
 }
 
+func (l silentLogger) LogLevel() LogLevel {
+	return 0
+}
+
 func (l silentLogger) WithCallDepth(externalDepth uint) Logger {
 	return l
 }
 
-func (l silentLogger) WithKeyValue(key string, v string) Logger {
+func (l silentLogger) WithKeyValue(key string, v any) Logger {
 	return l
 }

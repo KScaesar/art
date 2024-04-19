@@ -7,7 +7,7 @@ import (
 func newPool[T any](newFn func() T) *pool[T] {
 	return &pool[T]{
 		syncPool: sync.Pool{
-			New: func() interface{} { return newFn() },
+			New: func() any { return newFn() },
 		},
 	}
 }
