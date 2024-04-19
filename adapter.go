@@ -17,14 +17,14 @@ type IAdapter interface {
 	WaitStop() chan struct{} // WaitStop is used for event push
 }
 
-type Adapter[rMessage, sMessage any] struct {
-	handleRecv  HandleFunc[rMessage]
-	adapterRecv func(IAdapter) (*rMessage, error)
-	adapterSend func(IAdapter, *sMessage) error
+type Adapter[Ingress, Egress any] struct {
+	handleRecv  HandleFunc[Ingress]
+	adapterRecv func(IAdapter) (*Ingress, error)
+	adapterSend func(IAdapter, *Egress) error
 	adapterStop func(IAdapter) error
 
 	// WaitPingSendPong or SendPingWaitPong
-	pingpong   func(isStop func() bool) error
+	pingpong   func(isStopped func() bool) error
 	recvResult chan error
 
 	fixupMaxRetrySecond int
@@ -39,7 +39,7 @@ type Adapter[rMessage, sMessage any] struct {
 	waitStop  chan struct{}
 }
 
-func (adp *Adapter[rMessage, sMessage]) init() error {
+func (adp *Adapter[Ingress, Egress]) init() error {
 	err := adp.lifecycle.initialize(adp)
 	if err != nil {
 		return err
@@ -73,27 +73,27 @@ func (adp *Adapter[rMessage, sMessage]) init() error {
 	return nil
 }
 
-func (adp *Adapter[rMessage, sMessage]) Identifier() string {
+func (adp *Adapter[Ingress, Egress]) Identifier() string {
 	return adp.identifier
 }
 
-func (adp *Adapter[rMessage, sMessage]) Query(query func(id string, appData maputil.Data)) {
+func (adp *Adapter[Ingress, Egress]) Query(query func(id string, appData maputil.Data)) {
 	adp.adpMutex.RLock()
 	defer adp.adpMutex.RUnlock()
 	query(adp.identifier, adp.appData)
 }
 
-func (adp *Adapter[rMessage, sMessage]) Update(update func(id *string, appData maputil.Data)) {
+func (adp *Adapter[Ingress, Egress]) Update(update func(id *string, appData maputil.Data)) {
 	adp.adpMutex.Lock()
 	defer adp.adpMutex.Unlock()
 	update(&adp.identifier, adp.appData)
 }
 
-func (adp *Adapter[rMessage, sMessage]) OnStop(terminates ...func(adp IAdapter)) {
+func (adp *Adapter[Ingress, Egress]) OnStop(terminates ...func(adp IAdapter)) {
 	adp.lifecycle.OnStop(terminates...)
 }
 
-func (adp *Adapter[rMessage, sMessage]) Listen() (err error) {
+func (adp *Adapter[Ingress, Egress]) Listen() (err error) {
 	if adp.isStopped {
 		return ErrorWrapWithMessage(ErrClosed, "Artifex adapter")
 	}
@@ -122,9 +122,9 @@ func (adp *Adapter[rMessage, sMessage]) Listen() (err error) {
 	return <-adp.recvResult
 }
 
-func (adp *Adapter[rMessage, sMessage]) listen() error {
+func (adp *Adapter[Ingress, Egress]) listen() error {
 	for !adp.isStopped {
-		message, err := adp.adapterRecv(adp)
+		ingress, err := adp.adapterRecv(adp)
 
 		if adp.isStopped {
 			return nil
@@ -134,18 +134,18 @@ func (adp *Adapter[rMessage, sMessage]) listen() error {
 			return err
 		}
 
-		adp.handleRecv(message, nil)
+		adp.handleRecv(ingress, nil)
 	}
 	return nil
 }
 
-func (adp *Adapter[rMessage, sMessage]) Send(messages ...*sMessage) error {
+func (adp *Adapter[Ingress, Egress]) Send(messages ...*Egress) error {
 	if adp.isStopped {
 		return ErrorWrapWithMessage(ErrClosed, "Artifex adapter")
 	}
 
-	for _, message := range messages {
-		err := adp.adapterSend(adp, message)
+	for _, egress := range messages {
+		err := adp.adapterSend(adp, egress)
 		if err != nil {
 			return err
 		}
@@ -154,7 +154,7 @@ func (adp *Adapter[rMessage, sMessage]) Send(messages ...*sMessage) error {
 	return nil
 }
 
-func (adp *Adapter[rMessage, sMessage]) Stop() error {
+func (adp *Adapter[Ingress, Egress]) Stop() error {
 	adp.adpMutex.Lock()
 	defer adp.adpMutex.Unlock()
 	if adp.isStopped {
@@ -169,10 +169,10 @@ func (adp *Adapter[rMessage, sMessage]) Stop() error {
 	return err
 }
 
-func (adp *Adapter[rMessage, sMessage]) IsStopped() bool {
+func (adp *Adapter[Ingress, Egress]) IsStopped() bool {
 	return adp.isStopped
 }
 
-func (adp *Adapter[rMessage, sMessage]) WaitStop() chan struct{} {
+func (adp *Adapter[Ingress, Egress]) WaitStop() chan struct{} {
 	return adp.waitStop
 }
