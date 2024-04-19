@@ -16,7 +16,9 @@ type {{.Subject}} = string
 //
 
 func New{{.FileName}}Ingress() *{{.FileName}}Ingress {
-	return &{{.FileName}}Ingress{}
+	return &{{.FileName}}Ingress{
+		Metadata: make(map[string]any),
+	}
 }
 
 type {{.FileName}}Ingress struct {
@@ -24,6 +26,7 @@ type {{.FileName}}Ingress struct {
 	Body  []byte
 
 	Subject     string
+	Metadata    maputil.Data
 	ParentInfra any
 
 	ctx context.Context
