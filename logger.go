@@ -102,35 +102,35 @@ func (l stdLogger) Debug(format string, a ...any) {
 	if *l.logLevel > LogLevelDebug {
 		return
 	}
-	l.debug.Output(l.internalCallDepth, encode(l.content, format, a))
+	l.debug.Output(l.internalCallDepth, encode(l.content, format, a...))
 }
 
 func (l stdLogger) Info(format string, a ...any) {
 	if *l.logLevel > LogLevelInfo {
 		return
 	}
-	l.info.Output(l.internalCallDepth, encode(l.content, format, a))
+	l.info.Output(l.internalCallDepth, encode(l.content, format, a...))
 }
 
 func (l stdLogger) Warn(format string, a ...any) {
 	if *l.logLevel > LogLevelWarn {
 		return
 	}
-	l.warn.Output(l.internalCallDepth, encode(l.content, format, a))
+	l.warn.Output(l.internalCallDepth, encode(l.content, format, a...))
 }
 
 func (l stdLogger) Error(format string, a ...any) {
 	if *l.logLevel > LogLevelError {
 		return
 	}
-	l.err.Output(l.internalCallDepth, encode(l.content, format, a))
+	l.err.Output(l.internalCallDepth, encode(l.content, format, a...))
 }
 
 func (l stdLogger) Fatal(format string, a ...any) {
 	if *l.logLevel > LogLevelFatal {
 		return
 	}
-	l.fatal.Output(l.internalCallDepth, encode(l.content, format, a))
+	l.fatal.Output(l.internalCallDepth, encode(l.content, format, a...))
 	os.Exit(1)
 }
 
