@@ -40,8 +40,8 @@ type Logger interface {
 	Error(format string, a ...interface{})
 	Fatal(format string, a ...interface{})
 
-	Copy() Logger
 	SetLogLevel(level LogLevel)
+	LogLevel() LogLevel
 	WithCallDepth(externalDepth uint) Logger
 	WithKeyValue(key string, v string) Logger
 }
@@ -135,11 +135,6 @@ func (l stdLogger) Fatal(format string, a ...interface{}) {
 	os.Exit(1)
 }
 
-func (l stdLogger) Copy() Logger {
-	l.contextInfo = l.contextInfo.copy()
-	return l
-}
-
 func (l stdLogger) SetLogLevel(level LogLevel) {
 	*l.logLevel = level
 }
@@ -224,8 +219,8 @@ func SilentLogger() Logger {
 
 type silentLogger struct{}
 
-func (l silentLogger) WithKeyValue(key string, v string) Logger {
-	return l
+func (l silentLogger) LogLevel() LogLevel {
+	return 0
 }
 
 func (silentLogger) Debug(format string, a ...interface{}) {
@@ -248,14 +243,14 @@ func (silentLogger) Fatal(format string, a ...interface{}) {
 	return
 }
 
-func (l silentLogger) Copy() Logger {
-	return l
-}
-
 func (silentLogger) SetLogLevel(level LogLevel) {
 	return
 }
 
 func (l silentLogger) WithCallDepth(externalDepth uint) Logger {
+	return l
+}
+
+func (l silentLogger) WithKeyValue(key string, v string) Logger {
 	return l
 }
