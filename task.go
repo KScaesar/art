@@ -13,7 +13,7 @@ func ReliableTask(task func() error, allowStop func() bool, retryMaxSecond int, 
 	}
 
 	param := backoff.NewExponentialBackOff()
-	param.InitialInterval = time.Second
+	param.InitialInterval = 10 * time.Second
 	param.RandomizationFactor = 0.5
 	param.Multiplier = 1.5
 	param.MaxInterval = 1 * time.Minute
