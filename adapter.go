@@ -9,6 +9,7 @@ import (
 type IAdapter interface {
 	Identifier() string
 	Query(query func(id string, appData maputil.Data))
+	QueryRLock(query func(id string, appData maputil.Data))
 	Update(update func(id *string, appData maputil.Data))
 
 	OnStop(terminates ...func(adp IAdapter))
@@ -78,15 +79,22 @@ func (adp *Adapter[Ingress, Egress]) Identifier() string {
 }
 
 func (adp *Adapter[Ingress, Egress]) Query(query func(id string, appData maputil.Data)) {
+	query(adp.identifier, adp.appData)
+	return
+}
+
+func (adp *Adapter[Ingress, Egress]) QueryRLock(query func(id string, appData maputil.Data)) {
 	adp.adpMutex.RLock()
 	defer adp.adpMutex.RUnlock()
 	query(adp.identifier, adp.appData)
+	return
 }
 
 func (adp *Adapter[Ingress, Egress]) Update(update func(id *string, appData maputil.Data)) {
 	adp.adpMutex.Lock()
 	defer adp.adpMutex.Unlock()
 	update(&adp.identifier, adp.appData)
+	return
 }
 
 func (adp *Adapter[Ingress, Egress]) OnStop(terminates ...func(adp IAdapter)) {
