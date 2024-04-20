@@ -270,7 +270,7 @@ func (f *{{.FileName}}Factory) CreatePubSub() (pubsub {{.FileName}}PubSub, err e
 		}
 	})
 
-	return opt.BuildPubSub()
+	return opt.Build()
 }
 
 func (f *{{.FileName}}Factory) CreatePublisher() (pub {{.FileName}}Publisher, err error) {
@@ -318,7 +318,7 @@ func (f *{{.FileName}}Factory) CreatePublisher() (pub {{.FileName}}Publisher, er
 		}
 	})
 
-	return opt.BuildPublisher()
+	return opt.Build()
 }
 
 func (f *{{.FileName}}Factory) CreateSubscriber() (sub {{.FileName}}Subscriber, err error) {
@@ -359,6 +359,6 @@ func (f *{{.FileName}}Factory) CreateSubscriber() (sub {{.FileName}}Subscriber, 
 		}
 	})
 
-	return opt.BuildSubscriber()
+	return opt.Build()
 }
 `

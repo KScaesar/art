@@ -25,7 +25,7 @@ type Adapter[Ingress, Egress any] struct {
 	adapterStop func(IAdapter) error
 
 	// WaitPingSendPong or SendPingWaitPong
-	pingpong   func(isStopped func() bool) error
+	pingpong   func() error
 	recvResult chan error
 
 	fixupMaxRetrySecond int
@@ -60,11 +60,11 @@ func (adp *Adapter[Ingress, Egress]) init() error {
 		}()
 
 		if adp.adapterFixup == nil {
-			Err = adp.pingpong(adp.IsStopped)
+			Err = adp.pingpong()
 			return
 		}
 		Err = ReliableTask(
-			func() error { return adp.pingpong(adp.IsStopped) },
+			adp.pingpong,
 			adp.IsStopped,
 			adp.fixupMaxRetrySecond,
 			func() error { return adp.adapterFixup(adp) },
