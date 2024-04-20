@@ -167,9 +167,9 @@ func New{{.FileName}}PubSubHub() *{{.FileName}}PubSubHub {
 	return hub
 }
 
-type {{.FileName}}PublisherHub = Artifex.Hub[{{.FileName}}Publisher]
+type {{.FileName}}PubHub = Artifex.Hub[{{.FileName}}Publisher]
 
-func New{{.FileName}}PublisherHub() *{{.FileName}}PublisherHub {
+func New{{.FileName}}PubHub() *{{.FileName}}PubHub {
 	stop := func(publisher {{.FileName}}Publisher) {
 		publisher.Stop()
 	}
@@ -177,9 +177,9 @@ func New{{.FileName}}PublisherHub() *{{.FileName}}PublisherHub {
 	return hub
 }
 
-type {{.FileName}}SubscriberHub = Artifex.Hub[{{.FileName}}Subscriber]
+type {{.FileName}}SubHub = Artifex.Hub[{{.FileName}}Subscriber]
 
-func New{{.FileName}}SubscriberHub() *{{.FileName}}SubscriberHub {
+func New{{.FileName}}SubHub() *{{.FileName}}SubHub {
 	stop := func(subscriber {{.FileName}}Subscriber) {
 		subscriber.Stop()
 	}
@@ -194,10 +194,10 @@ type {{.FileName}}Factory struct {
 	PubSubHub *{{.FileName}}PubSubHub
 
 	NewIngressMux func() *{{.FileName}}IngressMux
-	SubHub        *{{.FileName}}SubscriberHub
+	SubHub        *{{.FileName}}SubHub
 
 	NewEgressMux func() *{{.FileName}}EgressMux
-	PubHub       *{{.FileName}}PublisherHub
+	PubHub       *{{.FileName}}PubHub
 
 	Lifecycle func(lifecycle *Artifex.Lifecycle)
 }
