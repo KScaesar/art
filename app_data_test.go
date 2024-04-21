@@ -42,8 +42,8 @@ func TestAppData(t *testing.T) {
 		return
 	}
 
-	DeleteAppData[*Label](adp, key)
-	_, found = GetAppData(adp, true, key, filter)
+	DeleteAppData(adp, key)
+	found = HasAppData(adp, true, key, filter)
 	if found {
 		t.Errorf("DeleteAppData() fail")
 		return

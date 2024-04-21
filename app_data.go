@@ -8,17 +8,29 @@ import (
 
 func CreateAppData[T any](adp IAdapter, appKey string, data T) {
 	adp.Update(func(_ *string, appData maputil.Data) {
-		appData.Set(appKey, data)
+		err := appData.SetByPath(appKey, data)
+		if err != nil {
+			panic(err)
+		}
 	})
+}
+
+func HasAppData[T any](adp IAdapter, lock bool, appKey string, filter func(data T) bool) bool {
+	_, found := GetAppData(adp, lock, appKey, filter)
+	return found
 }
 
 func GetAppData[T any](adp IAdapter, lock bool, appKey string, filter func(data T) bool) (data T, found bool) {
 	query := func(_ string, appData maputil.Data) {
-		t, ok := appData.Get(appKey).(T)
-		if ok && filter(t) {
-			data = t
-			found = true
+		t, ok := appData.GetByPath(appKey)
+		if !ok {
 			return
+		}
+
+		d := t.(T)
+		if filter(d) {
+			data = d
+			found = true
 		}
 	}
 
@@ -31,15 +43,29 @@ func GetAppData[T any](adp IAdapter, lock bool, appKey string, filter func(data 
 }
 
 func UpdateAppData[T any](adp IAdapter, appKey string, update func(data T)) {
-	adp.Update(func(_ *string, appData maputil.Data) {
-		data, ok := appData.Get(appKey).(T)
-		if ok {
-			update(data)
+	has := false
+	adp.Query(func(_ string, appData maputil.Data) {
+		if appData.Has(appKey) {
+			has = true
+			return
 		}
+	})
+	if !has {
+		return
+	}
+
+	adp.Update(func(_ *string, appData maputil.Data) {
+		t, ok := appData.GetByPath(appKey)
+		if !ok {
+			return
+		}
+
+		data := t.(T)
+		update(data)
 	})
 }
 
-func DeleteAppData[T any](adp IAdapter, appKey string) {
+func DeleteAppData(adp IAdapter, appKey string) {
 	adp.Update(func(_ *string, appData maputil.Data) {
 		delete(appData, appKey)
 	})
