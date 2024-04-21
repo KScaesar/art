@@ -15,6 +15,8 @@ type AdapterHub interface {
 
 type IAdapter interface {
 	Identifier() string
+	Log() Logger
+	SetLog(Logger)
 	OnStop(terminates ...func(adp IAdapter))
 	Stop() error
 	IsStopped() bool         // IsStopped is used for polling
@@ -36,12 +38,25 @@ type Adapter[Ingress, Egress any] struct {
 
 	mu          sync.RWMutex
 	identifier  string
+	logger      Logger
 	application IAdapter
 	hub         AdapterHub
 
 	lifecycle *Lifecycle
 	isStopped bool
 	waitStop  chan struct{}
+}
+
+func (adp *Adapter[Ingress, Egress]) Log() Logger {
+	adp.mu.RLock()
+	defer adp.mu.RUnlock()
+	return adp.logger
+}
+
+func (adp *Adapter[Ingress, Egress]) SetLog(logger Logger) {
+	adp.mu.Lock()
+	defer adp.mu.Unlock()
+	adp.logger = logger
 }
 
 func (adp *Adapter[Ingress, Egress]) pingpong() {
@@ -147,6 +162,8 @@ func (adp *Adapter[Ingress, Egress]) Stop() error {
 		adp.mu.Unlock()
 		return ErrorWrapWithMessage(ErrClosed, "Artifex adapter")
 	}
+	adp.isStopped = true
+	close(adp.waitStop)
 
 	if adp.hub != nil {
 		adp.mu.Unlock()
@@ -158,8 +175,6 @@ func (adp *Adapter[Ingress, Egress]) Stop() error {
 	defer adp.mu.Unlock()
 
 	adp.lifecycle.asyncTerminate(adp.application)
-	adp.isStopped = true
-	close(adp.waitStop)
 	err := adp.adapterStop(adp.application)
 	adp.lifecycle.wait()
 	return err

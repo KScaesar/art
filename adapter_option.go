@@ -47,6 +47,10 @@ func (opt *AdapterOption[Ingress, Egress]) Build() (adp IAdapter, err error) {
 		pubsub.application = pubsub
 	}
 
+	if pubsub.logger == nil {
+		pubsub.logger = DefaultLogger()
+	}
+
 	if pubsub.hub != nil {
 		err = pubsub.hub.Join(pubsub.identifier, pubsub.application)
 		if err != nil {
@@ -72,6 +76,12 @@ func (opt *AdapterOption[Ingress, Egress]) DecorateAdapter(wrap func(IAdapter) I
 func (opt *AdapterOption[Ingress, Egress]) Identifier(identifier string) *AdapterOption[Ingress, Egress] {
 	pubsub := opt.adapter
 	pubsub.identifier = identifier
+	return opt
+}
+
+func (opt *AdapterOption[Ingress, Egress]) Logger(logger Logger) *AdapterOption[Ingress, Egress] {
+	pubsub := opt.adapter
+	pubsub.logger = logger
 	return opt
 }
 
