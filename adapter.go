@@ -66,7 +66,7 @@ func (adp *Adapter[Ingress, Egress]) pingpong() {
 			adp.pp,
 			adp.IsStopped,
 			adp.fixupMaxRetrySecond,
-			func() error { return adp.adapterFixup(adp) },
+			func() error { return adp.adapterFixup(adp.application) },
 		)
 	}()
 }
