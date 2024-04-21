@@ -41,14 +41,14 @@ type AdapterOption[Ingress, Egress any] struct {
 func (opt *AdapterOption[Ingress, Egress]) Build() (adp IAdapter, err error) {
 	pubsub := opt.adapter
 
+	if pubsub.logger == nil {
+		pubsub.logger = DefaultLogger()
+	}
+
 	if opt.decorateAdapter != nil {
 		pubsub.application = opt.decorateAdapter(pubsub)
 	} else {
 		pubsub.application = pubsub
-	}
-
-	if pubsub.logger == nil {
-		pubsub.logger = DefaultLogger()
 	}
 
 	if pubsub.hub != nil {
