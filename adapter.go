@@ -4,7 +4,7 @@ import (
 	"sync"
 )
 
-func NewAdapterHub(stop func(adp IAdapter)) AdapterHub {
+func NewAdapterHub(stop func(adp IAdapter)) *Hub[IAdapter] {
 	return NewHub(stop)
 }
 
