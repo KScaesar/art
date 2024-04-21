@@ -65,6 +65,19 @@ func (opt *AdapterOption[Ingress, Egress]) Identifier(identifier string) *Adapte
 	return opt
 }
 
+func (opt *AdapterOption[Ingress, Egress]) AdapterHub(hub AdapterHub) *AdapterOption[Ingress, Egress] {
+	pubsub := opt.adapter
+	pubsub.hub = hub
+	return opt
+}
+
+func (opt *AdapterOption[Ingress, Egress]) Lifecycle(setup func(life *Lifecycle)) *AdapterOption[Ingress, Egress] {
+	if setup != nil {
+		setup(opt.adapter.lifecycle)
+	}
+	return opt
+}
+
 func (opt *AdapterOption[Ingress, Egress]) HandleRecv(handleRecv HandleFunc[Ingress]) *AdapterOption[Ingress, Egress] {
 	sub := opt.adapter
 	sub.handleRecv = handleRecv
@@ -123,12 +136,5 @@ func (opt *AdapterOption[Ingress, Egress]) WaitPing(waitPing chan error, waitPin
 
 	pubsub := opt.adapter
 	pubsub.pingpong = func() error { return WaitPingSendPong(waitPing, sendPong, pubsub.IsStopped, second) }
-	return opt
-}
-
-func (opt *AdapterOption[Ingress, Egress]) Lifecycle(setup func(life *Lifecycle)) *AdapterOption[Ingress, Egress] {
-	if setup != nil {
-		setup(opt.adapter.lifecycle)
-	}
 	return opt
 }

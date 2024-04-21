@@ -4,6 +4,15 @@ import (
 	"sync"
 )
 
+func NewAdapterHub(stop func(adp IAdapter)) AdapterHub {
+	return NewHub(stop)
+}
+
+type AdapterHub interface {
+	Join(adapterId string, adp IAdapter) error
+	RemoveOne(filter func(IAdapter) bool)
+}
+
 type IAdapter interface {
 	Identifier() string
 	OnStop(terminates ...func(adp IAdapter))
@@ -27,6 +36,7 @@ type Adapter[Ingress, Egress any] struct {
 
 	mu         sync.RWMutex
 	identifier string
+	hub        AdapterHub
 
 	lifecycle *Lifecycle
 	isStopped bool
@@ -34,6 +44,13 @@ type Adapter[Ingress, Egress any] struct {
 }
 
 func (adp *Adapter[Ingress, Egress]) init() error {
+	if adp.hub != nil {
+		err := adp.hub.Join(adp.identifier, adp)
+		if err != nil {
+			return err
+		}
+	}
+
 	err := adp.lifecycle.initialize(adp)
 	if err != nil {
 		return err
@@ -138,10 +155,20 @@ func (adp *Adapter[Ingress, Egress]) Send(messages ...*Egress) error {
 
 func (adp *Adapter[Ingress, Egress]) Stop() error {
 	adp.mu.Lock()
-	defer adp.mu.Unlock()
+
 	if adp.isStopped {
+		adp.mu.Unlock()
 		return ErrorWrapWithMessage(ErrClosed, "Artifex adapter")
 	}
+
+	if adp.hub != nil {
+		adp.mu.Unlock()
+		adp.hub.RemoveOne(func(adapter IAdapter) bool {
+			return adapter == adp
+		})
+		adp.mu.Lock()
+	}
+	defer adp.mu.Unlock()
 
 	adp.lifecycle.asyncTerminate(adp)
 	adp.isStopped = true
