@@ -2,16 +2,10 @@ package Artifex
 
 import (
 	"sync"
-
-	"github.com/gookit/goutil/maputil"
 )
 
 type IAdapter interface {
 	Identifier() string
-	Query(query func(id string, appData maputil.Data))
-	QueryRLock(query func(id string, appData maputil.Data))
-	Update(update func(id *string, appData maputil.Data))
-
 	OnStop(terminates ...func(adp IAdapter))
 	Stop() error
 	IsStopped() bool         // IsStopped is used for polling
@@ -31,9 +25,8 @@ type Adapter[Ingress, Egress any] struct {
 	fixupMaxRetrySecond int
 	adapterFixup        func(IAdapter) error
 
-	adpMutex   sync.RWMutex
+	mu         sync.RWMutex
 	identifier string
-	appData    maputil.Data
 
 	lifecycle *Lifecycle
 	isStopped bool
@@ -76,25 +69,6 @@ func (adp *Adapter[Ingress, Egress]) init() error {
 
 func (adp *Adapter[Ingress, Egress]) Identifier() string {
 	return adp.identifier
-}
-
-func (adp *Adapter[Ingress, Egress]) Query(query func(id string, appData maputil.Data)) {
-	query(adp.identifier, adp.appData)
-	return
-}
-
-func (adp *Adapter[Ingress, Egress]) QueryRLock(query func(id string, appData maputil.Data)) {
-	adp.adpMutex.RLock()
-	defer adp.adpMutex.RUnlock()
-	query(adp.identifier, adp.appData)
-	return
-}
-
-func (adp *Adapter[Ingress, Egress]) Update(update func(id *string, appData maputil.Data)) {
-	adp.adpMutex.Lock()
-	defer adp.adpMutex.Unlock()
-	update(&adp.identifier, adp.appData)
-	return
 }
 
 func (adp *Adapter[Ingress, Egress]) OnStop(terminates ...func(adp IAdapter)) {
@@ -163,8 +137,8 @@ func (adp *Adapter[Ingress, Egress]) Send(messages ...*Egress) error {
 }
 
 func (adp *Adapter[Ingress, Egress]) Stop() error {
-	adp.adpMutex.Lock()
-	defer adp.adpMutex.Unlock()
+	adp.mu.Lock()
+	defer adp.mu.Unlock()
 	if adp.isStopped {
 		return ErrorWrapWithMessage(ErrClosed, "Artifex adapter")
 	}

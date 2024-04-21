@@ -199,7 +199,8 @@ type {{.FileName}}Factory struct {
 	NewEgressMux func() *{{.FileName}}EgressMux
 	PubHub       *{{.FileName}}PubHub
 
-	Lifecycle func(lifecycle *Artifex.Lifecycle)
+	DecorateAdapter func(adp Artifex.IAdapter) (app Artifex.IAdapter)
+	Lifecycle       func(lifecycle *Artifex.Lifecycle)
 }
 
 func (f *{{.FileName}}Factory) CreatePubSub() (pubsub {{.FileName}}PubSub, err error) {
@@ -208,6 +209,7 @@ func (f *{{.FileName}}Factory) CreatePubSub() (pubsub {{.FileName}}PubSub, err e
 
 	opt := Artifex.NewPubSubOption[{{.FileName}}Ingress, {{.FileName}}Egress]().
 		Identifier("").
+		DecorateAdapter(f.DecorateAdapter).
 		HandleRecv(ingressMux.HandleMessage)
 
 	var mu sync.Mutex
@@ -270,7 +272,11 @@ func (f *{{.FileName}}Factory) CreatePubSub() (pubsub {{.FileName}}PubSub, err e
 		}
 	})
 
-	return opt.Build()
+	adp, err := opt.Build()
+	if err != nil {
+		return
+	}
+	return adp.({{.FileName}}PubSub), err
 }
 
 func (f *{{.FileName}}Factory) CreatePublisher() (pub {{.FileName}}Publisher, err error) {
@@ -280,6 +286,7 @@ func (f *{{.FileName}}Factory) CreatePublisher() (pub {{.FileName}}Publisher, er
 	waitNotify := make(chan error, 1)
 	opt := Artifex.NewPublisherOption[{{.FileName}}Egress]().
 		Identifier("").
+		DecorateAdapter(f.DecorateAdapter).
 		SendPing(func() error { return nil }, waitNotify, 30)
 
 	var mu sync.Mutex
@@ -318,7 +325,11 @@ func (f *{{.FileName}}Factory) CreatePublisher() (pub {{.FileName}}Publisher, er
 		}
 	})
 
-	return opt.Build()
+	adp, err := opt.Build()
+	if err != nil {
+		return
+	}
+	return adp.({{.FileName}}Publisher), err
 }
 
 func (f *{{.FileName}}Factory) CreateSubscriber() (sub {{.FileName}}Subscriber, err error) {
@@ -328,6 +339,7 @@ func (f *{{.FileName}}Factory) CreateSubscriber() (sub {{.FileName}}Subscriber, 
 	waitNotify := make(chan error, 1)
 	opt := Artifex.NewSubscriberOption[{{.FileName}}Ingress]().
 		Identifier("").
+		DecorateAdapter(f.DecorateAdapter).
 		HandleRecv(ingressMux.HandleMessage).
 		SendPing(func() error { return nil }, waitNotify, 30)
 
@@ -359,6 +371,10 @@ func (f *{{.FileName}}Factory) CreateSubscriber() (sub {{.FileName}}Subscriber, 
 		}
 	})
 
-	return opt.Build()
+	adp, err := opt.Build()
+	if err != nil {
+		return
+	}
+	return adp.({{.FileName}}Subscriber), err
 }
 `

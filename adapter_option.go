@@ -1,13 +1,8 @@
 package Artifex
 
-import (
-	"github.com/gookit/goutil/maputil"
-)
-
 func NewPubSubOption[Ingress, Egress any]() (opt *AdapterOption[Ingress, Egress]) {
 	pubsub := &Adapter[Ingress, Egress]{
 		recvResult: make(chan error, 2),
-		appData:    make(maputil.Data),
 		lifecycle:  new(Lifecycle),
 		waitStop:   make(chan struct{}),
 	}
@@ -19,7 +14,6 @@ func NewPubSubOption[Ingress, Egress any]() (opt *AdapterOption[Ingress, Egress]
 func NewPublisherOption[Egress any]() (opt *AdapterOption[struct{}, Egress]) {
 	pub := &Adapter[struct{}, Egress]{
 		recvResult: make(chan error, 2),
-		appData:    make(maputil.Data),
 		lifecycle:  new(Lifecycle),
 		waitStop:   make(chan struct{}),
 	}
@@ -31,7 +25,6 @@ func NewPublisherOption[Egress any]() (opt *AdapterOption[struct{}, Egress]) {
 func NewSubscriberOption[Ingress any]() (opt *AdapterOption[Ingress, struct{}]) {
 	sub := &Adapter[Ingress, struct{}]{
 		recvResult: make(chan error, 2),
-		appData:    make(maputil.Data),
 		lifecycle:  new(Lifecycle),
 		waitStop:   make(chan struct{}),
 	}
@@ -41,13 +34,29 @@ func NewSubscriberOption[Ingress any]() (opt *AdapterOption[Ingress, struct{}]) 
 }
 
 type AdapterOption[Ingress, Egress any] struct {
-	adapter *Adapter[Ingress, Egress]
+	adapter         *Adapter[Ingress, Egress]
+	decorateAdapter func(adp IAdapter) (app IAdapter)
 }
 
-func (opt *AdapterOption[Ingress, Egress]) Build() (*Adapter[Ingress, Egress], error) {
+func (opt *AdapterOption[Ingress, Egress]) Build() (adp IAdapter, err error) {
 	pubsub := opt.adapter
 	opt.adapter = nil
-	return pubsub, pubsub.init()
+
+	err = pubsub.init()
+	if err != nil {
+		return nil, err
+	}
+
+	adp = pubsub
+	if opt.decorateAdapter != nil {
+		adp = opt.decorateAdapter(adp)
+	}
+	return
+}
+
+func (opt *AdapterOption[Ingress, Egress]) DecorateAdapter(wrap func(IAdapter) IAdapter) *AdapterOption[Ingress, Egress] {
+	opt.decorateAdapter = wrap
+	return opt
 }
 
 func (opt *AdapterOption[Ingress, Egress]) Identifier(identifier string) *AdapterOption[Ingress, Egress] {
@@ -118,6 +127,8 @@ func (opt *AdapterOption[Ingress, Egress]) WaitPing(waitPing chan error, waitPin
 }
 
 func (opt *AdapterOption[Ingress, Egress]) Lifecycle(setup func(life *Lifecycle)) *AdapterOption[Ingress, Egress] {
-	setup(opt.adapter.lifecycle)
+	if setup != nil {
+		setup(opt.adapter.lifecycle)
+	}
 	return opt
 }
