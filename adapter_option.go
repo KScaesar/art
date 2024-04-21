@@ -40,18 +40,28 @@ type AdapterOption[Ingress, Egress any] struct {
 
 func (opt *AdapterOption[Ingress, Egress]) Build() (adp IAdapter, err error) {
 	pubsub := opt.adapter
-	opt.adapter = nil
 
-	err = pubsub.init()
+	if opt.decorateAdapter != nil {
+		pubsub.application = opt.decorateAdapter(pubsub)
+	} else {
+		pubsub.application = pubsub
+	}
+
+	if pubsub.hub != nil {
+		err = pubsub.hub.Join(pubsub.identifier, pubsub.application)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	err = pubsub.lifecycle.initialize(pubsub.application)
 	if err != nil {
 		return nil, err
 	}
 
-	adp = pubsub
-	if opt.decorateAdapter != nil {
-		adp = opt.decorateAdapter(adp)
-	}
-	return
+	pubsub.pingpong()
+
+	return pubsub.application, nil
 }
 
 func (opt *AdapterOption[Ingress, Egress]) DecorateAdapter(wrap func(IAdapter) IAdapter) *AdapterOption[Ingress, Egress] {
@@ -120,7 +130,7 @@ func (opt *AdapterOption[Ingress, Egress]) SendPing(sendPing func() error, waitP
 	}
 
 	pubsub := opt.adapter
-	pubsub.pingpong = func() error { return SendPingWaitPong(sendPing, waitPong, pubsub.IsStopped, second) }
+	pubsub.pp = func() error { return SendPingWaitPong(sendPing, waitPong, pubsub.IsStopped, second) }
 	return opt
 }
 
@@ -135,6 +145,6 @@ func (opt *AdapterOption[Ingress, Egress]) WaitPing(waitPing chan error, waitPin
 	}
 
 	pubsub := opt.adapter
-	pubsub.pingpong = func() error { return WaitPingSendPong(waitPing, sendPong, pubsub.IsStopped, second) }
+	pubsub.pp = func() error { return WaitPingSendPong(waitPing, sendPong, pubsub.IsStopped, second) }
 	return opt
 }

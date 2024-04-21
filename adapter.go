@@ -28,36 +28,25 @@ type Adapter[Ingress, Egress any] struct {
 	adapterStop func(IAdapter) error
 
 	// WaitPingSendPong or SendPingWaitPong
-	pingpong   func() error
+	pp         func() error
 	recvResult chan error
 
 	fixupMaxRetrySecond int
 	adapterFixup        func(IAdapter) error
 
-	mu         sync.RWMutex
-	identifier string
-	hub        AdapterHub
+	mu          sync.RWMutex
+	identifier  string
+	application IAdapter
+	hub         AdapterHub
 
 	lifecycle *Lifecycle
 	isStopped bool
 	waitStop  chan struct{}
 }
 
-func (adp *Adapter[Ingress, Egress]) init() error {
-	if adp.hub != nil {
-		err := adp.hub.Join(adp.identifier, adp)
-		if err != nil {
-			return err
-		}
-	}
-
-	err := adp.lifecycle.initialize(adp)
-	if err != nil {
-		return err
-	}
-
+func (adp *Adapter[Ingress, Egress]) pingpong() {
 	go func() {
-		if adp.pingpong == nil {
+		if adp.pp == nil {
 			return
 		}
 
@@ -70,18 +59,16 @@ func (adp *Adapter[Ingress, Egress]) init() error {
 		}()
 
 		if adp.adapterFixup == nil {
-			Err = adp.pingpong()
+			Err = adp.pp()
 			return
 		}
 		Err = ReliableTask(
-			adp.pingpong,
+			adp.pp,
 			adp.IsStopped,
 			adp.fixupMaxRetrySecond,
 			func() error { return adp.adapterFixup(adp) },
 		)
 	}()
-
-	return nil
 }
 
 func (adp *Adapter[Ingress, Egress]) Identifier() string {
@@ -114,7 +101,7 @@ func (adp *Adapter[Ingress, Egress]) Listen() (err error) {
 			adp.listen,
 			adp.IsStopped,
 			adp.fixupMaxRetrySecond,
-			func() error { return adp.adapterFixup(adp) },
+			func() error { return adp.adapterFixup(adp.application) },
 		)
 	}()
 
@@ -123,7 +110,7 @@ func (adp *Adapter[Ingress, Egress]) Listen() (err error) {
 
 func (adp *Adapter[Ingress, Egress]) listen() error {
 	for !adp.isStopped {
-		ingress, err := adp.adapterRecv(adp)
+		ingress, err := adp.adapterRecv(adp.application)
 
 		if adp.isStopped {
 			return nil
@@ -144,7 +131,7 @@ func (adp *Adapter[Ingress, Egress]) Send(messages ...*Egress) error {
 	}
 
 	for _, egress := range messages {
-		err := adp.adapterSend(adp, egress)
+		err := adp.adapterSend(adp.application, egress)
 		if err != nil {
 			return err
 		}
@@ -164,16 +151,16 @@ func (adp *Adapter[Ingress, Egress]) Stop() error {
 	if adp.hub != nil {
 		adp.mu.Unlock()
 		adp.hub.RemoveOne(func(adapter IAdapter) bool {
-			return adapter == adp
+			return adapter == adp.application
 		})
 		adp.mu.Lock()
 	}
 	defer adp.mu.Unlock()
 
-	adp.lifecycle.asyncTerminate(adp)
+	adp.lifecycle.asyncTerminate(adp.application)
 	adp.isStopped = true
 	close(adp.waitStop)
-	err := adp.adapterStop(adp)
+	err := adp.adapterStop(adp.application)
 	adp.lifecycle.wait()
 	return err
 }
