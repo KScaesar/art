@@ -48,14 +48,10 @@ type Adapter[Ingress, Egress any] struct {
 }
 
 func (adp *Adapter[Ingress, Egress]) Log() Logger {
-	adp.mu.RLock()
-	defer adp.mu.RUnlock()
 	return adp.logger
 }
 
 func (adp *Adapter[Ingress, Egress]) SetLog(logger Logger) {
-	adp.mu.Lock()
-	defer adp.mu.Unlock()
 	adp.logger = logger
 }
 
