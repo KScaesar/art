@@ -66,6 +66,9 @@ func (adp *Adapter[Ingress, Egress]) pingpong() {
 			if !adp.isStopped {
 				adp.Stop()
 			}
+			if Err != nil {
+				adp.logger.Error("Artifex Adapter pingpong: %v", Err.Error())
+			}
 			adp.recvResult <- Err
 		}()
 
@@ -92,7 +95,7 @@ func (adp *Adapter[Ingress, Egress]) OnStop(terminates ...func(adp IAdapter)) {
 
 func (adp *Adapter[Ingress, Egress]) Listen() (err error) {
 	if adp.isStopped {
-		return ErrorWrapWithMessage(ErrClosed, "Artifex adapter")
+		return ErrorWrapWithMessage(ErrClosed, "Artifex Adapter Listen")
 	}
 
 	go func() {
@@ -100,6 +103,9 @@ func (adp *Adapter[Ingress, Egress]) Listen() (err error) {
 		defer func() {
 			if !adp.isStopped {
 				adp.Stop()
+			}
+			if Err != nil {
+				adp.logger.Error("Artifex Adapter Listen: %v", Err.Error())
 			}
 			adp.recvResult <- Err
 		}()
@@ -138,7 +144,7 @@ func (adp *Adapter[Ingress, Egress]) listen() error {
 
 func (adp *Adapter[Ingress, Egress]) Send(messages ...*Egress) error {
 	if adp.isStopped {
-		return ErrorWrapWithMessage(ErrClosed, "Artifex adapter")
+		return ErrorWrapWithMessage(ErrClosed, "Artifex Adapter Send")
 	}
 
 	for _, egress := range messages {
@@ -156,7 +162,7 @@ func (adp *Adapter[Ingress, Egress]) Stop() error {
 
 	if adp.isStopped {
 		adp.mu.Unlock()
-		return ErrorWrapWithMessage(ErrClosed, "Artifex adapter")
+		return ErrorWrapWithMessage(ErrClosed, "Artifex Adapter Stop")
 	}
 	adp.isStopped = true
 	close(adp.waitStop)

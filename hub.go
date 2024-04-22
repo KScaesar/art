@@ -25,7 +25,7 @@ type Hub[T any] struct {
 
 func (hub *Hub[T]) Join(key string, obj T) error {
 	if hub.isStop.Load() {
-		return ErrorWrapWithMessage(ErrClosed, "Artifex hub")
+		return ErrorWrapWithMessage(ErrClosed, "Artifex Hub Join")
 	}
 
 	loaded := true
