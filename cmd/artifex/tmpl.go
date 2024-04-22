@@ -167,10 +167,11 @@ func NewAdapterHub() Artifex.AdapterHub {
 type {{.FileName}}Factory struct {
 	NewAdapterId func() (string, error)
 
-	NewMux        func() (*RedisIngressMux, *RedisEgressMux)
-	NewIngressMux func() *RedisIngressMux
-	NewEgressMux  func() *RedisEgressMux
+	NewMux        func() (*{{.FileName}}IngressMux, *{{.FileName}}EgressMux)
+	NewIngressMux func() *{{.FileName}}IngressMux
+	NewEgressMux  func() *{{.FileName}}EgressMux
 	Hub           Artifex.AdapterHub
+	Logger        Artifex.Logger
 
 	DecorateAdapter func(adp Artifex.IAdapter) (app Artifex.IAdapter)
 	Lifecycle       func(lifecycle *Artifex.Lifecycle)
@@ -186,6 +187,7 @@ func (f *{{.FileName}}Factory) CreatePubSub() (pubsub {{.FileName}}PubSub, err e
 
 	opt := Artifex.NewPubSubOption[{{.FileName}}Ingress, {{.FileName}}Egress]().
 		Identifier(id).
+		Logger(f.Logger).
 		AdapterHub(f.Hub).
 		DecorateAdapter(f.DecorateAdapter).
 		Lifecycle(f.Lifecycle).
@@ -253,6 +255,7 @@ func (f *{{.FileName}}Factory) CreatePublisher() (pub {{.FileName}}Publisher, er
 	waitNotify := make(chan error, 1)
 	opt := Artifex.NewPublisherOption[{{.FileName}}Egress]().
 		Identifier(id).
+		Logger(f.Logger).
 		AdapterHub(f.Hub).
 		DecorateAdapter(f.DecorateAdapter).
 		Lifecycle(f.Lifecycle).
@@ -296,6 +299,7 @@ func (f *{{.FileName}}Factory) CreateSubscriber() (sub {{.FileName}}Subscriber, 
 	waitNotify := make(chan error, 1)
 	opt := Artifex.NewSubscriberOption[{{.FileName}}Ingress]().
 		Identifier(id).
+		Logger(f.Logger).
 		AdapterHub(f.Hub).
 		DecorateAdapter(f.DecorateAdapter).
 		Lifecycle(f.Lifecycle).

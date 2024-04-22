@@ -17,14 +17,13 @@ type Hub[T any] struct {
 	concurrencyQty atomic.Int32
 	bucket         chan struct{}
 
-	stopObj  func(T)
-	isStop   atomic.Bool
-	stopOnce sync.Once
-	waitStop chan struct{}
+	stopObj   func(T)
+	isStopped atomic.Bool
+	waitStop  chan struct{}
 }
 
 func (hub *Hub[T]) Join(key string, obj T) error {
-	if hub.isStop.Load() {
+	if hub.isStopped.Load() {
 		return ErrorWrapWithMessage(ErrClosed, "Artifex Hub Join")
 	}
 
@@ -36,6 +35,19 @@ func (hub *Hub[T]) Join(key string, obj T) error {
 		}
 	}
 	return nil
+}
+
+func (hub *Hub[T]) Shutdown() {
+	if hub.isStopped.Swap(true) {
+		return
+	}
+
+	hub.collections.Range(func(key, value any) bool {
+		hub.remove(key.(string))
+		return true
+	})
+
+	close(hub.waitStop)
 }
 
 func (hub *Hub[T]) UpdateByOldKey(oldKey string, update func(T) (freshKey string, err error)) error {
@@ -143,22 +155,6 @@ func (hub *Hub[T]) remove(key string) {
 	hub.stopObj(obj.(T))
 }
 
-func (hub *Hub[T]) StopAll() {
-	if hub.isStop.Load() {
-		return
-	}
-	hub.isStop.Store(true)
-
-	hub.collections.Range(func(key, value any) bool {
-		hub.remove(key.(string))
-		return true
-	})
-
-	hub.stopOnce.Do(func() {
-		close(hub.waitStop)
-	})
-}
-
 func (hub *Hub[T]) WaitStopAll() chan struct{} {
 	return hub.waitStop
 }
@@ -166,10 +162,6 @@ func (hub *Hub[T]) WaitStopAll() chan struct{} {
 // DoSync
 // If action returns stop=true, stops the iteration.
 func (hub *Hub[T]) DoSync(action func(T) (stop bool)) {
-	if hub.isStop.Load() {
-		return
-	}
-
 	hub.collections.Range(func(_, value any) bool {
 		obj := value.(T)
 		stop := action(obj)
@@ -181,10 +173,6 @@ func (hub *Hub[T]) DoSync(action func(T) (stop bool)) {
 }
 
 func (hub *Hub[T]) DoAsync(action func(T)) {
-	if hub.isStop.Load() {
-		return
-	}
-
 	hub.collections.Range(func(_, value any) bool {
 		obj := value.(T)
 
@@ -227,9 +215,6 @@ func (hub *Hub[T]) Total() int {
 // concurrencyQty controls how many tasks can run simultaneously,
 // preventing resource usage or avoid frequent context switches.
 func (hub *Hub[T]) SetConcurrencyQty(concurrencyQty int) {
-	if hub.isStop.Load() {
-		return
-	}
 	hub.concurrencyQty.Store(int32(concurrencyQty))
 	hub.bucket = make(chan struct{}, hub.concurrencyQty.Load())
 }

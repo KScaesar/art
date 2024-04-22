@@ -1,7 +1,7 @@
 package Artifex
 
 import (
-	"sync"
+	"sync/atomic"
 )
 
 func NewAdapterHub(stop func(adp IAdapter)) *Hub[IAdapter] {
@@ -36,14 +36,13 @@ type Adapter[Ingress, Egress any] struct {
 	fixupMaxRetrySecond int
 	adapterFixup        func(IAdapter) error
 
-	mu          sync.RWMutex
 	identifier  string
 	logger      Logger
 	application IAdapter
 	hub         AdapterHub
 
 	lifecycle *Lifecycle
-	isStopped bool
+	isStopped atomic.Bool
 	waitStop  chan struct{}
 }
 
@@ -63,7 +62,7 @@ func (adp *Adapter[Ingress, Egress]) pingpong() {
 
 		var Err error
 		defer func() {
-			if !adp.isStopped {
+			if !adp.isStopped.Load() {
 				adp.Stop()
 			}
 			if Err != nil {
@@ -85,23 +84,21 @@ func (adp *Adapter[Ingress, Egress]) pingpong() {
 	}()
 }
 
-func (adp *Adapter[Ingress, Egress]) Identifier() string {
-	return adp.identifier
-}
+func (adp *Adapter[Ingress, Egress]) Identifier() string { return adp.identifier }
 
 func (adp *Adapter[Ingress, Egress]) OnStop(terminates ...func(adp IAdapter)) {
 	adp.lifecycle.OnStop(terminates...)
 }
 
 func (adp *Adapter[Ingress, Egress]) Listen() (err error) {
-	if adp.isStopped {
+	if adp.isStopped.Load() {
 		return ErrorWrapWithMessage(ErrClosed, "Artifex Adapter Listen")
 	}
 
 	go func() {
 		var Err error
 		defer func() {
-			if !adp.isStopped {
+			if !adp.isStopped.Load() {
 				adp.Stop()
 			}
 			if Err != nil {
@@ -126,10 +123,10 @@ func (adp *Adapter[Ingress, Egress]) Listen() (err error) {
 }
 
 func (adp *Adapter[Ingress, Egress]) listen() error {
-	for !adp.isStopped {
+	for !adp.isStopped.Load() {
 		ingress, err := adp.adapterRecv(adp.application)
 
-		if adp.isStopped {
+		if adp.isStopped.Load() {
 			return nil
 		}
 
@@ -143,7 +140,7 @@ func (adp *Adapter[Ingress, Egress]) listen() error {
 }
 
 func (adp *Adapter[Ingress, Egress]) Send(messages ...*Egress) error {
-	if adp.isStopped {
+	if adp.isStopped.Load() {
 		return ErrorWrapWithMessage(ErrClosed, "Artifex Adapter Send")
 	}
 
@@ -158,34 +155,23 @@ func (adp *Adapter[Ingress, Egress]) Send(messages ...*Egress) error {
 }
 
 func (adp *Adapter[Ingress, Egress]) Stop() error {
-	adp.mu.Lock()
-
-	if adp.isStopped {
-		adp.mu.Unlock()
+	if adp.isStopped.Swap(true) {
 		return ErrorWrapWithMessage(ErrClosed, "Artifex Adapter Stop")
 	}
-	adp.isStopped = true
-	close(adp.waitStop)
 
 	if adp.hub != nil {
-		adp.mu.Unlock()
 		adp.hub.RemoveOne(func(adapter IAdapter) bool {
 			return adapter == adp.application
 		})
-		adp.mu.Lock()
 	}
-	defer adp.mu.Unlock()
 
 	adp.lifecycle.asyncTerminate(adp.application)
 	err := adp.adapterStop(adp.application)
 	adp.lifecycle.wait()
+	close(adp.waitStop)
 	return err
 }
 
-func (adp *Adapter[Ingress, Egress]) IsStopped() bool {
-	return adp.isStopped
-}
+func (adp *Adapter[Ingress, Egress]) IsStopped() bool { return adp.isStopped.Load() }
 
-func (adp *Adapter[Ingress, Egress]) WaitStop() chan struct{} {
-	return adp.waitStop
-}
+func (adp *Adapter[Ingress, Egress]) WaitStop() chan struct{} { return adp.waitStop }
