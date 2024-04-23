@@ -141,7 +141,7 @@ func {{.FileName}}EgressSkip() {{.FileName}}EgressHandleFunc {
 
 `
 
-const PubSubTmpl = `
+const AdapterTmpl = `
 package {{.Package}}
 
 import (
@@ -170,48 +170,33 @@ type {{.FileName}}Subscriber interface {
 
 //
 
-func NewAdapterHub() Artifex.AdapterHub {
-	hub := Artifex.NewAdapterHub(func(adp Artifex.IAdapter) {
-		adp.Stop()
-	})
-	return hub
-}
-
-type ApplicationParam interface {
-	IngressMux() *{{.FileName}}IngressMux
-	EgressMux() *{{.FileName}}EgressMux
-	DecorateAdapter(adp Artifex.IAdapter) (app Artifex.IAdapter)
-	Lifecycle(lifecycle *Artifex.Lifecycle)
-	Reset()
-}
-
 type {{.FileName}}Factory struct {
-	Hub             Artifex.AdapterHub
+	Hub             *Artifex.Hub[Artifex.IAdapter]
 	Logger          Artifex.Logger
 	SendPingSeconds int
 	WaitPingSeconds int
 
-	AdapterId       func() (string, error)
-	IngressMux      func() *{{.FileName}}IngressMux
-	EgressMux       func() *{{.FileName}}EgressMux
-	DecorateAdapter func(adp Artifex.IAdapter) (app Artifex.IAdapter)
-	Lifecycle       func(lifecycle *Artifex.Lifecycle)
+	Authenticate   func() (name string, err error)
+	AdapterName    string
+
+	Container      DiContainer
 }
 
 func (f *{{.FileName}}Factory) CreatePubSub() (pubsub {{.FileName}}PubSub, err error) {
-	id, err := f.AdapterId()
+	id, err := f.Authenticate()
 	if err != nil {
 		return nil, err
 	}
 
-	ingressMux, egressMux := f.IngressMux(), f.EgressMux()
+	ingressMux := f.Container.IngressMux()
+	egressMux := f.Container.EgressMux()
 
 	opt := Artifex.NewPubSubOption[{{.FileName}}Ingress, {{.FileName}}Egress]().
 		Identifier(id).
 		Logger(f.Logger).
 		AdapterHub(f.Hub).
-		DecorateAdapter(f.DecorateAdapter).
-		Lifecycle(f.Lifecycle).
+		DecorateAdapter(f.Container.DecorateAdapter).
+		Lifecycle(f.Container.Lifecycle).
 		HandleRecv(ingressMux.HandleMessage)
 
 	var mu sync.Mutex
@@ -234,21 +219,49 @@ func (f *{{.FileName}}Factory) CreatePubSub() (pubsub {{.FileName}}PubSub, err e
 	}
 
 	opt.AdapterRecv(func(adp Artifex.IAdapter) (*{{.FileName}}Ingress, error) {
-		return New{{.FileName}}Ingress(adp), nil
-	})
-
-	opt.AdapterSend(func(adp Artifex.IAdapter, message *{{.FileName}}Egress) error {
-		err := egressMux.HandleMessage(message, nil)
-		if err != nil {
-			return err
-		}
+		var err error
+		defer func() {
+			logger := adp.Log()
+			if err != nil {
+				logger.Error("recv : %v", err)
+				return
+			}
+			logger.Info("recv %q", "")
+		}()
 
 		mu.Lock()
 		defer mu.Unlock()
-		return nil
+
+		return New{{.FileName}}Ingress(adp), nil
 	})
 
-	opt.AdapterStop(func(adp Artifex.IAdapter) error {
+	opt.AdapterSend(func(adp Artifex.IAdapter, message *{{.FileName}}Egress) (err error) {
+		err = egressMux.HandleMessage(message, nil)
+
+		defer func() {
+			logger := adp.Log()
+			if err != nil {
+				logger.Error("send %q: %v", message.{{.Subject}}, err)
+				return
+			}
+			logger.Info("send %q", message.{{.Subject}})
+		}()
+
+		mu.Lock()
+		defer mu.Unlock()
+		return 
+	})
+
+	opt.AdapterStop(func(adp Artifex.IAdapter) (err error) {
+		defer func() {
+			logger := adp.Log()
+			if err != nil {
+				logger.Error("stop: %v", err)
+				return
+			}
+			logger.Info("stop")
+		}()
+
 		mu.Lock()
 		defer mu.Unlock()
 		return nil
@@ -268,17 +281,15 @@ func (f *{{.FileName}}Factory) CreatePubSub() (pubsub {{.FileName}}PubSub, err e
 }
 
 func (f *{{.FileName}}Factory) CreatePublisher() (pub {{.FileName}}Publisher, err error) {
-	id, err := f.AdapterId()
-	if err != nil {
-		return nil, err
-	}
+
+	egressMux := f.Container.EgressMux()
 
 	opt := Artifex.NewPublisherOption[{{.FileName}}Egress]().
-		Identifier(id).
+		Identifier(f.AdapterName).
 		Logger(f.Logger).
 		AdapterHub(f.Hub).
-		DecorateAdapter(f.DecorateAdapter).
-		Lifecycle(f.Lifecycle)
+		DecorateAdapter(f.Container.DecorateAdapter).
+		Lifecycle(f.Container.Lifecycle)
 
 	if f.SendPingSeconds > 0 {
 		waitNotify := make(chan error, 1)
@@ -288,21 +299,35 @@ func (f *{{.FileName}}Factory) CreatePublisher() (pub {{.FileName}}Publisher, er
 		}, waitNotify, f.SendPingSeconds*2)
 	}
 
-	egressMux := f.EgressMux()
-
 	var mu sync.Mutex
-	opt.AdapterSend(func(adp Artifex.IAdapter, message *{{.FileName}}Egress) error {
+	opt.AdapterSend(func(adp Artifex.IAdapter, message *{{.FileName}}Egress) (err error) {
 		mu.Lock()
 		defer mu.Unlock()
 
-		err := egressMux.HandleMessage(message, nil)
-		if err != nil {
-			return err
-		}
-		return nil
+		err = egressMux.HandleMessage(message, nil)
+
+		defer func() {
+			logger := adp.Log()
+			if err != nil {
+				logger.Error("send %q: %v", message.{{.Subject}}, err)
+				return
+			}
+			logger.Info("send %q", message.{{.Subject}})
+		}()
+
+		return 
 	})
 
-	opt.AdapterStop(func(adp Artifex.IAdapter) error {
+	opt.AdapterStop(func(adp Artifex.IAdapter) (err error) {
+		defer func() {
+			logger := adp.Log()
+			if err != nil {
+				logger.Error("stop: %v", err)
+				return
+			}
+			logger.Info("stop")
+		}()
+
 		return nil
 	})
 
@@ -318,26 +343,40 @@ func (f *{{.FileName}}Factory) CreatePublisher() (pub {{.FileName}}Publisher, er
 }
 
 func (f *{{.FileName}}Factory) CreateSubscriber() (sub {{.FileName}}Subscriber, err error) {
-	id, err := f.AdapterId()
-	if err != nil {
-		return nil, err
-	}
 
-	ingressMux := f.IngressMux()
+	ingressMux := f.Container.IngressMux()
 
 	opt := Artifex.NewSubscriberOption[{{.FileName}}Ingress]().
-		Identifier(id).
+		Identifier(f.AdapterName).
 		Logger(f.Logger).
 		AdapterHub(f.Hub).
-		DecorateAdapter(f.DecorateAdapter).
-		Lifecycle(f.Lifecycle).
+		DecorateAdapter(f.Container.DecorateAdapter).
+		Lifecycle(f.Container.Lifecycle).
 		HandleRecv(ingressMux.HandleMessage)
 
 	opt.AdapterRecv(func(adp Artifex.IAdapter) (*{{.FileName}}Ingress, error) {
+		var err error
+		defer func() {
+			logger := adp.Log()
+			if err != nil {
+				logger.Error("recv: %v", err)
+				return
+			}
+			logger.Info("recv %q", "")
+		}()
+
 		return New{{.FileName}}Ingress(adp), nil
 	})
 
-	opt.AdapterStop(func(adp Artifex.IAdapter) error {
+	opt.AdapterStop(func(adp Artifex.IAdapter) (err error) {
+		defer func() {
+			logger := adp.Log()
+			if err != nil {
+				logger.Error("stop: %v", err)
+				return
+			}
+			logger.Info("stop")
+		}()
 		return nil
 	})
 
@@ -351,4 +390,123 @@ func (f *{{.FileName}}Factory) CreateSubscriber() (sub {{.FileName}}Subscriber, 
 	}
 	return adp.({{.FileName}}Subscriber), err
 }
+`
+
+const ContainerTmpl = `
+package {{.Package}}
+
+import (
+	"sync"
+
+	"github.com/KScaesar/Artifex"
+)
+
+type Application struct {
+	Artifex.IAdapter
+}
+
+func (app *Application) Initialize(ingressMux *{{.FileName}}IngressMux, egressMux *{{.FileName}}EgressMux) {
+
+}
+
+func (app *Application) Terminate() {
+
+}
+
+func NewAppContainer(newApp func() *Application) DiContainer {
+	return &AppContainer{
+		newApp:     newApp,
+		ingressMux: NewIngressMux(),
+		egressMux:  nil,
+	}
+}
+
+type AppContainer struct {
+	newApp func() *Application
+
+	ingressMux *IngressMux
+
+	mu        sync.Mutex
+	egressMux *EgressMux
+}
+
+func (c *AppContainer) IngressMux() *IngressMux {
+	mux := c.ingressMux
+
+	return mux
+}
+
+func (c *AppContainer) EgressMux() *EgressMux {
+	c.mu.Lock()
+	mux := NewEgressMux()
+
+	return mux
+}
+
+func (c *AppContainer) DecorateAdapter(adp Artifex.IAdapter) Artifex.IAdapter {
+	app := c.newApp()
+	app.IAdapter = adp
+	return app
+}
+
+func (c *AppContainer) Lifecycle(lifecycle *Artifex.Lifecycle) {
+	defer c.mu.Unlock()
+
+	ingressMux := c.ingressMux
+	egressMux := c.egressMux
+
+	lifecycle.OnOpen(func(adp Artifex.IAdapter) error {
+		adp.(*Application).Initialize(ingressMux, egressMux)
+		return nil
+	})
+
+	lifecycle.OnStop(func(adp Artifex.IAdapter) {
+		adp.(*Application).Terminate()
+		return
+	})
+}
+
+//
+
+type DiContainer interface {
+	IngressMux() *{{.FileName}}IngressMux
+	EgressMux() *{{.FileName}}EgressMux
+	DecorateAdapter(adp Artifex.IAdapter) (app Artifex.IAdapter)
+	Lifecycle(lifecycle *Artifex.Lifecycle)
+}
+
+type PureFunction struct {
+	IngressMux_f      func() *{{.FileName}}IngressMux
+	EgressMux_f       func() *{{.FileName}}EgressMux
+	DecorateAdapter_f func(adp Artifex.IAdapter) (app Artifex.IAdapter)
+	Lifecycle_f       func(lifecycle *Artifex.Lifecycle)
+}
+
+func (c *PureFunction) IngressMux() *{{.FileName}}IngressMux {
+	if c.IngressMux_f != nil {
+		return c.IngressMux_f()
+	}
+	return nil
+}
+
+func (c *PureFunction) EgressMux() *{{.FileName}}EgressMux {
+	if c.EgressMux_f != nil {
+		return c.EgressMux_f()
+	}
+	return nil
+}
+
+func (c *PureFunction) DecorateAdapter(adp Artifex.IAdapter) (app Artifex.IAdapter) {
+	if c.DecorateAdapter_f != nil {
+		return c.DecorateAdapter_f(adp)
+	}
+	return adp
+}
+
+func (c *PureFunction) Lifecycle(lifecycle *Artifex.Lifecycle) {
+	if c.Lifecycle_f != nil {
+		c.Lifecycle_f(lifecycle)
+	}
+}
+
 `

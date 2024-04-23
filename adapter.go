@@ -4,8 +4,10 @@ import (
 	"sync/atomic"
 )
 
-func NewAdapterHub(stop func(adp IAdapter)) *Hub[IAdapter] {
-	return NewHub(stop)
+func NewAdapterHub() *Hub[IAdapter] {
+	return NewHub(func(adp IAdapter) {
+		adp.Stop()
+	})
 }
 
 type AdapterHub interface {
