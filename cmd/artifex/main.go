@@ -14,7 +14,7 @@ func main() {
 	}
 	OpenFileAndRenderTemplate(tmpl, "message", MsgTmpl)
 	OpenFileAndRenderTemplate(tmpl, "adapter", AdapterTmpl)
-	OpenFileAndRenderTemplate(tmpl, "container", ContainerTmpl)
+	OpenFileAndRenderTemplate(tmpl, "provider", ProviderTmpl)
 }
 
 func PrintHelp(detail bool) {
