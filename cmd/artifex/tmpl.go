@@ -15,15 +15,17 @@ type {{.Subject}} = string
 
 //
 
-func New{{.FileName}}Ingress() *{{.FileName}}Ingress {
-	msg := Artifex.GenerateUlid()
+func New{{.FileName}}Ingress(adp Artifex.IAdapter) *{{.FileName}}Ingress {
+	msgId := Artifex.GenerateUlid()
+
+	logger := adp.Log().WithKeyValue("msg_id", msgId)
 
 	return &{{.FileName}}Ingress{
-		MsgId:    msg,
+		MsgId:    msgId,
 		{{.Subject}}:  "",
 		Metadata: make(map[string]any),
 		Parent:   nil,
-		Logger:   nil,
+		Logger:   logger,
 	}
 }
 
@@ -175,12 +177,12 @@ func NewAdapterHub() Artifex.AdapterHub {
 	return hub
 }
 
-type ApplicationFactory interface {
-	AdapterId() string
+type ApplicationParam interface {
 	IngressMux() *{{.FileName}}IngressMux
 	EgressMux() *{{.FileName}}EgressMux
 	DecorateAdapter(adp Artifex.IAdapter) (app Artifex.IAdapter)
 	Lifecycle(lifecycle *Artifex.Lifecycle)
+	Reset()
 }
 
 type {{.FileName}}Factory struct {
@@ -232,9 +234,7 @@ func (f *{{.FileName}}Factory) CreatePubSub() (pubsub {{.FileName}}PubSub, err e
 	}
 
 	opt.AdapterRecv(func(adp Artifex.IAdapter) (*{{.FileName}}Ingress, error) {
-		parent := adp.({{.FileName}}PubSub)
-		_ = parent
-		return New{{.FileName}}Ingress(), nil
+		return New{{.FileName}}Ingress(adp), nil
 	})
 
 	opt.AdapterSend(func(adp Artifex.IAdapter, message *{{.FileName}}Egress) error {
@@ -334,7 +334,7 @@ func (f *{{.FileName}}Factory) CreateSubscriber() (sub {{.FileName}}Subscriber, 
 		HandleRecv(ingressMux.HandleMessage)
 
 	opt.AdapterRecv(func(adp Artifex.IAdapter) (*{{.FileName}}Ingress, error) {
-		return New{{.FileName}}Ingress(), nil
+		return New{{.FileName}}Ingress(adp), nil
 	})
 
 	opt.AdapterStop(func(adp Artifex.IAdapter) error {
