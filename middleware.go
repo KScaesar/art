@@ -1,6 +1,7 @@
 package Artifex
 
 import (
+	"encoding/json"
 	"runtime/debug"
 )
 
@@ -45,5 +46,64 @@ func (mw MW[Message]) PrintError(getSubject NewSubjectFunc[Message]) Middleware[
 
 			return nil
 		}
+	}
+}
+
+func (mw MW[Message]) ExcludedSubject(excludeSubjects []string, getSubject NewSubjectFunc[Message]) Middleware[Message] {
+	if mw.Logger == nil {
+		mw.Logger = DefaultLogger()
+	}
+
+	excluded := make(map[string]bool, len(excludeSubjects))
+	for i := 0; i < len(excluded); i++ {
+		excluded[excludeSubjects[i]] = true
+	}
+
+	return func(next HandleFunc[Message]) HandleFunc[Message] {
+		return func(message *Message, route *RouteParam) error {
+			subject := getSubject(message)
+			if excluded[subject] {
+				return nil
+			}
+			return next(message, route)
+		}
+	}
+}
+
+func HandlePrintDetail[Message any](
+	getSubject NewSubjectFunc[Message],
+	newBody func(subject string) (any, bool),
+	getByteBody func(*Message) []byte,
+	unmarshal func(bBody []byte, body any) error,
+	logger Logger,
+) HandleFunc[Message] {
+
+	return func(message *Message, route *RouteParam) error {
+		subject := getSubject(message)
+
+		if newBody == nil {
+			logger.Debug("print %v", subject)
+			return nil
+		}
+
+		body, ok := newBody(subject)
+		if !ok {
+			logger.Debug("print %v", subject)
+			return nil
+		}
+
+		bBody := getByteBody(message)
+		err := unmarshal(bBody, body)
+		if err != nil {
+			return err
+		}
+
+		bBody, err = json.Marshal(body)
+		if err != nil {
+			return err
+		}
+
+		logger.Info("print %v: %T=%v\n\n", subject, body, string(bBody))
+		return nil
 	}
 }
