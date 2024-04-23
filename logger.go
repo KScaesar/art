@@ -188,6 +188,11 @@ func (c content) deepCopyAndSet(key string, v any) content {
 		return c
 	}
 
+	_, ok := c.contents[key]
+	if ok {
+		return c
+	}
+
 	fresh := c.deepCopy()
 
 	// set
