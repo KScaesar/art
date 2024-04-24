@@ -1,6 +1,7 @@
 package Artifex
 
 import (
+	"reflect"
 	"sync/atomic"
 )
 
@@ -152,13 +153,22 @@ func (adp *Adapter[Ingress, Egress]) Send(messages ...*Egress) error {
 
 	for _, egress := range messages {
 		var err error
-		if adp.egressMux != nil {
+		switch {
+		case adp.egressMux != nil && adp.adapterSend != nil:
 			err = adp.egressMux.HandleMessage(adp.application, egress, nil)
 			if err != nil {
 				return err
 			}
-		}
-		if adp.adapterSend != nil {
+			err = adp.adapterSend(adp.logger, egress)
+			if err != nil {
+				return err
+			}
+		case adp.egressMux != nil && adp.adapterSend == nil:
+			err = adp.egressMux.HandleMessage(adp.application, egress, nil)
+			if err != nil {
+				return err
+			}
+		case adp.egressMux == nil && adp.adapterSend != nil:
 			err = adp.adapterSend(adp.logger, egress)
 			if err != nil {
 				return err
@@ -174,7 +184,7 @@ func (adp *Adapter[Ingress, Egress]) Stop() error {
 		return ErrorWrapWithMessage(ErrClosed, "Artifex Adapter Stop")
 	}
 
-	if adp.hub != nil {
+	if !reflect.ValueOf(adp.hub).IsZero() {
 		adp.hub.RemoveOne(func(adapter IAdapter) bool {
 			return adapter == adp.application
 		})

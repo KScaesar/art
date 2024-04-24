@@ -15,11 +15,12 @@ type {{.Subject}} = string
 
 //
 
-func New{{.FileName}}Ingress() *{{.FileName}}Ingress {
+func New{{.FileName}}Ingress(logger Artifex.Logger) *{{.FileName}}Ingress {
 
 	return &{{.FileName}}Ingress{
 		{{.Subject}}:  "",
 		Metadata: make(map[string]any),
+		Logger: logger,
 	}
 }
 
@@ -192,39 +193,40 @@ type {{.FileName}}Factory struct {
 }
 
 func (f *{{.FileName}}Factory) CreateAdapter() (adapter Artifex.IAdapter, err error) {
-	id, err := f.Authenticate()
+	name, err := f.Authenticate()
 	if err != nil {
 		return nil, err
 	}
 
 	opt := Artifex.NewPubSubOption[{{.FileName}}Ingress, {{.FileName}}Egress]().
-		Identifier(id).
-		Logger(f.Logger).
+		Identifier(name).
 		AdapterHub(f.Hub).
+		Logger(f.Logger).
 		DecorateAdapter(f.DecorateAdapter).
 		Lifecycle(f.Lifecycle)
 
 	ingressMux := f.IngressMux()
 	egressMux := f.EgressMux()
 	var mu sync.Mutex
-	waitNotify := make(chan error, 1)
 
 	if f.SendPingSeconds > 0 {
-		opt.SendPing(func() error {
-			mu.Lock()
-			defer mu.Unlock()
+		waitPong := make(chan error, 1)
+		sendPing := func(adp Artifex.IAdapter) error {
+			adp.(Artifex.IAdapter).Log().Info("send ping")
 
 			return nil
-		}, waitNotify, f.SendPingSeconds*2)
+		}
+		opt.SendPing(sendPing, waitPong, f.SendPingSeconds*2)
 	}
 
 	if f.WaitPingSeconds > 0 {
-		opt.WaitPing(waitNotify, f.WaitPingSeconds, func() error {
-			mu.Lock()
-			defer mu.Unlock()
+		waitPing := make(chan error, 1)
+		sendPong := func(adp Artifex.IAdapter) error {
+			adp.(Artifex.IAdapter).Log().Info("send pong")
 
 			return nil
-		})
+		}
+		opt.WaitPing(waitPing, f.WaitPingSeconds, sendPong)
 	}
 
 	opt.IngressMux(ingressMux)
@@ -236,8 +238,7 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter Artifex.IAdapter, err er
 			return nil, err
 		}
 		logger.Info("recv ok")
-
-		return New{{.FileName}}Ingress(), nil
+		return New{{.FileName}}Ingress(logger), nil
 	})
 
 	opt.EgressMux(egressMux)
@@ -245,7 +246,6 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter Artifex.IAdapter, err er
 		mu.Lock()
 		defer mu.Unlock()
 
-		logger = logger.WithKeyValue("msg_id", message.MsgId())
 		if err != nil {
 			logger.Error("send %q fail: %v", message.Subject, err)
 			return

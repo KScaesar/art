@@ -1,5 +1,9 @@
 package Artifex
 
+import (
+	"reflect"
+)
+
 func NewPubSubOption[Ingress, Egress any]() (opt *AdapterOption[Ingress, Egress]) {
 	pubsub := &Adapter[Ingress, Egress]{
 		recvResult: make(chan error, 2),
@@ -51,7 +55,7 @@ func (opt *AdapterOption[Ingress, Egress]) Build() (adp IAdapter, err error) {
 		pubsub.application = pubsub
 	}
 
-	if pubsub.hub != nil {
+	if !reflect.ValueOf(pubsub.hub).IsZero() {
 		err = pubsub.hub.Join(pubsub.identifier, pubsub.application)
 		if err != nil {
 			return nil, err
@@ -139,14 +143,22 @@ func (opt *AdapterOption[Ingress, Egress]) AdapterFixup(maxRetrySecond int, adap
 //
 // When SendPingWaitPong sends a ping message and waits for a corresponding pong message.
 // SendPeriod = WaitSecond / 2
-func (opt *AdapterOption[Ingress, Egress]) SendPing(sendPing func() error, waitPong chan error, waitPongSecond int) *AdapterOption[Ingress, Egress] {
+func (opt *AdapterOption[Ingress, Egress]) SendPing(sendPing func(IAdapter) error, waitPong chan error, waitPongSecond int) *AdapterOption[Ingress, Egress] {
 	second := waitPongSecond
 	if second <= 0 {
 		second = 30
 	}
 
 	pubsub := opt.adapter
-	pubsub.pp = func() error { return SendPingWaitPong(sendPing, waitPong, pubsub.IsStopped, second) }
+	pubsub.pp = func() error {
+		return SendPingWaitPong(
+			func() error {
+				return sendPing(pubsub)
+			},
+			waitPong,
+			pubsub.IsStopped,
+			second)
+	}
 	return opt
 }
 
@@ -154,13 +166,21 @@ func (opt *AdapterOption[Ingress, Egress]) SendPing(sendPing func() error, waitP
 //
 // When WaitPingSendPong waits for a ping message and response a corresponding pong message.
 // SendPeriod = WaitSecond
-func (opt *AdapterOption[Ingress, Egress]) WaitPing(waitPing chan error, waitPingSecond int, sendPong func() error) *AdapterOption[Ingress, Egress] {
+func (opt *AdapterOption[Ingress, Egress]) WaitPing(waitPing chan error, waitPingSecond int, sendPong func(IAdapter) error) *AdapterOption[Ingress, Egress] {
 	second := waitPingSecond
 	if second <= 0 {
 		second = 30
 	}
 
 	pubsub := opt.adapter
-	pubsub.pp = func() error { return WaitPingSendPong(waitPing, sendPong, pubsub.IsStopped, second) }
+	pubsub.pp = func() error {
+		return WaitPingSendPong(
+			waitPing,
+			func() error {
+				return sendPong(pubsub)
+			},
+			pubsub.IsStopped,
+			second)
+	}
 	return opt
 }
