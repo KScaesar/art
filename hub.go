@@ -50,23 +50,15 @@ func (hub *Hub[T]) Shutdown() {
 	close(hub.waitStop)
 }
 
-func (hub *Hub[T]) UpdateByOldKey(oldKey string, update func(T) (freshKey string, err error)) error {
-	obj, ok := hub.collections.Load(oldKey)
+func (hub *Hub[T]) UpdateByOldKey(oldKey string, update func(T) (freshKey string)) error {
+	value, ok := hub.collections.LoadAndDelete(oldKey)
 	if !ok {
 		return ErrorWrapWithMessage(ErrNotFound, "key=%v not exist in hub", oldKey)
 	}
 
-	freshKey, err := update(obj.(T))
-	if err != nil {
-		return err
-	}
-
-	hub.collections.Delete(oldKey)
-	_, ok = hub.collections.Load(freshKey)
-	if !ok {
-		hub.collections.Store(freshKey, obj)
-	}
-	return nil
+	obj := value.(T)
+	freshKey := update(obj)
+	return hub.Join(freshKey, obj)
 }
 
 func (hub *Hub[T]) FindByKey(key string) (obj T, found bool) {

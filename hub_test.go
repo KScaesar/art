@@ -26,7 +26,9 @@ func Benchmark_Hub_UpdateByOldKey(b *testing.B) {
 	b.ReportAllocs()
 
 	b.StopTimer()
-	type Obj struct{}
+	type Obj struct {
+		name string
+	}
 
 	stopObj := func(t *Obj) { return }
 	hub := NewHub(stopObj)
@@ -41,8 +43,8 @@ func Benchmark_Hub_UpdateByOldKey(b *testing.B) {
 	}
 
 	freshKey := GenerateRandomCode(8)
-	update := func(obj *Obj) (string, error) {
-		return freshKey, nil
+	update := func(obj *Obj) string {
+		return freshKey
 	}
 
 	b.StartTimer()
@@ -54,9 +56,7 @@ func Benchmark_Hub_UpdateByOldKey(b *testing.B) {
 		}
 	})
 
-	// cpu: Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz
-	// UpdateByOldKey
-	// Benchmark_Hub_UpdateByOldKey-12    	 1638529	       689.2 ns/op	     135 B/op	       4 allocs/op
-	// UpdateByOldKey2
-	// Benchmark_Hub_UpdateByOldKey-12    	 4955065	       264.9 ns/op	     144 B/op	       5 allocs/op
+	// cpu: 13th Gen Intel(R) Core(TM) i5-1340P
+	// Benchmark_Hub_UpdateByOldKey
+	// Benchmark_Hub_UpdateByOldKey-16    	 1000000	      1385 ns/op	     154 B/op	       4 allocs/op
 }
