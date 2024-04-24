@@ -22,11 +22,11 @@ func TestMessageMux_HandleMessage(t *testing.T) {
 	}
 
 	mux := NewMux[redisMessage]("", getSubject).
-		Handler("hello", func(dto *redisMessage, route *RouteParam) error {
+		Handler("hello", func(dep any, dto *redisMessage, route *RouteParam) error {
 			fmt.Fprintf(recorder, "topic=%v, payload=%v", dto.channel, string(dto.body))
 			return nil
 		}).
-		Handler("foo", func(dto *redisMessage, route *RouteParam) error {
+		Handler("foo", func(dep any, dto *redisMessage, route *RouteParam) error {
 			fmt.Fprintf(recorder, "topic=%v, payload=%v", dto.channel, string(dto.body))
 			return nil
 		})
@@ -40,7 +40,7 @@ func TestMessageMux_HandleMessage(t *testing.T) {
 		body:    []byte(`{"data":"world"}`),
 		channel: "hello",
 	}
-	err := mux.HandleMessage(dto, nil)
+	err := mux.HandleMessage(nil, dto, nil)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -64,21 +64,21 @@ func TestLinkMiddlewares_when_wildcard(t *testing.T) {
 	v1 := mux.Group("v1")
 
 	v1.
-		PreMiddleware(func(message *testcaseMessage, route *RouteParam) error {
+		PreMiddleware(func(dep any, message *testcaseMessage, route *RouteParam) error {
 			message.body = "! " + message.body
 			return nil
 		}).
-		Handler(".{kind}.book.{book_id}", func(message *testcaseMessage, _ *RouteParam) error {
+		Handler(".{kind}.book.{book_id}", func(dep any, message *testcaseMessage, _ *RouteParam) error {
 			recorder = append(recorder, message.body+" {kind}")
 			return nil
 		})
 
 	v1.Group(".dev.book").
-		PreMiddleware(func(message *testcaseMessage, route *RouteParam) error {
+		PreMiddleware(func(_ any, message *testcaseMessage, route *RouteParam) error {
 			message.body = "* " + message.body
 			return nil
 		}).
-		Handler(".discount", func(message *testcaseMessage, _ *RouteParam) error {
+		Handler(".discount", func(_ any, message *testcaseMessage, _ *RouteParam) error {
 			recorder = append(recorder, message.body)
 			return nil
 		})
@@ -97,7 +97,7 @@ func TestLinkMiddlewares_when_wildcard(t *testing.T) {
 
 	for i, message := range messages {
 		message.body = message.subject
-		err := mux.HandleMessage(message, nil)
+		err := mux.HandleMessage(nil, message, nil)
 		if err != nil {
 			t.Errorf("%v: unexpected error: got %v", message.subject, err)
 			break
@@ -115,10 +115,10 @@ func TestLinkMiddlewares(t *testing.T) {
 	buf.WriteString("\n")
 
 	decorator1 := func(next HandleFunc[string]) HandleFunc[string] {
-		return func(dto *string, route *RouteParam) error {
+		return func(dep any, dto *string, route *RouteParam) error {
 			fmt.Fprintf(buf, "%s_decorator1\n", *dto)
 
-			err := next(dto, route)
+			err := next(dep, dto, route)
 			if err != nil {
 				return err
 			}
@@ -129,10 +129,10 @@ func TestLinkMiddlewares(t *testing.T) {
 	}
 
 	decorator2 := func(next HandleFunc[string]) HandleFunc[string] {
-		return func(dto *string, route *RouteParam) error {
+		return func(dep any, dto *string, route *RouteParam) error {
 			fmt.Fprintf(buf, "%s_decorator2\n", *dto)
 
-			err := next(dto, route)
+			err := next(dep, dto, route)
 			if err != nil {
 				return err
 			}
@@ -143,10 +143,10 @@ func TestLinkMiddlewares(t *testing.T) {
 	}
 
 	decorator3 := func(next HandleFunc[string]) HandleFunc[string] {
-		return func(dto *string, route *RouteParam) error {
+		return func(dep any, dto *string, route *RouteParam) error {
 			fmt.Fprintf(buf, "%s_decorator3\n", *dto)
 
-			err := next(dto, route)
+			err := next(dep, dto, route)
 			if err != nil {
 				return err
 			}
@@ -181,13 +181,13 @@ hello_world_decoratorA
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			baseFunc := func(msg *string, route *RouteParam) error {
+			baseFunc := func(dep any, msg *string, route *RouteParam) error {
 				fmt.Fprintf(buf, "%s_base\n", *msg)
 				return nil
 			}
 
 			handler := LinkMiddlewares(baseFunc, tt.middlewares...)
-			err := handler(&tt.msg, nil)
+			err := handler(nil, &tt.msg, nil)
 			if err != nil {
 				t.Errorf("unexpected error: got %v", err)
 			}
@@ -205,7 +205,7 @@ func TestMessageMux_Transform_when_only_defaultHandler(t *testing.T) {
 
 	mux := NewMux[testcaseTransformMessage]("/", newSubject)
 
-	mux.SetDefaultHandler(func(_ *testcaseTransformMessage, _ *RouteParam) error {
+	mux.SetDefaultHandler(func(dep any, _ *testcaseTransformMessage, _ *RouteParam) error {
 		return nil
 	})
 
@@ -215,7 +215,7 @@ func TestMessageMux_Transform_when_only_defaultHandler(t *testing.T) {
 		body:         "",
 	}
 
-	err := mux.HandleMessage(message, nil)
+	err := mux.HandleMessage(nil, message, nil)
 	if err != nil {
 		t.Errorf("%#v :unexpected error: got %v", message, err)
 	}
@@ -223,7 +223,7 @@ func TestMessageMux_Transform_when_only_defaultHandler(t *testing.T) {
 
 func TestMessageMux_Transform(t *testing.T) {
 	recorder := []string{}
-	record := func(message *testcaseTransformMessage, route *RouteParam) error {
+	record := func(dep any, message *testcaseTransformMessage, route *RouteParam) error {
 		recorder = append(recorder, message.subject)
 		return nil
 	}
@@ -231,7 +231,7 @@ func TestMessageMux_Transform(t *testing.T) {
 	newSubject := func(msg *testcaseTransformMessage) string { return msg.subject }
 	mux := NewMux[testcaseTransformMessage]("/", newSubject).
 		PreMiddleware(
-			func(message *testcaseTransformMessage, route *RouteParam) error {
+			func(dep any, message *testcaseTransformMessage, route *RouteParam) error {
 				message.subject = "!" + message.subject + "!"
 				return nil
 			})
@@ -243,7 +243,7 @@ func TestMessageMux_Transform(t *testing.T) {
 		HandlerByNumber(2, record).
 		GroupByNumber(5).Transform(testcaseTransformLevel2).
 		PreMiddleware(
-			func(message *testcaseTransformMessage, route *RouteParam) error {
+			func(dep any, message *testcaseTransformMessage, route *RouteParam) error {
 				message.subject = "^" + message.subject + "^"
 				return nil
 			}).
@@ -252,7 +252,7 @@ func TestMessageMux_Transform(t *testing.T) {
 
 	mux.GroupByNumber(4).Transform(testcaseTransformLevel1).
 		PreMiddleware(
-			func(message *testcaseTransformMessage, route *RouteParam) error {
+			func(dep any, message *testcaseTransformMessage, route *RouteParam) error {
 				message.subject = "_" + message.subject + "_"
 				return nil
 			}).
@@ -289,7 +289,7 @@ func TestMessageMux_Transform(t *testing.T) {
 	}
 
 	for i, message := range messages {
-		err := mux.HandleMessage(message, nil)
+		err := mux.HandleMessage(nil, message, nil)
 		if err != nil {
 			t.Errorf("%#v :unexpected error: got %v", message, err)
 			break
@@ -301,7 +301,7 @@ func TestMessageMux_Transform(t *testing.T) {
 	}
 }
 
-func testcaseTransformLevel1(msg *testcaseTransformMessage, route *RouteParam) (err error) {
+func testcaseTransformLevel1(dep any, msg *testcaseTransformMessage, route *RouteParam) (err error) {
 	old := msg
 	msg.level0TypeId = old.level1TypeId
 	msg.level1TypeId = 0
@@ -309,7 +309,7 @@ func testcaseTransformLevel1(msg *testcaseTransformMessage, route *RouteParam) (
 	return nil
 }
 
-func testcaseTransformLevel2(msg *testcaseTransformMessage, route *RouteParam) (err error) {
+func testcaseTransformLevel2(dep any, msg *testcaseTransformMessage, route *RouteParam) (err error) {
 	level2TypeId, err := strconv.Atoi(msg.body)
 	if err != nil {
 		return err
@@ -337,7 +337,7 @@ func TestMessageMux_Group(t *testing.T) {
 	}
 
 	recorder := []string{}
-	record := func(message *testcaseGroupMessage, route *RouteParam) error {
+	record := func(dep any, message *testcaseGroupMessage, route *RouteParam) error {
 		recorder = append(recorder, message.body)
 		return nil
 	}
@@ -345,7 +345,7 @@ func TestMessageMux_Group(t *testing.T) {
 	newSubject := func(msg *testcaseGroupMessage) string { return string(msg.subject) }
 	mux := NewMux[testcaseGroupMessage]("/", newSubject)
 
-	mux.PreMiddleware(func(message *testcaseGroupMessage, route *RouteParam) error {
+	mux.PreMiddleware(func(dep any, message *testcaseGroupMessage, route *RouteParam) error {
 		message.body = "*" + message.body + "*"
 		return nil
 	})
@@ -365,7 +365,7 @@ func TestMessageMux_Group(t *testing.T) {
 		Handler("/game1", record).
 		Handler("/game2/kindA", record)
 	topic4_game3 := topic4.Group("/game3").
-		PreMiddleware(func(message *testcaseGroupMessage, route *RouteParam) error {
+		PreMiddleware(func(dep any, message *testcaseGroupMessage, route *RouteParam) error {
 			message.body = "&" + message.body + "&"
 			return nil
 		}).
@@ -423,7 +423,7 @@ func TestMessageMux_Group(t *testing.T) {
 			subject: subject,
 			body:    string(subject),
 		}
-		err := mux.HandleMessage(message, nil)
+		err := mux.HandleMessage(nil, message, nil)
 		if err != nil {
 			t.Errorf("unexpected error: got %v", err)
 			break
@@ -467,13 +467,13 @@ func TestMux_SetDefaultHandler(t *testing.T) {
 	isCalled := false
 	newSubject := func(msg *testcaseDefaultHandler) string { return string(msg.subject) }
 	mux := NewMux[testcaseDefaultHandler]("/", newSubject).
-		SetDefaultHandler(func(message *testcaseDefaultHandler, route *RouteParam) error {
+		SetDefaultHandler(func(dep any, message *testcaseDefaultHandler, route *RouteParam) error {
 			isCalled = true
 			return nil
 		})
 
 	msg := &testcaseDefaultHandler{}
-	err := mux.HandleMessage(msg, nil)
+	err := mux.HandleMessage(nil, msg, nil)
 	if err != nil || isCalled != true {
 		t.Errorf("unexpected error: got %v", err)
 	}
@@ -489,7 +489,7 @@ func TestMux_SetDefaultHandler_when_wildcard(t *testing.T) {
 	newSubject := func(msg *testcaseMessage) string { return msg.subject }
 	mux := NewMux[testcaseMessage](".", newSubject).
 		Middleware(MW[testcaseMessage]{}.Recover()).
-		SetDefaultHandler(func(message *testcaseMessage, _ *RouteParam) error {
+		SetDefaultHandler(func(dep any, message *testcaseMessage, _ *RouteParam) error {
 			recorder = append(recorder, message.body+" default")
 			return nil
 		})
@@ -497,21 +497,21 @@ func TestMux_SetDefaultHandler_when_wildcard(t *testing.T) {
 	v1 := mux.Group("v1")
 
 	v1.
-		PreMiddleware(func(message *testcaseMessage, route *RouteParam) error {
+		PreMiddleware(func(dep any, message *testcaseMessage, route *RouteParam) error {
 			message.body = "! " + message.body
 			return nil
 		}).
-		Handler(".{kind}.book.{book_id}", func(message *testcaseMessage, _ *RouteParam) error {
+		Handler(".{kind}.book.{book_id}", func(dep any, message *testcaseMessage, _ *RouteParam) error {
 			recorder = append(recorder, message.body+" {kind}")
 			return nil
 		})
 
 	v1.Group(".dev.book").
-		PreMiddleware(func(message *testcaseMessage, route *RouteParam) error {
+		PreMiddleware(func(dep any, message *testcaseMessage, route *RouteParam) error {
 			message.body = "* " + message.body
 			return nil
 		}).
-		Handler(".discount", func(message *testcaseMessage, _ *RouteParam) error {
+		Handler(".discount", func(dep any, message *testcaseMessage, _ *RouteParam) error {
 			recorder = append(recorder, message.body)
 			return nil
 		})
@@ -532,7 +532,7 @@ func TestMux_SetDefaultHandler_when_wildcard(t *testing.T) {
 
 	for i, message := range messages {
 		message.body = message.subject
-		err := mux.HandleMessage(message, nil)
+		err := mux.HandleMessage(nil, message, nil)
 		if err != nil {
 			t.Errorf("%v: unexpected error: got %v", message.subject, err)
 			break
@@ -557,31 +557,31 @@ func TestMux_RouteParam_when_wildcard_subject(t *testing.T) {
 
 	actual := []string{}
 	mux.
-		Handler("order/kind/game", func(message *testcaseRouteParam, route *RouteParam) error {
+		Handler("order/kind/game", func(dep any, message *testcaseRouteParam, route *RouteParam) error {
 			actual = append(actual, message.subject)
 			return nil
 		}).
-		Handler("order/{user_id}", func(message *testcaseRouteParam, route *RouteParam) error {
+		Handler("order/{user_id}", func(dep any, message *testcaseRouteParam, route *RouteParam) error {
 			actual = append(actual, route.Str("user_id"))
 			return nil
 		}).
-		Handler("/get/test/abc/", func(message *testcaseRouteParam, route *RouteParam) error {
+		Handler("/get/test/abc/", func(dep any, message *testcaseRouteParam, route *RouteParam) error {
 			actual = append(actual, message.subject)
 			return nil
 		}).
-		Handler("/get/{param}/abc/", func(message *testcaseRouteParam, route *RouteParam) error {
+		Handler("/get/{param}/abc/", func(dep any, message *testcaseRouteParam, route *RouteParam) error {
 			actual = append(actual, route.Str("param"))
 			return nil
 		}).
-		Handler("{kind}/book/{book_id}", func(message *testcaseRouteParam, route *RouteParam) error {
+		Handler("{kind}/book/{book_id}", func(dep any, message *testcaseRouteParam, route *RouteParam) error {
 			actual = append(actual, route.Str("kind")+" "+route.Str("book_id"))
 			return nil
 		}).
-		Handler("dev/book/{book_id}", func(message *testcaseRouteParam, route *RouteParam) error {
+		Handler("dev/book/{book_id}", func(dep any, message *testcaseRouteParam, route *RouteParam) error {
 			actual = append(actual, "dev book "+route.Str("book_id"))
 			return nil
 		}).
-		Handler("dev/ebook/{book_id}", func(message *testcaseRouteParam, route *RouteParam) error {
+		Handler("dev/ebook/{book_id}", func(dep any, message *testcaseRouteParam, route *RouteParam) error {
 			actual = append(actual, "dev ebook "+route.Str("book_id"))
 			return nil
 		})
@@ -626,7 +626,7 @@ func TestMux_RouteParam_when_wildcard_subject(t *testing.T) {
 	}
 
 	for i, message := range messages {
-		err := mux.HandleMessage(message, nil)
+		err := mux.HandleMessage(nil, message, nil)
 		if err != nil {
 			t.Errorf("%v: unexpected error: got %v", message.subject, err)
 			break
@@ -651,7 +651,7 @@ func TestMessageMux_Recover(t *testing.T) {
 	SetDefaultLogger(SilentLogger())
 	mux := NewMux[testcaseRecover]("/", newSubject).
 		Middleware(MW[testcaseRecover]{}.Recover()).
-		SetDefaultHandler(func(_ *testcaseRecover, _ *RouteParam) error {
+		SetDefaultHandler(func(dep any, _ *testcaseRecover, _ *RouteParam) error {
 			panic("testcase")
 			return nil
 		})
@@ -661,7 +661,7 @@ func TestMessageMux_Recover(t *testing.T) {
 		body:    "",
 	}
 
-	err := mux.HandleMessage(message, nil)
+	err := mux.HandleMessage(nil, message, nil)
 	if err != nil {
 		t.Errorf("%#v :unexpected error: got %v", message, err)
 	}

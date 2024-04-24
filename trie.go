@@ -185,7 +185,7 @@ func (node *trie[M]) addRoute(subject string, cursor int, param *paramHandler[M]
 	return child.addRoute(subject, idx+1, param, path)
 }
 
-func (node *trie[M]) handleMessage(subject string, cursor int, message *M, route *RouteParam) (err error) {
+func (node *trie[M]) handleMessage(subject string, cursor int, dep any, message *M, route *RouteParam) (err error) {
 	current := node
 
 	var defaultHandler, notFoundHandler HandleFunc[M]
@@ -194,7 +194,7 @@ func (node *trie[M]) handleMessage(subject string, cursor int, message *M, route
 
 	for cursor <= len(subject) {
 		if current.transform != nil {
-			err = current.transform(message, route)
+			err = current.transform(dep, message, route)
 			if err != nil {
 				return err
 			}
@@ -228,14 +228,14 @@ func (node *trie[M]) handleMessage(subject string, cursor int, message *M, route
 
 	// for static route
 	if current.handler != nil {
-		return current.handler(message, route)
+		return current.handler(dep, message, route)
 	}
 	if wildcardParent == nil {
 		if defaultHandler != nil {
-			return defaultHandler(message, route)
+			return defaultHandler(dep, message, route)
 		}
 		if notFoundHandler != nil {
-			return notFoundHandler(message, route)
+			return notFoundHandler(dep, message, route)
 		}
 		return ErrNotFoundSubject
 	}
@@ -248,13 +248,13 @@ func (node *trie[M]) handleMessage(subject string, cursor int, message *M, route
 
 	route.Set(wildcardParent.wildcardChildWord, subject[wildcardStart:wildcardFinish])
 
-	err = wildcardParent.wildcardChild.handleMessage(subject, wildcardFinish, message, route)
+	err = wildcardParent.wildcardChild.handleMessage(subject, wildcardFinish, dep, message, route)
 	if err != nil && errors.Is(err, ErrNotFoundSubject) {
 		if defaultHandler != nil {
-			return defaultHandler(message, route)
+			return defaultHandler(dep, message, route)
 		}
 		if notFoundHandler != nil {
-			return notFoundHandler(message, route)
+			return notFoundHandler(dep, message, route)
 		}
 		return ErrNotFoundSubject
 	}

@@ -15,7 +15,7 @@ func (mw MW[Message]) Recover() Middleware[Message] {
 	}
 
 	return func(next HandleFunc[Message]) HandleFunc[Message] {
-		return func(message *Message, route *RouteParam) error {
+		return func(dep any, message *Message, route *RouteParam) error {
 
 			defer func() {
 				if r := recover(); r != nil {
@@ -24,7 +24,7 @@ func (mw MW[Message]) Recover() Middleware[Message] {
 				}
 			}()
 
-			return next(message, route)
+			return next(dep, message, route)
 		}
 	}
 }
@@ -35,14 +35,14 @@ func (mw MW[Message]) PrintError(getSubject NewSubjectFunc[Message]) Middleware[
 	}
 
 	return func(next HandleFunc[Message]) HandleFunc[Message] {
-		return func(message *Message, route *RouteParam) error {
+		return func(dep any, message *Message, route *RouteParam) error {
 			subject := getSubject(message)
 
-			err := next(message, route)
+			err := next(dep, message, route)
 			if err != nil {
 				mw.Logger.Error("handle %v fail: %v", subject, err)
 			}
-			mw.Logger.Info("handle %v success", subject)
+			mw.Logger.Info("handle %v ok", subject)
 
 			return nil
 		}
@@ -60,12 +60,12 @@ func (mw MW[Message]) ExcludedSubject(excludeSubjects []string, getSubject NewSu
 	}
 
 	return func(next HandleFunc[Message]) HandleFunc[Message] {
-		return func(message *Message, route *RouteParam) error {
+		return func(dep any, message *Message, route *RouteParam) error {
 			subject := getSubject(message)
 			if excluded[subject] {
 				return nil
 			}
-			return next(message, route)
+			return next(dep, message, route)
 		}
 	}
 }
@@ -78,7 +78,7 @@ func HandlePrintDetail[Message any](
 	logger Logger,
 ) HandleFunc[Message] {
 
-	return func(message *Message, route *RouteParam) error {
+	return func(dep any, message *Message, route *RouteParam) error {
 		subject := getSubject(message)
 
 		if newBody == nil {
@@ -103,7 +103,7 @@ func HandlePrintDetail[Message any](
 			return err
 		}
 
-		logger.Info("print %v: %T=%v\n\n", subject, body, string(bBody))
+		logger.Info("print %q: %T=%v\n\n", subject, body, string(bBody))
 		return nil
 	}
 }

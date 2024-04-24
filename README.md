@@ -101,7 +101,7 @@ func Listen(mux *Artifex.Mux[MyMessage], second int) {
 	}
 }
 
-// type HandleFunc[Message any] func(message *Message, route *RouteParam) error
+// type HandleFunc[Message any] func(src any,message *Message, route *RouteParam) error
 
 func UpdatedProductPrice(db map[string]any) Artifex.HandleFunc[MyMessage] {
 	return func(message *MyMessage, route *Artifex.RouteParam) error {

@@ -37,21 +37,21 @@ func Test_trie_endpoint(t *testing.T) {
 	}
 }
 
-func endpoint_default(_ *string, _ *RouteParam) error {
+func endpoint_default(_ any, _ *string, _ *RouteParam) error {
 	return nil
 }
 
-func endpoint1(_ *string, _ *RouteParam) error {
+func endpoint1(_ any, _ *string, _ *RouteParam) error {
 	return nil
 }
 
-func endpoint2(_ *string, _ *RouteParam) error {
+func endpoint2(_ any, _ *string, _ *RouteParam) error {
 	return nil
 }
 
 func endpoint_mw() Middleware[string] {
 	return func(next HandleFunc[string]) HandleFunc[string] {
-		return func(_ *string, _ *RouteParam) error {
+		return func(_ any, _ *string, _ *RouteParam) error {
 			return nil
 		}
 	}

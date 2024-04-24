@@ -26,10 +26,11 @@ type IAdapter interface {
 }
 
 type Adapter[Ingress, Egress any] struct {
-	handleRecv  HandleFunc[Ingress]
-	adapterRecv func(IAdapter) (*Ingress, error)
-	adapterSend func(IAdapter, *Egress) error
-	adapterStop func(IAdapter) error
+	ingressMux  *Mux[Ingress]
+	adapterRecv func(Logger) (*Ingress, error)
+	egressMux   *Mux[Egress]
+	adapterSend func(Logger, *Egress) error
+	adapterStop func(Logger) error
 
 	// WaitPingSendPong or SendPingWaitPong
 	pp         func() error
@@ -126,7 +127,7 @@ func (adp *Adapter[Ingress, Egress]) Listen() (err error) {
 
 func (adp *Adapter[Ingress, Egress]) listen() error {
 	for !adp.isStopped.Load() {
-		ingress, err := adp.adapterRecv(adp.application)
+		ingress, err := adp.adapterRecv(adp.logger)
 
 		if adp.isStopped.Load() {
 			return nil
@@ -136,7 +137,10 @@ func (adp *Adapter[Ingress, Egress]) listen() error {
 			return err
 		}
 
-		adp.handleRecv(ingress, nil)
+		err = adp.ingressMux.HandleMessage(adp.application, ingress, nil)
+		if err != nil {
+
+		}
 	}
 	return nil
 }
@@ -147,9 +151,18 @@ func (adp *Adapter[Ingress, Egress]) Send(messages ...*Egress) error {
 	}
 
 	for _, egress := range messages {
-		err := adp.adapterSend(adp.application, egress)
-		if err != nil {
-			return err
+		var err error
+		if adp.egressMux != nil {
+			err = adp.egressMux.HandleMessage(adp.application, egress, nil)
+			if err != nil {
+				return err
+			}
+		}
+		if adp.adapterSend != nil {
+			err = adp.adapterSend(adp.logger, egress)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -168,7 +181,7 @@ func (adp *Adapter[Ingress, Egress]) Stop() error {
 	}
 
 	adp.lifecycle.asyncTerminate(adp.application)
-	err := adp.adapterStop(adp.application)
+	err := adp.adapterStop(adp.logger)
 	adp.lifecycle.wait()
 	close(adp.waitStop)
 	return err

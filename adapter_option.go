@@ -68,7 +68,7 @@ func (opt *AdapterOption[Ingress, Egress]) Build() (adp IAdapter, err error) {
 	return pubsub.application, nil
 }
 
-func (opt *AdapterOption[Ingress, Egress]) DecorateAdapter(wrap func(IAdapter) IAdapter) *AdapterOption[Ingress, Egress] {
+func (opt *AdapterOption[Ingress, Egress]) DecorateAdapter(wrap func(adapter IAdapter) (application IAdapter)) *AdapterOption[Ingress, Egress] {
 	opt.decorateAdapter = wrap
 	return opt
 }
@@ -98,25 +98,31 @@ func (opt *AdapterOption[Ingress, Egress]) Lifecycle(setup func(life *Lifecycle)
 	return opt
 }
 
-func (opt *AdapterOption[Ingress, Egress]) HandleRecv(handleRecv HandleFunc[Ingress]) *AdapterOption[Ingress, Egress] {
+func (opt *AdapterOption[Ingress, Egress]) IngressMux(mux *Mux[Ingress]) *AdapterOption[Ingress, Egress] {
 	sub := opt.adapter
-	sub.handleRecv = handleRecv
+	sub.ingressMux = mux
 	return opt
 }
 
-func (opt *AdapterOption[Ingress, Egress]) AdapterRecv(adapterRecv func(adp IAdapter) (message *Ingress, err error)) *AdapterOption[Ingress, Egress] {
+func (opt *AdapterOption[Ingress, Egress]) AdapterRecv(adapterRecv func(logger Logger) (message *Ingress, err error)) *AdapterOption[Ingress, Egress] {
 	sub := opt.adapter
 	sub.adapterRecv = adapterRecv
 	return opt
 }
 
-func (opt *AdapterOption[Ingress, Egress]) AdapterSend(adapterSend func(adp IAdapter, message *Egress) error) *AdapterOption[Ingress, Egress] {
+func (opt *AdapterOption[Ingress, Egress]) EgressMux(mux *Mux[Egress]) *AdapterOption[Ingress, Egress] {
+	sub := opt.adapter
+	sub.egressMux = mux
+	return opt
+}
+
+func (opt *AdapterOption[Ingress, Egress]) AdapterSend(adapterSend func(logger Logger, message *Egress) error) *AdapterOption[Ingress, Egress] {
 	pub := opt.adapter
 	pub.adapterSend = adapterSend
 	return opt
 }
 
-func (opt *AdapterOption[Ingress, Egress]) AdapterStop(adapterStop func(adp IAdapter) error) *AdapterOption[Ingress, Egress] {
+func (opt *AdapterOption[Ingress, Egress]) AdapterStop(adapterStop func(logger Logger) error) *AdapterOption[Ingress, Egress] {
 	pubsub := opt.adapter
 	pubsub.adapterStop = adapterStop
 	return opt

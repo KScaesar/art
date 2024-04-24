@@ -32,28 +32,28 @@ func (r *RouteParam) Reset() {
 	}
 }
 
-type HandleFunc[Message any] func(message *Message, route *RouteParam) error
+type HandleFunc[Message any] func(dependency any, message *Message, route *RouteParam) error
 
 func (h HandleFunc[Message]) PreMiddleware() Middleware[Message] {
 	return func(next HandleFunc[Message]) HandleFunc[Message] {
-		return func(message *Message, route *RouteParam) error {
-			err := h(message, route)
+		return func(dep any, message *Message, route *RouteParam) error {
+			err := h(dep, message, route)
 			if err != nil {
 				return err
 			}
-			return next(message, route)
+			return next(dep, message, route)
 		}
 	}
 }
 
 func (h HandleFunc[Message]) PostMiddleware() Middleware[Message] {
 	return func(next HandleFunc[Message]) HandleFunc[Message] {
-		return func(message *Message, route *RouteParam) error {
-			err := next(message, route)
+		return func(dep any, message *Message, route *RouteParam) error {
+			err := next(dep, message, route)
 			if err != nil {
 				return err
 			}
-			return h(message, route)
+			return h(dep, message, route)
 		}
 	}
 }
@@ -76,14 +76,6 @@ func LinkMiddlewares[Message any](handler HandleFunc[Message], middlewares ...Mi
 //
 
 type NewSubjectFunc[Message any] func(*Message) string
-
-func DefaultMux[Message any](getSubject NewSubjectFunc[Message]) *Mux[Message] {
-	mux := NewMux[Message]("/", getSubject)
-	middleware := MW[Message]{}
-	mux.Middleware(middleware.Recover())
-	mux.SetHandleError(middleware.PrintError(getSubject))
-	return mux
-}
 
 // NewMux
 // If routeDelimiter is an empty string, RouteParam cannot be used.
@@ -120,7 +112,7 @@ type Mux[Message any] struct {
 // HandleMessage to handle various messages
 //
 // - route parameter can nil
-func (mux *Mux[Message]) HandleMessage(message *Message, route *RouteParam) (err error) {
+func (mux *Mux[Message]) HandleMessage(dependency any, message *Message, route *RouteParam) (err error) {
 	if mux.messagePool != nil {
 		defer func() {
 			mux.resetMessage(message)
@@ -138,17 +130,17 @@ func (mux *Mux[Message]) HandleMessage(message *Message, route *RouteParam) (err
 
 	if mux.handleError != nil {
 		defer func() {
-			h := func(_ *Message, _ *RouteParam) error { return err }
-			err = LinkMiddlewares(h, mux.handleError)(message, route)
+			h := func(_ any, _ *Message, _ *RouteParam) error { return err }
+			err = LinkMiddlewares(h, mux.handleError)(dependency, message, route)
 		}()
 	}
 
 	if mux.node.transform != nil {
-		return mux.node.handleMessage("", 0, message, route)
+		return mux.node.handleMessage("", 0, dependency, message, route)
 	}
 
 	subject := mux.node.getSubject(message)
-	return mux.node.handleMessage(subject, 0, message, route)
+	return mux.node.handleMessage(subject, 0, dependency, message, route)
 }
 
 func (mux *Mux[Message]) Handler(subject string, h HandleFunc[Message], mw ...Middleware[Message]) *Mux[Message] {
