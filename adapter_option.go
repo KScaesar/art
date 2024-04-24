@@ -152,12 +152,12 @@ func (opt *AdapterOption[Ingress, Egress]) AdapterFixup(maxRetrySecond int, adap
 // When SendPingWaitPong sends a ping message and waits for a corresponding pong message.
 // SendPeriod = WaitSecond / 2
 func (opt *AdapterOption[Ingress, Egress]) SendPing(sendPing func(IAdapter) error, waitPong chan error, waitPongSecond int) *AdapterOption[Ingress, Egress] {
-	second := waitPongSecond
-	if second < 0 {
+	waitSeconds := waitPongSecond
+	if waitSeconds < 0 {
 		return opt
 	}
-	if second == 0 {
-		second = 30
+	if waitSeconds == 0 {
+		waitSeconds = 30
 	}
 
 	pubsub := opt.adapter
@@ -168,7 +168,8 @@ func (opt *AdapterOption[Ingress, Egress]) SendPing(sendPing func(IAdapter) erro
 			},
 			waitPong,
 			pubsub.IsStopped,
-			second)
+			waitSeconds,
+		)
 	}
 	return opt
 }
@@ -178,12 +179,12 @@ func (opt *AdapterOption[Ingress, Egress]) SendPing(sendPing func(IAdapter) erro
 // When WaitPingSendPong waits for a ping message and response a corresponding pong message.
 // SendPeriod = WaitSecond
 func (opt *AdapterOption[Ingress, Egress]) WaitPing(waitPing chan error, waitPingSecond int, sendPong func(IAdapter) error) *AdapterOption[Ingress, Egress] {
-	second := waitPingSecond
-	if second < 0 {
+	waitSeconds := waitPingSecond
+	if waitSeconds < 0 {
 		return opt
 	}
-	if second == 0 {
-		second = 30
+	if waitSeconds == 0 {
+		waitSeconds = 30
 	}
 
 	pubsub := opt.adapter
@@ -194,7 +195,8 @@ func (opt *AdapterOption[Ingress, Egress]) WaitPing(waitPing chan error, waitPin
 				return sendPong(pubsub)
 			},
 			pubsub.IsStopped,
-			second)
+			waitSeconds,
+		)
 	}
 	return opt
 }

@@ -59,10 +59,10 @@ func (mw MW[Message]) Retry(retryMaxSecond int) Middleware[Message] {
 			task := func() error {
 				return next(dep, message, route)
 			}
-			notActiveStop := func() bool {
+			taskCanStop := func() bool {
 				return false
 			}
-			return ReliableTask(task, notActiveStop, retryMaxSecond, nil)
+			return ReliableTask(task, taskCanStop, retryMaxSecond, nil)
 		}
 	}
 }

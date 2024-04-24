@@ -50,6 +50,14 @@ func (hub *Hub[T]) Shutdown() {
 	close(hub.waitStop)
 }
 
+func (hub *Hub[T]) IsShutdown() bool {
+	return hub.isStopped.Load()
+}
+
+func (hub *Hub[T]) WaitShutdown() chan struct{} {
+	return hub.waitStop
+}
+
 func (hub *Hub[T]) UpdateByOldKey(oldKey string, update func(T) (freshKey string)) error {
 	value, ok := hub.collections.LoadAndDelete(oldKey)
 	if !ok {
@@ -145,10 +153,6 @@ func (hub *Hub[T]) remove(key string) {
 		return
 	}
 	hub.stopObj(obj.(T))
-}
-
-func (hub *Hub[T]) WaitStopAll() chan struct{} {
-	return hub.waitStop
 }
 
 // DoSync
