@@ -49,6 +49,24 @@ func (mw MW[Message]) PrintError(getSubject NewSubjectFunc[Message]) Middleware[
 	}
 }
 
+func (mw MW[Message]) Retry(retryMaxSecond int) Middleware[Message] {
+	if mw.Logger == nil {
+		mw.Logger = DefaultLogger()
+	}
+
+	return func(next HandleFunc[Message]) HandleFunc[Message] {
+		return func(dep any, message *Message, route *RouteParam) error {
+			task := func() error {
+				return next(dep, message, route)
+			}
+			notActiveStop := func() bool {
+				return false
+			}
+			return ReliableTask(task, notActiveStop, retryMaxSecond, nil)
+		}
+	}
+}
+
 func (mw MW[Message]) ExcludedSubject(excludeSubjects []string, getSubject NewSubjectFunc[Message]) Middleware[Message] {
 	if mw.Logger == nil {
 		mw.Logger = DefaultLogger()
@@ -106,4 +124,8 @@ func HandlePrintDetail[Message any](
 		logger.Info("print %q: %T=%v\n\n", subject, body, string(bBody))
 		return nil
 	}
+}
+
+func HandleSkip[Message any]() HandleFunc[Message] {
+	return func(_ any, _ *Message, _ *RouteParam) error { return nil }
 }

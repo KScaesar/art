@@ -64,6 +64,10 @@ func (h HandleFunc[Message]) LinkMiddlewares(middlewares ...Middleware[Message])
 
 type Middleware[Message any] func(next HandleFunc[Message]) HandleFunc[Message]
 
+func (mw Middleware[Message]) HandleFunc() HandleFunc[Message] {
+	return LinkMiddlewares(HandleSkip[Message](), mw)
+}
+
 func LinkMiddlewares[Message any](handler HandleFunc[Message], middlewares ...Middleware[Message]) HandleFunc[Message] {
 	n := len(middlewares)
 	for i := n - 1; 0 <= i; i-- {
