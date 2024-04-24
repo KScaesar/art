@@ -12,6 +12,11 @@ func ReliableTask(task func() error, allowStop func() bool, retryMaxSecond int, 
 		panic("ReliableTask: task or allowStop is nil")
 	}
 
+	if retryMaxSecond == 0 {
+		const RetryUntilAllowStop = 0
+		retryMaxSecond = RetryUntilAllowStop
+	}
+
 	param := backoff.NewExponentialBackOff()
 	param.InitialInterval = 10 * time.Second
 	param.RandomizationFactor = 0.5

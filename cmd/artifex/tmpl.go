@@ -152,6 +152,7 @@ const AdapterTmpl = `
 package {{.Package}}
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/KScaesar/Artifex"
@@ -182,12 +183,13 @@ type {{.FileName}}Factory struct {
 	Logger          Artifex.Logger
 	SendPingSeconds int
 	WaitPingSeconds int
+	MaxRetrySeconds int
 
 	Authenticate func() (name string, err error)
 	AdapterName  string
 
-	IngressMux      func() *IngressMux
-	EgressMux       func() *EgressMux
+	IngressMux      func() *{{.FileName}}IngressMux
+	EgressMux       func() *{{.FileName}}EgressMux
 	DecorateAdapter func(adapter Artifex.IAdapter) (application Artifex.IAdapter)
 	Lifecycle       func(lifecycle *Artifex.Lifecycle)
 }
@@ -209,25 +211,33 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter Artifex.IAdapter, err er
 	egressMux := f.EgressMux()
 	var mu sync.Mutex
 
-	if f.SendPingSeconds > 0 {
-		waitPong := make(chan error, 1)
-		sendPing := func(adp Artifex.IAdapter) error {
-			adp.(Artifex.IAdapter).Log().Info("send ping")
+	// send pint, wait pong
+	sendPing := func(adp Artifex.IAdapter) error {
+		adp.(Artifex.IAdapter).Log().Info("send ping")
 
-			return nil
-		}
-		opt.SendPing(sendPing, waitPong, f.SendPingSeconds*2)
+		return nil
 	}
+	waitPong := make(chan error, 1)
+	ingressMux.Handler("", func(adp any, _ *{{.FileName}}Ingress, _ *Artifex.RouteParam) error {
+		adp.(Artifex.IAdapter).Log().Info("ack pong")
+		waitPong <- nil
+		return nil
+	})
+	opt.SendPing(sendPing, waitPong, f.SendPingSeconds*2)
 
-	if f.WaitPingSeconds > 0 {
-		waitPing := make(chan error, 1)
-		sendPong := func(adp Artifex.IAdapter) error {
-			adp.(Artifex.IAdapter).Log().Info("send pong")
+	// wait ping, send pong
+	waitPing := make(chan error, 1)
+	ingressMux.Handler("", func(adp any, _ *{{.FileName}}Ingress, _ *Artifex.RouteParam) error {
+		adp.(Artifex.IAdapter).Log().Info("ack ping")
+		waitPing <- nil
+		return nil
+	})
+	sendPong := func(adp Artifex.IAdapter) error {
+		adp.(Artifex.IAdapter).Log().Info("send pong")
 
-			return nil
-		}
-		opt.WaitPing(waitPing, f.WaitPingSeconds, sendPong)
+		return nil
 	}
+	opt.WaitPing(waitPing, f.WaitPingSeconds, sendPong)
 
 	opt.IngressMux(ingressMux)
 	opt.AdapterRecv(func(logger Artifex.Logger) (*{{.FileName}}Ingress, error) {
@@ -267,7 +277,7 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter Artifex.IAdapter, err er
 	})
 
 	retry := 0
-	opt.AdapterFixup(0, func(adp Artifex.IAdapter) error {
+	opt.AdapterFixup(f.MaxRetrySeconds, func(adp Artifex.IAdapter) error {
 		mu.Lock()
 		defer mu.Unlock()
 		logger := adp.Log()
@@ -288,5 +298,19 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter Artifex.IAdapter, err er
 		return
 	}
 	return adp, err
+}
+
+func (f *{{.FileName}}Factory) ShowMux() {
+	ingressMux := f.IngressMux()
+	ingressMux.PrintEndpoints(func(subject, fn string) {
+		fmt.Print("[{{.FileName}}-Ingress] {{.Subject}}=%-20q f=%v\n", subject, fn)
+	})
+
+	fmt.Println()
+
+	egressMux := f.EgressMux()
+	egressMux.PrintEndpoints(func(subject, fn string) {
+		fmt.Print("[ {{.FileName}}-Egress] {{.Subject}}=%-20q f=%v\n", subject, fn)
+	})
 }
 `

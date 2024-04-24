@@ -133,6 +133,14 @@ func (opt *AdapterOption[Ingress, Egress]) AdapterStop(adapterStop func(logger L
 }
 
 func (opt *AdapterOption[Ingress, Egress]) AdapterFixup(maxRetrySecond int, adapterFixup func(IAdapter) error) *AdapterOption[Ingress, Egress] {
+	if maxRetrySecond < 0 {
+		return opt
+	}
+	if maxRetrySecond == 0 {
+		const RetryUntilAdapterStop = 0
+		maxRetrySecond = RetryUntilAdapterStop
+	}
+
 	pubsub := opt.adapter
 	pubsub.fixupMaxRetrySecond = maxRetrySecond
 	pubsub.adapterFixup = adapterFixup
@@ -145,7 +153,10 @@ func (opt *AdapterOption[Ingress, Egress]) AdapterFixup(maxRetrySecond int, adap
 // SendPeriod = WaitSecond / 2
 func (opt *AdapterOption[Ingress, Egress]) SendPing(sendPing func(IAdapter) error, waitPong chan error, waitPongSecond int) *AdapterOption[Ingress, Egress] {
 	second := waitPongSecond
-	if second <= 0 {
+	if second < 0 {
+		return opt
+	}
+	if second == 0 {
 		second = 30
 	}
 
@@ -168,7 +179,10 @@ func (opt *AdapterOption[Ingress, Egress]) SendPing(sendPing func(IAdapter) erro
 // SendPeriod = WaitSecond
 func (opt *AdapterOption[Ingress, Egress]) WaitPing(waitPing chan error, waitPingSecond int, sendPong func(IAdapter) error) *AdapterOption[Ingress, Egress] {
 	second := waitPingSecond
-	if second <= 0 {
+	if second < 0 {
+		return opt
+	}
+	if second == 0 {
 		second = 30
 	}
 

@@ -77,8 +77,8 @@ func NewWriterLogger(w io.Writer, printPath bool, level LogLevel) Logger {
 
 	return stdLogger{
 		debug:             log.New(w, "[Debug] ", flag),
-		info:              log.New(w, "[Info ] ", flag),
-		warn:              log.New(w, "[Warn ] ", flag),
+		info:              log.New(w, "[ Info] ", flag),
+		warn:              log.New(w, "[ Warn] ", flag),
 		err:               log.New(w, "[Error] ", flag),
 		fatal:             log.New(w, "[Fatal] ", flag),
 		internalCallDepth: internalDepth,
