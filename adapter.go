@@ -181,8 +181,12 @@ func (adp *Adapter[Ingress, Egress]) Send(messages ...*Egress) error {
 
 func (adp *Adapter[Ingress, Egress]) Stop() error {
 	if adp.isStopped.Swap(true) {
-		return ErrorWrapWithMessage(ErrClosed, "Artifex Adapter Stop")
+		return ErrorWrapWithMessage(ErrClosed, "repeated execute stop")
 	}
+
+	adp.lifecycle.asyncTerminate(adp.application)
+	err := adp.adapterStop(adp.logger)
+	adp.lifecycle.wait()
 
 	if !reflect.ValueOf(adp.hub).IsZero() {
 		adp.hub.RemoveOne(func(adapter IAdapter) bool {
@@ -190,9 +194,6 @@ func (adp *Adapter[Ingress, Egress]) Stop() error {
 		})
 	}
 
-	adp.lifecycle.asyncTerminate(adp.application)
-	err := adp.adapterStop(adp.logger)
-	adp.lifecycle.wait()
 	close(adp.waitStop)
 	return err
 }
