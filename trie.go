@@ -15,8 +15,12 @@ import (
 //
 // https://hackmd.io/@fieliapm/BkHvJjYq3#/5/2
 //
-// handle message 執行順序, 依照號碼 0~5
+// middleware 依照定義的順序, 可以運用在不同的 HandleFunc
+// handle message 執行順序, 依照號碼 0~4
 type paramHandler[M any] struct {
+	// any
+	middlewares []Middleware[M]
+
 	// 0
 	transform HandleFunc[M]
 
@@ -24,18 +28,15 @@ type paramHandler[M any] struct {
 	getSubject NewSubjectFunc[M]
 
 	// 2
-	middlewares []Middleware[M]
-
-	// 3
 	handler     HandleFunc[M]
 	handlerName string
 
-	// 4
+	// 3
 	defaultHandler     HandleFunc[M]
 	defaultHandlerName string
 
-	// 5
-	notFoundHandler HandleFunc[M]
+	// 4
+	notFoundHandler HandleFunc[M] // not use middleware
 }
 
 func (param *paramHandler[M]) register(leafNode *trie[M], path *pathHandler[M]) error {
@@ -43,7 +44,7 @@ func (param *paramHandler[M]) register(leafNode *trie[M], path *pathHandler[M]) 
 		if leafNode.transform != nil {
 			return errors.New("assign duplicated transform")
 		}
-		leafNode.transform = param.transform
+		leafNode.transform = LinkMiddlewares(param.transform, path.middlewares...)
 		leafNode.getSubject = path.getSubject
 	}
 
