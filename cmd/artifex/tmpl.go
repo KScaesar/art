@@ -15,24 +15,26 @@ type {{.Subject}} = string
 
 //
 
-func New{{.FileName}}Ingress(logger Artifex.Logger) *{{.FileName}}Ingress {
+func New{{.FileName}}Ingress() *{{.FileName}}Ingress {
 
 	return &{{.FileName}}Ingress{
 		{{.Subject}}:  "",
+		Bytes:    nil,
 		Metadata: make(map[string]any),
-		Logger: logger,
 	}
 }
 
 type {{.FileName}}Ingress struct {
-	msgId string
-	Body  []byte
+	Body any
 
 	{{.Subject}}  {{.Subject}}
-	Metadata maputil.Data
-	Logger   Artifex.Logger
+	Bytes  []byte
 
-	ctx context.Context
+	msgId    string
+	Metadata maputil.Data
+
+	Logger Artifex.Logger
+	ctx    context.Context
 }
 
 func (in *{{.FileName}}Ingress) MsgId() string {
@@ -85,20 +87,22 @@ func {{.FileName}}IngressSkip() {{.FileName}}IngressHandleFunc {
 func New{{.FileName}}Egress(subject {{.Subject}}, message any) *{{.FileName}}Egress {
 	return &{{.FileName}}Egress{
 		Subject:  subject,
+		Body:     message,
 		Metadata: make(map[string]any),
-		AppMsg:   message,
 	}
 }
 
 type {{.FileName}}Egress struct {
-	msgId string
-	Body  []byte
+	Bytes []byte
 
-	Subject  string
+	Subject string
+	Body    any
+
+	msgId    string
 	Metadata maputil.Data
-	AppMsg   any
 
-	ctx context.Context
+	Logger Artifex.Logger
+	ctx    context.Context
 }
 
 func (e *{{.FileName}}Egress) MsgId() string {
@@ -246,8 +250,7 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter Artifex.IAdapter, err er
 			logger.Error("recv: %v", err)
 			return nil, err
 		}
-		logger.Info("recv")
-		return New{{.FileName}}Ingress(logger), nil
+		return New{{.FileName}}Ingress(), nil
 	})
 
 	opt.EgressMux(egressMux)
@@ -256,10 +259,10 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter Artifex.IAdapter, err er
 		defer mu.Unlock()
 
 		if err != nil {
-			logger.Error("send %q: %v", message.Subject, err)
+			message.Logger.Error("send %q: %v", message.Subject, err)
 			return
 		}
-		logger.Info("send %q ok", message.Subject)
+		message.Logger.Info("send %q ok", message.Subject)
 		return 
 	})
 
