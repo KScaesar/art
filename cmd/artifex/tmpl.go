@@ -274,7 +274,6 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter Artifex.IAdapter, err er
 
 		var err error
 		if err != nil {
-			logger.Error("recv: %v", err)
 			return nil, err
 		}
 		return New{{.FileName}}Ingress(), nil

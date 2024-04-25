@@ -70,7 +70,7 @@ func (adp *Adapter[Ingress, Egress]) pingpong() {
 				adp.Stop()
 			}
 			if Err != nil {
-				adp.logger.Error("Artifex Adapter pingpong: %v", Err.Error())
+				adp.logger.Error("Artifex Adapter pingpong: %v", Err)
 			}
 			adp.recvResult <- Err
 		}()
@@ -113,7 +113,7 @@ func (adp *Adapter[Ingress, Egress]) Listen() (err error) {
 				adp.Stop()
 			}
 			if Err != nil {
-				adp.logger.Error("Artifex Adapter Listen: %v", Err.Error())
+				adp.logger.Error("Artifex Adapter Listen: %v", Err)
 			}
 			adp.recvResult <- Err
 		}()

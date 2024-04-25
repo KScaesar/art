@@ -24,6 +24,7 @@ type Shutdown struct {
 	cancel context.CancelCauseFunc
 	osSig  chan os.Signal
 	Logger Logger
+	mu     sync.Mutex
 
 	stopQty     int
 	names       []string
@@ -31,6 +32,15 @@ type Shutdown struct {
 }
 
 func (s *Shutdown) StopService(name string, action func() error) *Shutdown {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	select {
+	case <-s.done:
+		return s
+	default:
+	}
+
 	s.stopQty++
 	s.names = append(s.names, name)
 	s.stopActions = append(s.stopActions, action)
@@ -71,8 +81,12 @@ func (s *Shutdown) Serve(ctx context.Context) {
 		}
 	}
 
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.Logger.Info("shutdown total service qty=%v", s.stopQty)
 	wg := sync.WaitGroup{}
+
 	for i := 0; i < s.stopQty; i++ {
 		number := i + 1
 		wg.Add(1)
