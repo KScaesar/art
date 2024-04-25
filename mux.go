@@ -26,7 +26,7 @@ type RouteParam struct {
 	maputil.Data
 }
 
-func (r *RouteParam) Reset() {
+func (r *RouteParam) reset() {
 	for k := range r.Data {
 		delete(r.Data, k)
 	}
@@ -127,7 +127,7 @@ func (mux *Mux[Message]) HandleMessage(message *Message, dependency any, route *
 	if route == nil {
 		route = routeParamPool.Get()
 		defer func() {
-			route.Reset()
+			route.reset()
 			routeParamPool.Put(route)
 		}()
 	}

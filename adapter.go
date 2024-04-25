@@ -138,6 +138,10 @@ func (adp *Adapter[Ingress, Egress]) listen() error {
 			return err
 		}
 
+		if adp.ingressMux == nil {
+			continue
+		}
+
 		err = adp.ingressMux.HandleMessage(ingress, adp.application, nil)
 		if err != nil {
 
