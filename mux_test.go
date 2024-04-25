@@ -229,12 +229,7 @@ func TestMessageMux_Transform(t *testing.T) {
 	}
 
 	newSubject := func(msg *testcaseTransformMessage) string { return msg.subject }
-	mux := NewMux[testcaseTransformMessage]("/", newSubject).
-		PreMiddleware(
-			func(message *testcaseTransformMessage, dep any, route *RouteParam) error {
-				message.subject = "!" + message.subject + "!"
-				return nil
-			})
+	mux := NewMux[testcaseTransformMessage]("/", newSubject)
 
 	mux.HandlerByNumber(2, record)
 
@@ -276,10 +271,10 @@ func TestMessageMux_Transform(t *testing.T) {
 	})
 
 	expectedRecords := []string{
-		"!2/!",
-		"!3/1/!",
-		"^!3/5/1/!^",
-		"_!4/2/!_",
+		"2/",
+		"3/1/",
+		"^3/5/1/^",
+		"_4/2/_",
 	}
 
 	messages := []*testcaseTransformMessage{

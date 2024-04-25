@@ -147,59 +147,6 @@ func (mux *Mux[Message]) HandleMessage(message *Message, dependency any, route *
 	return mux.node.handleMessage(subject, 0, message, dependency, route)
 }
 
-func (mux *Mux[Message]) Handler(subject string, h HandleFunc[Message], mw ...Middleware[Message]) *Mux[Message] {
-	param := &paramHandler[Message]{
-		handler: h,
-	}
-	if mw != nil {
-		param.handler = LinkMiddlewares(param.handler, mw...)
-		param.handlerName = functionName(h)
-	}
-
-	mux.node.addRoute(subject, 0, param, &pathHandler[Message]{})
-	return mux
-}
-
-func (mux *Mux[Message]) HandlerByNumber(subject int, h HandleFunc[Message], mw ...Middleware[Message]) *Mux[Message] {
-	return mux.Handler(strconv.Itoa(subject)+mux.routeDelimiter, h, mw...)
-}
-
-func (mux *Mux[Message]) Group(groupName string) *Mux[Message] {
-	groupNode := mux.node.addRoute(groupName, 0, nil, &pathHandler[Message]{})
-	return &Mux[Message]{
-		node:           groupNode,
-		routeDelimiter: mux.routeDelimiter,
-		messagePool:    mux.messagePool,
-		resetMessage:   mux.resetMessage,
-	}
-}
-
-func (mux *Mux[Message]) GroupByNumber(groupName int) *Mux[Message] {
-	return mux.Group(strconv.Itoa(groupName) + mux.routeDelimiter)
-}
-
-// Transform
-// Originally, the message passed through the mux would only call 'getSubject' once.
-// However, if there is a definition of Transform,
-// when the message passes through the Transform function, 'getSubject' will be called again.
-func (mux *Mux[Message]) Transform(transform HandleFunc[Message]) *Mux[Message] {
-	param := &paramHandler[Message]{
-		transform: transform,
-	}
-
-	mux.node.addRoute("", 0, param, &pathHandler[Message]{})
-	return mux
-}
-
-func (mux *Mux[Message]) SubjectFunc(getSubject NewSubjectFunc[Message]) *Mux[Message] {
-	param := &paramHandler[Message]{
-		getSubject: getSubject,
-	}
-
-	mux.node.addRoute("", 0, param, &pathHandler[Message]{})
-	return mux
-}
-
 // Middleware
 // Before registering handler, middleware must be defined; otherwise, the handler won't be able to use middleware.
 func (mux *Mux[Message]) Middleware(middlewares ...Middleware[Message]) *Mux[Message] {
@@ -229,6 +176,59 @@ func (mux *Mux[Message]) PostMiddleware(handleFuncs ...HandleFunc[Message]) *Mux
 
 	mux.node.addRoute("", 0, param, &pathHandler[Message]{})
 	return mux
+}
+
+// Transform
+// Originally, the message passed through the mux would only call 'getSubject' once.
+// However, if there is a definition of Transform,
+// when the message passes through the Transform function, 'getSubject' will be called again.
+func (mux *Mux[Message]) Transform(transform HandleFunc[Message]) *Mux[Message] {
+	param := &paramHandler[Message]{
+		transform: transform,
+	}
+
+	mux.node.addRoute("", 0, param, &pathHandler[Message]{})
+	return mux
+}
+
+func (mux *Mux[Message]) SubjectFunc(getSubject NewSubjectFunc[Message]) *Mux[Message] {
+	param := &paramHandler[Message]{
+		getSubject: getSubject,
+	}
+
+	mux.node.addRoute("", 0, param, &pathHandler[Message]{})
+	return mux
+}
+
+func (mux *Mux[Message]) Handler(subject string, h HandleFunc[Message], mw ...Middleware[Message]) *Mux[Message] {
+	param := &paramHandler[Message]{
+		handler: h,
+	}
+	if mw != nil {
+		param.handler = LinkMiddlewares(param.handler, mw...)
+		param.handlerName = functionName(h)
+	}
+
+	mux.node.addRoute(subject, 0, param, &pathHandler[Message]{})
+	return mux
+}
+
+func (mux *Mux[Message]) HandlerByNumber(subject int, h HandleFunc[Message], mw ...Middleware[Message]) *Mux[Message] {
+	return mux.Handler(strconv.Itoa(subject)+mux.routeDelimiter, h, mw...)
+}
+
+func (mux *Mux[Message]) Group(groupName string) *Mux[Message] {
+	groupNode := mux.node.addRoute(groupName, 0, nil, &pathHandler[Message]{})
+	return &Mux[Message]{
+		node:           groupNode,
+		routeDelimiter: mux.routeDelimiter,
+		messagePool:    mux.messagePool,
+		resetMessage:   mux.resetMessage,
+	}
+}
+
+func (mux *Mux[Message]) GroupByNumber(groupName int) *Mux[Message] {
+	return mux.Group(strconv.Itoa(groupName) + mux.routeDelimiter)
 }
 
 // DefaultHandler
