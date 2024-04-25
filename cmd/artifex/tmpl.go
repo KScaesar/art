@@ -5,6 +5,7 @@ package {{.Package}}
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/gookit/goutil/maputil"
 
@@ -18,7 +19,7 @@ type {{.Subject}} = string
 func New{{.FileName}}Ingress() *{{.FileName}}Ingress {
 
 	return &{{.FileName}}Ingress{
-		{{.Subject}}:  "",
+		Subject:  "",
 		Bytes:    nil,
 		Metadata: make(map[string]any),
 	}
@@ -27,8 +28,8 @@ func New{{.FileName}}Ingress() *{{.FileName}}Ingress {
 type {{.FileName}}Ingress struct {
 	Body any
 
-	{{.Subject}}  {{.Subject}}
-	Bytes  []byte
+	Subject {{.Subject}}
+	Bytes   []byte
 
 	msgId    string
 	Metadata maputil.Data
@@ -66,7 +67,7 @@ type {{.FileName}}IngressMux = Artifex.Mux[{{.FileName}}Ingress]
 func New{{.FileName}}IngressMux() *{{.FileName}}IngressMux {
 	get{{.Subject}} := func(message *{{.FileName}}Ingress) string {
 
-		return message.{{.Subject}}
+		return message.Subject
 	}
 	mux := Artifex.NewMux("/", get{{.Subject}})
 
@@ -95,7 +96,7 @@ func New{{.FileName}}Egress(subject {{.Subject}}, message any) *{{.FileName}}Egr
 type {{.FileName}}Egress struct {
 	Bytes []byte
 
-	Subject string
+	Subject {{.Subject}}
 	Body    any
 
 	msgId    string
@@ -149,6 +150,22 @@ func {{.FileName}}EgressSkip() {{.FileName}}EgressHandleFunc {
 		return nil
 	}
 }
+
+//
+
+func ShowMux(name string, offset int, ingressMux *{{.FileName}}IngressMux, egressMux *{{.FileName}}EgressMux) {
+	if ingressMux != nil {
+		ingressMux.Endpoints(func(subject, fn string) {
+			fmt.Printf("[%v-Ingress] subject=%-10q f=%v\n", name, subject, fn[offset:])
+		})
+	}
+	if ingressMux != nil {
+		egressMux.Endpoints(func(subject, fn string) {
+			fmt.Printf("[%v-Egress ] subject=%-10q f=%v\n", name, subject, fn[offset:])
+		})
+	}
+	fmt.Println()
+}
 `
 
 const AdapterTmpl = `
@@ -166,7 +183,7 @@ import (
 type {{.FileName}}PubSub interface {
 	Artifex.IAdapter
 	Send(messages ...*{{.FileName}}Egress) error
-	Serve() (err error)
+	Listen() (err error)
 }
 
 type {{.FileName}}Publisher interface {
@@ -176,7 +193,7 @@ type {{.FileName}}Publisher interface {
 
 type {{.FileName}}Subscriber interface {
 	Artifex.IAdapter
-	Serve() (err error)
+	Listen() (err error)
 }
 
 //
@@ -186,12 +203,14 @@ type {{.FileName}}Factory struct {
 	Logger          Artifex.Logger
 	SendPingSeconds int
 	WaitPingSeconds int
+	PrintPingPong   bool
+
 	MaxRetrySeconds int
 
 	Authenticate func() (name string, err error)
 	AdapterName  string
 
-	IngressMux      func() *{{.FileName}}IngressMux
+	IngressMux      *{{.FileName}}IngressMux
 	EgressMux       func() *{{.FileName}}EgressMux
 	DecorateAdapter func(adapter Artifex.IAdapter) (application Artifex.IAdapter)
 	Lifecycle       func(lifecycle *Artifex.Lifecycle)
@@ -203,26 +222,31 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter Artifex.IAdapter, err er
 		return nil, err
 	}
 
+	egressMux := f.EgressMux()
+
 	opt := Artifex.NewPubSubOption[{{.FileName}}Ingress, {{.FileName}}Egress]().
 		Identifier(name).
 		AdapterHub(f.Hub).
 		Logger(f.Logger).
+		IngressMux(f.IngressMux).
+		EgressMux(egressMux).
 		DecorateAdapter(f.DecorateAdapter).
 		Lifecycle(f.Lifecycle)
 
-	ingressMux := f.IngressMux()
-	egressMux := f.EgressMux()
 	var mu sync.Mutex
 
 	// send pint, wait pong
 	sendPing := func(adp Artifex.IAdapter) error {
-		adp.(Artifex.IAdapter).Log().Info("send ping")
-
+		if f.PrintPingPong {
+			adp.(Artifex.IAdapter).Log().Info("send ping")
+		}
 		return nil
 	}
 	waitPong := make(chan error, 1)
-	ingressMux.Handler("", func(_ *{{.FileName}}Ingress, dep any, _ *Artifex.RouteParam) error {
-		dep.(Artifex.IAdapter).Log().Info("ack pong")
+	f.IngressMux.Handler("", func(_ *{{.FileName}}Ingress, dep any, _ *Artifex.RouteParam) error {
+		if f.PrintPingPong {
+			dep.(Artifex.IAdapter).Log().Info("ack pong")
+		}
 		waitPong <- nil
 		return nil
 	})
@@ -230,19 +254,22 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter Artifex.IAdapter, err er
 
 	// wait ping, send pong
 	waitPing := make(chan error, 1)
-	ingressMux.Handler("", func(_ *{{.FileName}}Ingress, dep any, _ *Artifex.RouteParam) error {
-		dep.(Artifex.IAdapter).Log().Info("ack ping")
+	f.IngressMux.Handler("", func(_ *{{.FileName}}Ingress, dep any, _ *Artifex.RouteParam) error {
+		if f.PrintPingPong {
+			dep.(Artifex.IAdapter).Log().Info("ack ping")
+		}
 		waitPing <- nil
 		return nil
 	})
 	sendPong := func(adp Artifex.IAdapter) error {
-		adp.(Artifex.IAdapter).Log().Info("send pong")
+		if f.PrintPingPong {
+			adp.(Artifex.IAdapter).Log().Info("send pong")
+		}
 
 		return nil
 	}
 	opt.WaitPing(waitPing, f.WaitPingSeconds, sendPong)
 
-	opt.IngressMux(ingressMux)
 	opt.AdapterRecv(func(logger Artifex.Logger) (*{{.FileName}}Ingress, error) {
 
 		var err error
@@ -253,7 +280,6 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter Artifex.IAdapter, err er
 		return New{{.FileName}}Ingress(), nil
 	})
 
-	opt.EgressMux(egressMux)
 	opt.AdapterSend(func(logger Artifex.Logger, message *{{.FileName}}Egress) (err error) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -300,19 +326,5 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter Artifex.IAdapter, err er
 		return
 	}
 	return adp, err
-}
-
-func (f *{{.FileName}}Factory) ShowMux() {
-	ingressMux := f.IngressMux()
-	ingressMux.Endpoints(func(subject, fn string) {
-		fmt.Print("[{{.FileName}}-Ingress] {{.Subject}}=%-20q f=%v\n", subject, fn)
-	})
-
-	egressMux := f.EgressMux()
-	egressMux.Endpoints(func(subject, fn string) {
-		fmt.Print("[{{.FileName}}-Egress ] {{.Subject}}=%-20q f=%v\n", subject, fn)
-	})
-
-	fmt.Println()
 }
 `

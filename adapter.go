@@ -95,6 +95,13 @@ func (adp *Adapter[Ingress, Egress]) OnStop(terminates ...func(adp IAdapter)) {
 }
 
 func (adp *Adapter[Ingress, Egress]) Listen() (err error) {
+	if adp.adapterSend == nil {
+		select {
+		case <-adp.WaitStop():
+			return nil
+		}
+	}
+
 	if adp.isStopped.Load() {
 		return ErrorWrapWithMessage(ErrClosed, "Artifex Adapter Listen")
 	}
