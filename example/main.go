@@ -50,7 +50,7 @@ func Listen(mux *Artifex.Mux[MyMessage], second int) {
 			return
 		}
 
-		mux.HandleMessage(nil, message, nil)
+		mux.HandleMessage(message, nil, nil)
 		fmt.Println()
 	}
 }
@@ -139,24 +139,24 @@ var messages = []*MyMessage{
 // handler
 
 func HandleAuth() Artifex.HandleFunc[MyMessage] {
-	return func(_ any, message *MyMessage, route *Artifex.RouteParam) error {
+	return func(message *MyMessage, _ any, route *Artifex.RouteParam) error {
 		fmt.Println("Middleware: Auth Ok")
 		return nil
 	}
 }
 
-func DefaultHandler(_ any, message *MyMessage, _ *Artifex.RouteParam) error {
+func DefaultHandler(message *MyMessage, _ any, _ *Artifex.RouteParam) error {
 	fmt.Printf("Default: AutoAck message: subject=%v body=%v\n", message.Subject, string(message.Bytes))
 	return nil
 }
 
-func Hello(_ any, message *MyMessage, route *Artifex.RouteParam) error {
+func Hello(message *MyMessage, _ any, route *Artifex.RouteParam) error {
 	fmt.Printf("Hello: body=%v user=%v\n", string(message.Bytes), route.Get("user"))
 	return nil
 }
 
 func UpdatedProductPrice(db map[string]any) Artifex.HandleFunc[MyMessage] {
-	return func(_ any, message *MyMessage, route *Artifex.RouteParam) error {
+	return func(message *MyMessage, _ any, route *Artifex.RouteParam) error {
 		brand := route.Str("brand")
 		db[brand] = message.Bytes
 		fmt.Printf("UpdatedProductPrice: saved db: brand=%v\n", brand)

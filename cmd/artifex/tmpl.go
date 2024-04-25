@@ -75,7 +75,7 @@ func New{{.FileName}}IngressMux() *{{.FileName}}IngressMux {
 }
 
 func {{.FileName}}IngressSkip() {{.FileName}}IngressHandleFunc {
-	return func(dep any, message *{{.FileName}}Ingress, route *Artifex.RouteParam) (err error) {
+	return func(message *{{.FileName}}Ingress, dependency any, route *Artifex.RouteParam) (err error) {
 		return nil
 	}
 }
@@ -141,11 +141,10 @@ func New{{.FileName}}EgressMux() *{{.FileName}}EgressMux {
 }
 
 func {{.FileName}}EgressSkip() {{.FileName}}EgressHandleFunc {
-	return func(dep any, message *{{.FileName}}Egress, route *Artifex.RouteParam) (err error) {
+	return func(message *{{.FileName}}Egress, dependency any, route *Artifex.RouteParam) (err error) {
 		return nil
 	}
 }
-
 `
 
 const AdapterTmpl = `
@@ -218,8 +217,8 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter Artifex.IAdapter, err er
 		return nil
 	}
 	waitPong := make(chan error, 1)
-	ingressMux.Handler("", func(adp any, _ *{{.FileName}}Ingress, _ *Artifex.RouteParam) error {
-		adp.(Artifex.IAdapter).Log().Info("ack pong")
+	ingressMux.Handler("", func(_ *{{.FileName}}Ingress, dep any, _ *Artifex.RouteParam) error {
+		dep.(Artifex.IAdapter).Log().Info("ack pong")
 		waitPong <- nil
 		return nil
 	})
@@ -227,8 +226,8 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter Artifex.IAdapter, err er
 
 	// wait ping, send pong
 	waitPing := make(chan error, 1)
-	ingressMux.Handler("", func(adp any, _ *{{.FileName}}Ingress, _ *Artifex.RouteParam) error {
-		adp.(Artifex.IAdapter).Log().Info("ack ping")
+	ingressMux.Handler("", func(_ *{{.FileName}}Ingress, dep any, _ *Artifex.RouteParam) error {
+		dep.(Artifex.IAdapter).Log().Info("ack ping")
 		waitPing <- nil
 		return nil
 	})

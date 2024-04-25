@@ -185,7 +185,7 @@ func (node *trie[M]) addRoute(subject string, cursor int, param *paramHandler[M]
 	return child.addRoute(subject, idx+1, param, path)
 }
 
-func (node *trie[M]) handleMessage(subject string, cursor int, dep any, message *M, route *RouteParam) (err error) {
+func (node *trie[M]) handleMessage(subject string, cursor int, message *M, dep any, route *RouteParam) (err error) {
 	current := node
 
 	var defaultHandler, notFoundHandler HandleFunc[M]
@@ -194,7 +194,7 @@ func (node *trie[M]) handleMessage(subject string, cursor int, dep any, message 
 
 	for cursor <= len(subject) {
 		if current.transform != nil {
-			err = current.transform(dep, message, route)
+			err = current.transform(message, dep, route)
 			if err != nil {
 				return err
 			}
@@ -228,14 +228,14 @@ func (node *trie[M]) handleMessage(subject string, cursor int, dep any, message 
 
 	// for static route
 	if current.handler != nil {
-		return current.handler(dep, message, route)
+		return current.handler(message, dep, route)
 	}
 	if wildcardParent == nil {
 		if defaultHandler != nil {
-			return defaultHandler(dep, message, route)
+			return defaultHandler(message, dep, route)
 		}
 		if notFoundHandler != nil {
-			return notFoundHandler(dep, message, route)
+			return notFoundHandler(message, dep, route)
 		}
 		return ErrNotFoundSubject
 	}
@@ -248,13 +248,13 @@ func (node *trie[M]) handleMessage(subject string, cursor int, dep any, message 
 
 	route.Set(wildcardParent.wildcardChildWord, subject[wildcardStart:wildcardFinish])
 
-	err = wildcardParent.wildcardChild.handleMessage(subject, wildcardFinish, dep, message, route)
+	err = wildcardParent.wildcardChild.handleMessage(subject, wildcardFinish, message, dep, route)
 	if err != nil && errors.Is(err, ErrNotFoundSubject) {
 		if defaultHandler != nil {
-			return defaultHandler(dep, message, route)
+			return defaultHandler(message, dep, route)
 		}
 		if notFoundHandler != nil {
-			return notFoundHandler(dep, message, route)
+			return notFoundHandler(message, dep, route)
 		}
 		return ErrNotFoundSubject
 	}

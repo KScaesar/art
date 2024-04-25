@@ -15,7 +15,7 @@ func (mw MW[Message]) Recover() Middleware[Message] {
 	}
 
 	return func(next HandleFunc[Message]) HandleFunc[Message] {
-		return func(dep any, message *Message, route *RouteParam) error {
+		return func(message *Message, dep any, route *RouteParam) error {
 
 			defer func() {
 				if r := recover(); r != nil {
@@ -24,7 +24,7 @@ func (mw MW[Message]) Recover() Middleware[Message] {
 				}
 			}()
 
-			return next(dep, message, route)
+			return next(message, dep, route)
 		}
 	}
 }
@@ -35,10 +35,10 @@ func (mw MW[Message]) PrintError(getSubject NewSubjectFunc[Message]) Middleware[
 	}
 
 	return func(next HandleFunc[Message]) HandleFunc[Message] {
-		return func(dep any, message *Message, route *RouteParam) error {
+		return func(message *Message, dep any, route *RouteParam) error {
 			subject := getSubject(message)
 
-			err := next(dep, message, route)
+			err := next(message, dep, route)
 			if err != nil {
 				mw.Logger.Error("handle %v fail: %v", subject, err)
 			}
@@ -55,9 +55,9 @@ func (mw MW[Message]) Retry(retryMaxSecond int) Middleware[Message] {
 	}
 
 	return func(next HandleFunc[Message]) HandleFunc[Message] {
-		return func(dep any, message *Message, route *RouteParam) error {
+		return func(message *Message, dep any, route *RouteParam) error {
 			task := func() error {
-				return next(dep, message, route)
+				return next(message, dep, route)
 			}
 			taskCanStop := func() bool {
 				return false
@@ -78,12 +78,12 @@ func (mw MW[Message]) ExcludedSubject(excludeSubjects []string, getSubject NewSu
 	}
 
 	return func(next HandleFunc[Message]) HandleFunc[Message] {
-		return func(dep any, message *Message, route *RouteParam) error {
+		return func(message *Message, dep any, route *RouteParam) error {
 			subject := getSubject(message)
 			if excluded[subject] {
 				return nil
 			}
-			return next(dep, message, route)
+			return next(message, dep, route)
 		}
 	}
 }
@@ -96,7 +96,7 @@ func HandlePrintDetail[Message any](
 	logger Logger,
 ) HandleFunc[Message] {
 
-	return func(dep any, message *Message, route *RouteParam) error {
+	return func(message *Message, dep any, route *RouteParam) error {
 		subject := getSubject(message)
 
 		if newBody == nil {
@@ -127,5 +127,5 @@ func HandlePrintDetail[Message any](
 }
 
 func HandleSkip[Message any]() HandleFunc[Message] {
-	return func(_ any, _ *Message, _ *RouteParam) error { return nil }
+	return func(_ *Message, _ any, _ *RouteParam) error { return nil }
 }

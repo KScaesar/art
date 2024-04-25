@@ -32,28 +32,28 @@ func (r *RouteParam) Reset() {
 	}
 }
 
-type HandleFunc[Message any] func(dependency any, message *Message, route *RouteParam) error
+type HandleFunc[Message any] func(message *Message, dependency any, route *RouteParam) error
 
 func (h HandleFunc[Message]) PreMiddleware() Middleware[Message] {
 	return func(next HandleFunc[Message]) HandleFunc[Message] {
-		return func(dep any, message *Message, route *RouteParam) error {
-			err := h(dep, message, route)
+		return func(message *Message, dep any, route *RouteParam) error {
+			err := h(message, dep, route)
 			if err != nil {
 				return err
 			}
-			return next(dep, message, route)
+			return next(message, dep, route)
 		}
 	}
 }
 
 func (h HandleFunc[Message]) PostMiddleware() Middleware[Message] {
 	return func(next HandleFunc[Message]) HandleFunc[Message] {
-		return func(dep any, message *Message, route *RouteParam) error {
-			err := next(dep, message, route)
+		return func(message *Message, dep any, route *RouteParam) error {
+			err := next(message, dep, route)
 			if err != nil {
 				return err
 			}
-			return h(dep, message, route)
+			return h(message, dep, route)
 		}
 	}
 }
@@ -116,7 +116,7 @@ type Mux[Message any] struct {
 // HandleMessage to handle various messages
 //
 // - route parameter can nil
-func (mux *Mux[Message]) HandleMessage(dependency any, message *Message, route *RouteParam) (err error) {
+func (mux *Mux[Message]) HandleMessage(message *Message, dependency any, route *RouteParam) (err error) {
 	if mux.messagePool != nil {
 		defer func() {
 			mux.resetMessage(message)
@@ -134,17 +134,17 @@ func (mux *Mux[Message]) HandleMessage(dependency any, message *Message, route *
 
 	if mux.handleError != nil {
 		defer func() {
-			h := func(_ any, _ *Message, _ *RouteParam) error { return err }
-			err = LinkMiddlewares(h, mux.handleError)(dependency, message, route)
+			h := func(_ *Message, _ any, _ *RouteParam) error { return err }
+			err = LinkMiddlewares(h, mux.handleError)(message, dependency, route)
 		}()
 	}
 
 	if mux.node.transform != nil {
-		return mux.node.handleMessage("", 0, dependency, message, route)
+		return mux.node.handleMessage("", 0, message, dependency, route)
 	}
 
 	subject := mux.node.getSubject(message)
-	return mux.node.handleMessage(subject, 0, dependency, message, route)
+	return mux.node.handleMessage(subject, 0, message, dependency, route)
 }
 
 func (mux *Mux[Message]) Handler(subject string, h HandleFunc[Message], mw ...Middleware[Message]) *Mux[Message] {

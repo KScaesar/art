@@ -138,7 +138,7 @@ func (adp *Adapter[Ingress, Egress]) listen() error {
 			return err
 		}
 
-		err = adp.ingressMux.HandleMessage(adp.application, ingress, nil)
+		err = adp.ingressMux.HandleMessage(ingress, adp.application, nil)
 		if err != nil {
 
 		}
@@ -155,7 +155,7 @@ func (adp *Adapter[Ingress, Egress]) Send(messages ...*Egress) error {
 		var err error
 		switch {
 		case adp.egressMux != nil && adp.adapterSend != nil:
-			err = adp.egressMux.HandleMessage(adp.application, egress, nil)
+			err = adp.egressMux.HandleMessage(egress, adp.application, nil)
 			if err != nil {
 				return err
 			}
@@ -164,7 +164,7 @@ func (adp *Adapter[Ingress, Egress]) Send(messages ...*Egress) error {
 				return err
 			}
 		case adp.egressMux != nil && adp.adapterSend == nil:
-			err = adp.egressMux.HandleMessage(adp.application, egress, nil)
+			err = adp.egressMux.HandleMessage(egress, adp.application, nil)
 			if err != nil {
 				return err
 			}
