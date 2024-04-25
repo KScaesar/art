@@ -14,7 +14,7 @@ func main() {
 	mux := Artifex.NewMux[MyMessage](routeDelimiter, getSubject)
 
 	builtInMiddleware := Artifex.MW[MyMessage]{Logger: Artifex.NewLogger(false, Artifex.LogLevelDebug)}
-	mux.SetHandleError(builtInMiddleware.PrintError(getSubject))
+	mux.ErrorHandler(builtInMiddleware.PrintError(getSubject))
 
 	// Note:
 	// Before registering handler, middleware must be defined;
@@ -22,7 +22,7 @@ func main() {
 	mux.Middleware(builtInMiddleware.Recover())
 
 	// When a subject cannot be found, execute the 'Default'
-	mux.SetDefaultHandler(DefaultHandler)
+	mux.DefaultHandler(DefaultHandler)
 
 	v1 := mux.Group("v1/").Middleware(HandleAuth().PreMiddleware())
 
@@ -35,7 +35,7 @@ func main() {
 	// [Artifex] subject=".*"                                f="main.DefaultHandler"
 	// [Artifex] subject="v1/Hello/{user}"                   f="main.Hello"
 	// [Artifex] subject="v1/UpdatedProductPrice/{brand}"    f="main.main.UpdatedProductPrice.func5"
-	mux.PrintEndpoints(func(subject, fn string) { fmt.Printf("[Artifex] subject=%-35q f=%q\n", subject, fn) })
+	mux.Endpoints(func(subject, fn string) { fmt.Printf("[Artifex] subject=%-35q f=%q\n", subject, fn) })
 
 	intervalSecond := 2
 	Listen(mux, intervalSecond)
@@ -50,7 +50,7 @@ func Listen(mux *Artifex.Mux[MyMessage], second int) {
 			return
 		}
 
-		mux.HandleMessage(message, nil)
+		mux.HandleMessage(nil, message, nil)
 		fmt.Println()
 	}
 }
@@ -139,24 +139,24 @@ var messages = []*MyMessage{
 // handler
 
 func HandleAuth() Artifex.HandleFunc[MyMessage] {
-	return func(message *MyMessage, route *Artifex.RouteParam) error {
+	return func(_ any, message *MyMessage, route *Artifex.RouteParam) error {
 		fmt.Println("Middleware: Auth Ok")
 		return nil
 	}
 }
 
-func DefaultHandler(message *MyMessage, _ *Artifex.RouteParam) error {
+func DefaultHandler(_ any, message *MyMessage, _ *Artifex.RouteParam) error {
 	fmt.Printf("Default: AutoAck message: subject=%v body=%v\n", message.Subject, string(message.Bytes))
 	return nil
 }
 
-func Hello(message *MyMessage, route *Artifex.RouteParam) error {
+func Hello(_ any, message *MyMessage, route *Artifex.RouteParam) error {
 	fmt.Printf("Hello: body=%v user=%v\n", string(message.Bytes), route.Get("user"))
 	return nil
 }
 
 func UpdatedProductPrice(db map[string]any) Artifex.HandleFunc[MyMessage] {
-	return func(message *MyMessage, route *Artifex.RouteParam) error {
+	return func(_ any, message *MyMessage, route *Artifex.RouteParam) error {
 		brand := route.Str("brand")
 		db[brand] = message.Bytes
 		fmt.Printf("UpdatedProductPrice: saved db: brand=%v\n", brand)

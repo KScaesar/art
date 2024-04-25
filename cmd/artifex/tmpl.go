@@ -70,7 +70,7 @@ func New{{.FileName}}IngressMux() *{{.FileName}}IngressMux {
 
 	middleware := Artifex.MW[{{.FileName}}Ingress]{}
 	mux.Middleware(middleware.Recover())
-	mux.SetHandleError(middleware.PrintError(get{{.Subject}}))
+	mux.ErrorHandler(middleware.PrintError(get{{.Subject}}))
 	return mux
 }
 
@@ -136,7 +136,7 @@ func New{{.FileName}}EgressMux() *{{.FileName}}EgressMux {
 
 	middleware := Artifex.MW[{{.FileName}}Egress]{}
 	mux.Middleware(middleware.Recover())
-	mux.SetHandleError(middleware.PrintError(get{{.Subject}}))
+	mux.ErrorHandler(middleware.PrintError(get{{.Subject}}))
 	return mux
 }
 
@@ -163,7 +163,7 @@ import (
 type {{.FileName}}PubSub interface {
 	Artifex.IAdapter
 	Send(messages ...*{{.FileName}}Egress) error
-	Listen() (err error)
+	Serve() (err error)
 }
 
 type {{.FileName}}Publisher interface {
@@ -173,7 +173,7 @@ type {{.FileName}}Publisher interface {
 
 type {{.FileName}}Subscriber interface {
 	Artifex.IAdapter
-	Listen() (err error)
+	Serve() (err error)
 }
 
 //
@@ -244,10 +244,10 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter Artifex.IAdapter, err er
 
 		var err error
 		if err != nil {
-			logger.Error("recv fail: %v", err)
+			logger.Error("recv: %v", err)
 			return nil, err
 		}
-		logger.Info("recv ok")
+		logger.Info("recv")
 		return New{{.FileName}}Ingress(logger), nil
 	})
 
@@ -257,7 +257,7 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter Artifex.IAdapter, err er
 		defer mu.Unlock()
 
 		if err != nil {
-			logger.Error("send %q fail: %v", message.Subject, err)
+			logger.Error("send %q: %v", message.Subject, err)
 			return
 		}
 		logger.Info("send %q ok", message.Subject)
@@ -269,10 +269,10 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter Artifex.IAdapter, err er
 		defer mu.Unlock()
 
 		if err != nil {
-			logger.Error("stop fail: %v", err)
+			logger.Error("stop: %v", err)
 			return
 		}
-		logger.Info("stop ok")
+		logger.Info("stop")
 		return nil
 	})
 
@@ -285,7 +285,7 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter Artifex.IAdapter, err er
 		retry++
 		logger.Info("retry %v times start", retry)
 		if err != nil {
-			logger.Error("retry fail: %v", err)
+			logger.Error("retry: %v", err)
 			return err
 		}
 		retry = 0
@@ -302,15 +302,15 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter Artifex.IAdapter, err er
 
 func (f *{{.FileName}}Factory) ShowMux() {
 	ingressMux := f.IngressMux()
-	ingressMux.PrintEndpoints(func(subject, fn string) {
+	ingressMux.Endpoints(func(subject, fn string) {
 		fmt.Print("[{{.FileName}}-Ingress] {{.Subject}}=%-20q f=%v\n", subject, fn)
 	})
 
-	fmt.Println()
-
 	egressMux := f.EgressMux()
-	egressMux.PrintEndpoints(func(subject, fn string) {
-		fmt.Print("[ {{.FileName}}-Egress] {{.Subject}}=%-20q f=%v\n", subject, fn)
+	egressMux.Endpoints(func(subject, fn string) {
+		fmt.Print("[{{.FileName}}-Egress ] {{.Subject}}=%-20q f=%v\n", subject, fn)
 	})
+
+	fmt.Println()
 }
 `

@@ -95,7 +95,7 @@ func NewMux[Message any](routeDelimiter string, getSubject NewSubjectFunc[Messag
 		routeDelimiter: routeDelimiter,
 	}
 
-	mux.SetSubjectFunc(getSubject)
+	mux.SubjectFunc(getSubject)
 	return mux
 }
 
@@ -191,7 +191,7 @@ func (mux *Mux[Message]) Transform(transform HandleFunc[Message]) *Mux[Message] 
 	return mux
 }
 
-func (mux *Mux[Message]) SetSubjectFunc(getSubject NewSubjectFunc[Message]) *Mux[Message] {
+func (mux *Mux[Message]) SubjectFunc(getSubject NewSubjectFunc[Message]) *Mux[Message] {
 	param := &paramHandler[Message]{
 		getSubject: getSubject,
 	}
@@ -231,13 +231,13 @@ func (mux *Mux[Message]) PostMiddleware(handleFuncs ...HandleFunc[Message]) *Mux
 	return mux
 }
 
-// SetDefaultHandler
+// DefaultHandler
 // When a subject cannot be found, execute the 'Default'.
 //
 // "The difference between 'Default' and 'NotFound' is
 // that the 'Default' handler will utilize middleware,
 // whereas 'NotFound' won't use middleware."
-func (mux *Mux[Message]) SetDefaultHandler(h HandleFunc[Message], mw ...Middleware[Message]) *Mux[Message] {
+func (mux *Mux[Message]) DefaultHandler(h HandleFunc[Message], mw ...Middleware[Message]) *Mux[Message] {
 	param := &paramHandler[Message]{
 		defaultHandler: h,
 	}
@@ -250,13 +250,13 @@ func (mux *Mux[Message]) SetDefaultHandler(h HandleFunc[Message], mw ...Middlewa
 	return mux
 }
 
-// SetNotFoundHandler
+// NotFoundHandler
 // When a subject cannot be found, execute the 'NotFound'.
 //
 // "The difference between 'Default' and 'NotFound' is
 // that the 'Default' handler will utilize middleware,
 // whereas 'NotFound' won't use middleware."
-func (mux *Mux[Message]) SetNotFoundHandler(h HandleFunc[Message]) *Mux[Message] {
+func (mux *Mux[Message]) NotFoundHandler(h HandleFunc[Message]) *Mux[Message] {
 	param := &paramHandler[Message]{
 		notFoundHandler: h,
 	}
@@ -266,26 +266,20 @@ func (mux *Mux[Message]) SetNotFoundHandler(h HandleFunc[Message]) *Mux[Message]
 	return mux
 }
 
-func (mux *Mux[Message]) SetHandleError(handleError Middleware[Message]) *Mux[Message] {
+func (mux *Mux[Message]) ErrorHandler(handleError Middleware[Message]) *Mux[Message] {
 	mux.handleError = handleError
 	return mux
 }
 
-func (mux *Mux[Message]) SetMessagePool(pool *sync.Pool, reset func(*Message)) *Mux[Message] {
+func (mux *Mux[Message]) MessagePool(pool *sync.Pool, reset func(*Message)) *Mux[Message] {
 	mux.messagePool = pool
 	mux.resetMessage = reset
 	return mux
 }
 
 // Endpoints get register handler function information
-//
-// pair[0] = subject, pair[1] = function.
-func (mux *Mux[Message]) Endpoints() [][2]string {
-	return mux.node.endpoint()
-}
-
-func (mux *Mux[Message]) PrintEndpoints(print func(subject, fn string)) {
-	for _, v := range mux.Endpoints() {
-		print(v[0], v[1])
+func (mux *Mux[Message]) Endpoints(action func(subject, handler string)) {
+	for _, v := range mux.node.endpoint() {
+		action(v[0], v[1])
 	}
 }

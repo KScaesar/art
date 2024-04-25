@@ -205,7 +205,7 @@ func TestMessageMux_Transform_when_only_defaultHandler(t *testing.T) {
 
 	mux := NewMux[testcaseTransformMessage]("/", newSubject)
 
-	mux.SetDefaultHandler(func(dep any, _ *testcaseTransformMessage, _ *RouteParam) error {
+	mux.DefaultHandler(func(dep any, _ *testcaseTransformMessage, _ *RouteParam) error {
 		return nil
 	})
 
@@ -267,12 +267,13 @@ func TestMessageMux_Transform(t *testing.T) {
 		"4/1/", "4/2/", "4/4/",
 	}
 
-	endpoints := mux.Endpoints()
-	for i, endpoint := range endpoints {
-		if endpoint[0] != expectedSubjects[i] {
-			t.Errorf("unexpected output: got %s, want %s", endpoint[0], expectedSubjects[i])
+	i := 0
+	mux.Endpoints(func(subject, handler string) {
+		if subject != expectedSubjects[i] {
+			t.Errorf("unexpected output: got %s, want %s", subject, expectedSubjects[i])
 		}
-	}
+		i++
+	})
 
 	expectedRecords := []string{
 		"!2/!",
@@ -391,12 +392,13 @@ func TestMessageMux_Group(t *testing.T) {
 		"/topic5/game1", "/topic5/game2/kindA", "/topic5/game3/kindX", "/topic5/game3/kindY", "/topic5/game3/v2/kindX", "/topic5/game3/v3/kindY",
 	}
 
-	endpoints := mux.Endpoints()
-	for i, endpoint := range endpoints {
-		if endpoint[0] != expectedSubjects[i] {
-			t.Errorf("unexpected output: got %s, want %s", endpoint[0], expectedSubjects[i])
+	i := 0
+	mux.Endpoints(func(subject, handler string) {
+		if subject != expectedSubjects[i] {
+			t.Errorf("unexpected output: got %s, want %s", subject, expectedSubjects[i])
 		}
-	}
+		i++
+	})
 
 	subjects := []Subject{
 		"/topic3/upgraded.users",
@@ -467,7 +469,7 @@ func TestMux_SetDefaultHandler(t *testing.T) {
 	isCalled := false
 	newSubject := func(msg *testcaseDefaultHandler) string { return string(msg.subject) }
 	mux := NewMux[testcaseDefaultHandler]("/", newSubject).
-		SetDefaultHandler(func(dep any, message *testcaseDefaultHandler, route *RouteParam) error {
+		DefaultHandler(func(dep any, message *testcaseDefaultHandler, route *RouteParam) error {
 			isCalled = true
 			return nil
 		})
@@ -489,7 +491,7 @@ func TestMux_SetDefaultHandler_when_wildcard(t *testing.T) {
 	newSubject := func(msg *testcaseMessage) string { return msg.subject }
 	mux := NewMux[testcaseMessage](".", newSubject).
 		Middleware(MW[testcaseMessage]{}.Recover()).
-		SetDefaultHandler(func(dep any, message *testcaseMessage, _ *RouteParam) error {
+		DefaultHandler(func(dep any, message *testcaseMessage, _ *RouteParam) error {
 			recorder = append(recorder, message.body+" default")
 			return nil
 		})
@@ -596,12 +598,13 @@ func TestMux_RouteParam_when_wildcard_subject(t *testing.T) {
 		"{kind}/book/{book_id}",
 	}
 
-	endpoints := mux.Endpoints()
-	for i, endpoint := range endpoints {
-		if endpoint[0] != expectedSubjects[i] {
-			t.Errorf("unexpected output: got %s, want %s", endpoint[0], expectedSubjects[i])
+	i := 0
+	mux.Endpoints(func(subject, handler string) {
+		if subject != expectedSubjects[i] {
+			t.Errorf("unexpected output: got %s, want %s", subject, expectedSubjects[i])
 		}
-	}
+		i++
+	})
 
 	expectedResponse := []string{
 		"order/kind/game",
@@ -651,7 +654,7 @@ func TestMessageMux_Recover(t *testing.T) {
 	SetDefaultLogger(SilentLogger())
 	mux := NewMux[testcaseRecover]("/", newSubject).
 		Middleware(MW[testcaseRecover]{}.Recover()).
-		SetDefaultHandler(func(dep any, _ *testcaseRecover, _ *RouteParam) error {
+		DefaultHandler(func(dep any, _ *testcaseRecover, _ *RouteParam) error {
 			panic("testcase")
 			return nil
 		})
