@@ -3,7 +3,6 @@ package Artifex
 import (
 	"errors"
 	"fmt"
-	"os"
 )
 
 var (
@@ -12,15 +11,7 @@ var (
 	ErrNotFound         = NewCustomError(2100, "not found")
 	ErrNotFoundSubject  = NewCustomError(2101, "not found subject mux")
 	ErrInvalidParameter = NewCustomError(2200, "invalid parameter")
-	ErrTimeout          = NewCustomError(2300, "timeout")
 )
-
-func ConvertErrNetwork(err error) error {
-	if os.IsTimeout(err) {
-		return ErrorJoin3rdParty(ErrTimeout, err)
-	}
-	return ErrorJoin3rdParty(ErrUniversal, err)
-}
 
 //
 
