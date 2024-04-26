@@ -5,31 +5,29 @@ import (
 	"sync/atomic"
 )
 
-func NewHub[T any](stopObj func(T)) *Hub[T] {
-	return &Hub[T]{
-		stopObj:  stopObj,
+func NewHub() *Hub {
+	return &Hub{
 		waitStop: make(chan struct{}),
 	}
 }
 
-type Hub[T any] struct {
+type Hub struct {
 	collections    sync.Map
 	concurrencyQty atomic.Int32
 	bucket         chan struct{}
 
-	stopObj   func(T)
 	isStopped atomic.Bool
 	waitStop  chan struct{}
 }
 
-func (hub *Hub[T]) Join(key string, obj T) error {
+func (hub *Hub) Join(key string, adp IAdapter) error {
 	if hub.isStopped.Load() {
 		return ErrorWrapWithMessage(ErrClosed, "Artifex Hub Join")
 	}
 
 	loaded := true
 	for loaded {
-		_, loaded = hub.collections.LoadOrStore(key, obj)
+		_, loaded = hub.collections.LoadOrStore(key, adp)
 		if loaded {
 			hub.remove(key)
 		}
@@ -37,7 +35,7 @@ func (hub *Hub[T]) Join(key string, obj T) error {
 	return nil
 }
 
-func (hub *Hub[T]) Shutdown() {
+func (hub *Hub) Shutdown() {
 	if hub.isStopped.Swap(true) {
 		return
 	}
@@ -50,39 +48,39 @@ func (hub *Hub[T]) Shutdown() {
 	close(hub.waitStop)
 }
 
-func (hub *Hub[T]) IsShutdown() bool {
+func (hub *Hub) IsShutdown() bool {
 	return hub.isStopped.Load()
 }
 
-func (hub *Hub[T]) WaitShutdown() chan struct{} {
+func (hub *Hub) WaitShutdown() chan struct{} {
 	return hub.waitStop
 }
 
-func (hub *Hub[T]) UpdateByOldKey(oldKey string, update func(T) (freshKey string)) error {
+func (hub *Hub) UpdateByOldKey(oldKey string, update func(IAdapter) (freshKey string)) error {
 	value, ok := hub.collections.LoadAndDelete(oldKey)
 	if !ok {
 		return ErrorWrapWithMessage(ErrNotFound, "key=%v not exist in hub", oldKey)
 	}
 
-	obj := value.(T)
-	freshKey := update(obj)
-	return hub.Join(freshKey, obj)
+	adp := value.(IAdapter)
+	freshKey := update(adp)
+	return hub.Join(freshKey, adp)
 }
 
-func (hub *Hub[T]) FindByKey(key string) (obj T, found bool) {
+func (hub *Hub) FindByKey(key string) (adp IAdapter, found bool) {
 	value, ok := hub.collections.Load(key)
 	if ok {
-		return value.(T), true
+		return value.(IAdapter), true
 	}
-	return obj, false
+	return adp, false
 }
 
 // If filter returns true, find target
-func (hub *Hub[T]) FindOne(filter func(T) bool) (obj T, found bool) {
-	var target T
-	hub.DoSync(func(obj T) (stop bool) {
-		if filter(obj) {
-			target = obj
+func (hub *Hub) FindOne(filter func(IAdapter) bool) (adp IAdapter, found bool) {
+	var target IAdapter
+	hub.DoSync(func(adp IAdapter) (stop bool) {
+		if filter(adp) {
+			target = adp
 			found = true
 			return true
 		}
@@ -92,37 +90,37 @@ func (hub *Hub[T]) FindOne(filter func(T) bool) (obj T, found bool) {
 }
 
 // If filter returns true, find target
-func (hub *Hub[T]) FindMulti(filter func(T) bool) (all []T, found bool) {
-	all = make([]T, 0)
-	hub.DoSync(func(obj T) bool {
-		if filter(obj) {
-			all = append(all, obj)
+func (hub *Hub) FindMulti(filter func(IAdapter) bool) (all []IAdapter, found bool) {
+	all = make([]IAdapter, 0)
+	hub.DoSync(func(adp IAdapter) bool {
+		if filter(adp) {
+			all = append(all, adp)
 		}
 		return false
 	})
 	return all, len(all) > 0
 }
 
-func (hub *Hub[T]) FindMultiByKey(keys []string) (all []T, found bool) {
-	all = make([]T, 0)
+func (hub *Hub) FindMultiByKey(keys []string) (all []IAdapter, found bool) {
+	all = make([]IAdapter, 0)
 	for i := 0; i < len(keys); i++ {
-		obj, ok := hub.FindByKey(keys[i])
+		adp, ok := hub.FindByKey(keys[i])
 		if ok {
-			all = append(all, obj)
+			all = append(all, adp)
 		}
 	}
 	return all, len(all) > 0
 }
 
-func (hub *Hub[T]) RemoveByKey(key string) {
+func (hub *Hub) RemoveByKey(key string) {
 	hub.remove(key)
 }
 
 // If filter returns true, remove target
-func (hub *Hub[T]) RemoveOne(filter func(T) bool) {
+func (hub *Hub) RemoveOne(filter func(IAdapter) bool) {
 	hub.collections.Range(func(key, value any) bool {
-		obj := value.(T)
-		if filter(obj) {
+		adp := value.(IAdapter)
+		if filter(adp) {
 			hub.remove(key.(string))
 			return false
 		}
@@ -131,36 +129,36 @@ func (hub *Hub[T]) RemoveOne(filter func(T) bool) {
 }
 
 // If filter returns true, remove target
-func (hub *Hub[T]) RemoveMulti(filter func(T) bool) {
+func (hub *Hub) RemoveMulti(filter func(IAdapter) bool) {
 	hub.collections.Range(func(key, value any) bool {
-		obj := value.(T)
-		if filter(obj) {
+		adp := value.(IAdapter)
+		if filter(adp) {
 			hub.remove(key.(string))
 		}
 		return true
 	})
 }
 
-func (hub *Hub[T]) RemoveMultiByKey(keys []string) {
+func (hub *Hub) RemoveMultiByKey(keys []string) {
 	for i := 0; i < len(keys); i++ {
 		hub.remove(keys[i])
 	}
 }
 
-func (hub *Hub[T]) remove(key string) {
-	obj, loaded := hub.collections.LoadAndDelete(key)
+func (hub *Hub) remove(key string) {
+	adp, loaded := hub.collections.LoadAndDelete(key)
 	if !loaded {
 		return
 	}
-	hub.stopObj(obj.(T))
+	adp.(IAdapter).Stop()
 }
 
 // DoSync
 // If action returns stop=true, stops the iteration.
-func (hub *Hub[T]) DoSync(action func(T) (stop bool)) {
+func (hub *Hub) DoSync(action func(IAdapter) (stop bool)) {
 	hub.collections.Range(func(_, value any) bool {
-		obj := value.(T)
-		stop := action(obj)
+		adp := value.(IAdapter)
+		stop := action(adp)
 		if stop {
 			return false
 		}
@@ -168,12 +166,12 @@ func (hub *Hub[T]) DoSync(action func(T) (stop bool)) {
 	})
 }
 
-func (hub *Hub[T]) DoAsync(action func(T)) {
+func (hub *Hub) DoAsync(action func(IAdapter)) {
 	hub.collections.Range(func(_, value any) bool {
-		obj := value.(T)
+		adp := value.(IAdapter)
 
 		if hub.concurrencyQty.Load() <= 0 {
-			go action(obj)
+			go action(adp)
 			return true
 		}
 
@@ -182,7 +180,7 @@ func (hub *Hub[T]) DoAsync(action func(T)) {
 			defer func() {
 				<-hub.bucket
 			}()
-			action(obj)
+			action(adp)
 		}()
 
 		return true
@@ -191,10 +189,10 @@ func (hub *Hub[T]) DoAsync(action func(T)) {
 
 // Count
 // If filter returns true, increase count
-func (hub *Hub[T]) Count(filter func(T) bool) int {
+func (hub *Hub) Count(filter func(IAdapter) bool) int {
 	cnt := 0
-	hub.DoSync(func(obj T) bool {
-		if filter(obj) {
+	hub.DoSync(func(adp IAdapter) bool {
+		if filter(adp) {
 			cnt++
 		}
 		return false
@@ -202,15 +200,15 @@ func (hub *Hub[T]) Count(filter func(T) bool) int {
 	return cnt
 }
 
-func (hub *Hub[T]) Total() int {
-	filter := func(t T) bool { return true }
+func (hub *Hub) Total() int {
+	filter := func(t IAdapter) bool { return true }
 	return hub.Count(filter)
 }
 
 // SetConcurrencyQty
 // concurrencyQty controls how many tasks can run simultaneously,
 // preventing resource usage or avoid frequent context switches.
-func (hub *Hub[T]) SetConcurrencyQty(concurrencyQty int) {
+func (hub *Hub) SetConcurrencyQty(concurrencyQty int) {
 	hub.concurrencyQty.Store(int32(concurrencyQty))
 	hub.bucket = make(chan struct{}, hub.concurrencyQty.Load())
 }

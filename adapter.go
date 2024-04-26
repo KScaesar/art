@@ -5,12 +5,6 @@ import (
 	"sync/atomic"
 )
 
-func NewAdapterHub() *Hub[IAdapter] {
-	return NewHub(func(adp IAdapter) {
-		adp.Stop()
-	})
-}
-
 type AdapterHub interface {
 	Join(adapterId string, adp IAdapter) error
 	RemoveOne(filter func(IAdapter) bool)
