@@ -93,6 +93,14 @@ func New{{.FileName}}Egress(subject {{.Subject}}, message any) *{{.FileName}}Egr
 	}
 }
 
+func New{{.FileName}EgressWithBytes(subject {{.Subject}}, bMessage []byte) *{{.FileName}Egress {
+	return &{{.FileName}Egress{
+		Bytes:    bMessage,
+		Subject:  subject,
+		Metadata: make(map[string]any),
+	}
+}
+
 type {{.FileName}}Egress struct {
 	Bytes []byte
 
@@ -102,8 +110,7 @@ type {{.FileName}}Egress struct {
 	msgId    string
 	Metadata maputil.Data
 
-	Logger Artifex.Logger
-	ctx    context.Context
+	ctx context.Context
 }
 
 func (e *{{.FileName}}Egress) MsgId() string {
@@ -243,24 +250,10 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter Artifex.IAdapter, err er
 		return nil
 	}
 	waitPong := make(chan error, 1)
-	f.IngressMux.Handler("", func(_ *{{.FileName}}Ingress, dep any, _ *Artifex.RouteParam) error {
-		if f.PrintPingPong {
-			dep.(Artifex.IAdapter).Log().Info("ack pong")
-		}
-		waitPong <- nil
-		return nil
-	})
 	opt.SendPing(sendPing, waitPong, f.SendPingSeconds*2)
 
 	// wait ping, send pong
 	waitPing := make(chan error, 1)
-	f.IngressMux.Handler("", func(_ *{{.FileName}}Ingress, dep any, _ *Artifex.RouteParam) error {
-		if f.PrintPingPong {
-			dep.(Artifex.IAdapter).Log().Info("ack ping")
-		}
-		waitPing <- nil
-		return nil
-	})
 	sendPong := func(adp Artifex.IAdapter) error {
 		if f.PrintPingPong {
 			adp.(Artifex.IAdapter).Log().Info("send pong")
@@ -280,14 +273,19 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter Artifex.IAdapter, err er
 	})
 
 	opt.AdapterSend(func(logger Artifex.Logger, message *{{.FileName}}Egress) (err error) {
+		// 考慮到 broadcast 情境
+		// 因為都是同一個 message
+		// middleware 會重複運算
+		// 不僅無法取得正確 loger 且 造成 crypto 和 encoding 會重複進行
+		logger = logger.WithKeyValue("msg_id", message.MsgId())
 		mu.Lock()
 		defer mu.Unlock()
 
 		if err != nil {
-			message.Logger.Error("send %q: %v", message.Subject, err)
+			logger.Error("send %q: %v", message.Subject, err)
 			return
 		}
-		message.Logger.Info("send %q ok", message.Subject)
+		logger.Info("send %q ok", message.Subject)
 		return 
 	})
 
