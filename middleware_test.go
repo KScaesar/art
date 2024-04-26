@@ -10,22 +10,24 @@ import (
 	"time"
 )
 
-func TestMW_Retry(t *testing.T) {
-	mw := Use[string]{}
+func TestUse_Retry(t *testing.T) {
+	use := Use{}
 
 	start := time.Now()
 
-	msg := "task fail"
+	msg := Message{
+		Subject: "Rtry",
+	}
 	retryMaxSecond := 20
-	task := func(dependency any, message *string, route *RouteParam) error {
+	task := func(message *Message, dependency any) error {
 		diff := time.Now().Sub(start)
-		fmt.Println(*message, diff)
+		fmt.Println(message.Subject, diff)
 		if diff > 5*time.Second {
 			return nil
 		}
-		return errors.New(msg)
+		return errors.New("timeout")
 	}
-	err := LinkMiddlewares(task, mw.Retry(retryMaxSecond))(nil, &msg, nil)
+	err := LinkMiddlewares(task, use.Retry(retryMaxSecond))(&msg, nil)
 	if err != nil {
 		t.Errorf("unexpected output: %v", err)
 	}
