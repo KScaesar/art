@@ -10,6 +10,22 @@ type AdapterHub interface {
 	RemoveOne(filter func(IAdapter) bool)
 }
 
+type RedisPubSub interface {
+	IAdapter
+	Send(messages ...*Message) error
+	Listen() (err error)
+}
+
+type RedisPublisher interface {
+	IAdapter
+	Send(messages ...*Message) error
+}
+
+type RedisSubscriber interface {
+	IAdapter
+	Listen() (err error)
+}
+
 type IAdapter interface {
 	Identifier() string
 	Log() Logger
@@ -20,11 +36,11 @@ type IAdapter interface {
 	WaitStop() chan struct{} // WaitStop is used for event push
 }
 
-type Adapter[Ingress, Egress any] struct {
-	ingressMux  *Mux[Ingress]
-	adapterRecv func(Logger) (*Ingress, error)
-	egressMux   *Mux[Egress]
-	adapterSend func(Logger, *Egress) error
+type Adapter struct {
+	ingressMux  *Mux
+	adapterRecv func(Logger) (*Message, error)
+	egressMux   *Mux
+	adapterSend func(Logger, *Message) error
 	adapterStop func(Logger) error
 
 	// WaitPingSendPong or SendPingWaitPong
@@ -44,15 +60,15 @@ type Adapter[Ingress, Egress any] struct {
 	waitStop  chan struct{}
 }
 
-func (adp *Adapter[Ingress, Egress]) Log() Logger {
+func (adp *Adapter) Log() Logger {
 	return adp.logger
 }
 
-func (adp *Adapter[Ingress, Egress]) SetLog(logger Logger) {
+func (adp *Adapter) SetLog(logger Logger) {
 	adp.logger = logger
 }
 
-func (adp *Adapter[Ingress, Egress]) pingpong() {
+func (adp *Adapter) pingpong() {
 	go func() {
 		if adp.pp == nil {
 			return
@@ -82,13 +98,13 @@ func (adp *Adapter[Ingress, Egress]) pingpong() {
 	}()
 }
 
-func (adp *Adapter[Ingress, Egress]) Identifier() string { return adp.identifier }
+func (adp *Adapter) Identifier() string { return adp.identifier }
 
-func (adp *Adapter[Ingress, Egress]) OnStop(terminates ...func(adp IAdapter)) {
+func (adp *Adapter) OnStop(terminates ...func(adp IAdapter)) {
 	adp.lifecycle.OnStop(terminates...)
 }
 
-func (adp *Adapter[Ingress, Egress]) Listen() (err error) {
+func (adp *Adapter) Listen() (err error) {
 	if adp.adapterSend == nil {
 		select {
 		case <-adp.WaitStop():
@@ -127,7 +143,7 @@ func (adp *Adapter[Ingress, Egress]) Listen() (err error) {
 	return <-adp.recvResult
 }
 
-func (adp *Adapter[Ingress, Egress]) listen() error {
+func (adp *Adapter) listen() error {
 	for !adp.isStopped.Load() {
 		ingress, err := adp.adapterRecv(adp.logger)
 
@@ -143,7 +159,7 @@ func (adp *Adapter[Ingress, Egress]) listen() error {
 			continue
 		}
 
-		err = adp.ingressMux.HandleMessage(ingress, adp.application, nil)
+		err = adp.ingressMux.HandleMessage(ingress, adp.application)
 		if err != nil {
 
 		}
@@ -151,7 +167,7 @@ func (adp *Adapter[Ingress, Egress]) listen() error {
 	return nil
 }
 
-func (adp *Adapter[Ingress, Egress]) Send(messages ...*Egress) error {
+func (adp *Adapter) Send(messages ...*Message) error {
 	if adp.isStopped.Load() {
 		return ErrorWrapWithMessage(ErrClosed, "Artifex Adapter Send")
 	}
@@ -160,7 +176,7 @@ func (adp *Adapter[Ingress, Egress]) Send(messages ...*Egress) error {
 		var err error
 		switch {
 		case adp.egressMux != nil && adp.adapterSend != nil:
-			err = adp.egressMux.HandleMessage(egress, adp.application, nil)
+			err = adp.egressMux.HandleMessage(egress, adp.application)
 			if err != nil {
 				return err
 			}
@@ -169,7 +185,7 @@ func (adp *Adapter[Ingress, Egress]) Send(messages ...*Egress) error {
 				return err
 			}
 		case adp.egressMux != nil && adp.adapterSend == nil:
-			err = adp.egressMux.HandleMessage(egress, adp.application, nil)
+			err = adp.egressMux.HandleMessage(egress, adp.application)
 			if err != nil {
 				return err
 			}
@@ -184,7 +200,7 @@ func (adp *Adapter[Ingress, Egress]) Send(messages ...*Egress) error {
 	return nil
 }
 
-func (adp *Adapter[Ingress, Egress]) Stop() error {
+func (adp *Adapter) Stop() error {
 	if adp.isStopped.Swap(true) {
 		return ErrorWrapWithMessage(ErrClosed, "repeated execute stop")
 	}
@@ -203,6 +219,6 @@ func (adp *Adapter[Ingress, Egress]) Stop() error {
 	return err
 }
 
-func (adp *Adapter[Ingress, Egress]) IsStopped() bool { return adp.isStopped.Load() }
+func (adp *Adapter) IsStopped() bool { return adp.isStopped.Load() }
 
-func (adp *Adapter[Ingress, Egress]) WaitStop() chan struct{} { return adp.waitStop }
+func (adp *Adapter) WaitStop() chan struct{} { return adp.waitStop }

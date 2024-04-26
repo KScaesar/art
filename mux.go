@@ -3,100 +3,23 @@ package Artifex
 import (
 	"strconv"
 	"sync"
-
-	"github.com/gookit/goutil/maputil"
 )
 
-var routeParamPool = newPool(func() *RouteParam {
-	return &RouteParam{make(maputil.Data)}
-})
-
-// RouteParam are used to capture values from subject.
-// These parameters represent resources or identifiers.
 //
-// Example:
-//
-//	define subject = "/users/{id}"
-//	ingress message subject = /users/1017
-//
-//	route:
-//		key : value
-//	→	id  : 1017
-type RouteParam struct {
-	maputil.Data
-}
-
-func (r *RouteParam) reset() {
-	for k := range r.Data {
-		delete(r.Data, k)
-	}
-}
-
-type HandleFunc[Message any] func(message *Message, dependency any, route *RouteParam) error
-
-func (h HandleFunc[Message]) PreMiddleware() Middleware[Message] {
-	return func(next HandleFunc[Message]) HandleFunc[Message] {
-		return func(message *Message, dep any, route *RouteParam) error {
-			err := h(message, dep, route)
-			if err != nil {
-				return err
-			}
-			return next(message, dep, route)
-		}
-	}
-}
-
-func (h HandleFunc[Message]) PostMiddleware() Middleware[Message] {
-	return func(next HandleFunc[Message]) HandleFunc[Message] {
-		return func(message *Message, dep any, route *RouteParam) error {
-			err := next(message, dep, route)
-			if err != nil {
-				return err
-			}
-			return h(message, dep, route)
-		}
-	}
-}
-
-func (h HandleFunc[Message]) LinkMiddlewares(middlewares ...Middleware[Message]) HandleFunc[Message] {
-	return LinkMiddlewares(h, middlewares...)
-}
-
-type Middleware[Message any] func(next HandleFunc[Message]) HandleFunc[Message]
-
-func (mw Middleware[Message]) HandleFunc() HandleFunc[Message] {
-	return LinkMiddlewares(HandleSkip[Message](), mw)
-}
-
-func LinkMiddlewares[Message any](handler HandleFunc[Message], middlewares ...Middleware[Message]) HandleFunc[Message] {
-	n := len(middlewares)
-	for i := n - 1; 0 <= i; i-- {
-		decorator := middlewares[i]
-		handler = decorator(handler)
-	}
-	return handler
-}
-
-//
-
-type NewSubjectFunc[Message any] func(*Message) string
 
 // NewMux
 // If routeDelimiter is an empty string, RouteParam cannot be used.
 // routeDelimiter can only be set to a string of length 1.
 // this parameter determines the delimiter used between different parts of the route.
-func NewMux[Message any](routeDelimiter string, getSubject NewSubjectFunc[Message]) *Mux[Message] {
+func NewMux(routeDelimiter string) *Mux {
 	if len(routeDelimiter) > 1 {
 		panic("routeDelimiter can only be set to a string of length 1.")
 	}
 
-	mux := &Mux[Message]{
-		node:            newTrie[Message](routeDelimiter),
-		routeDelimiter:  routeDelimiter,
-		enableRoutePool: true,
+	var mux = &Mux{
+		node:           newTrie(routeDelimiter),
+		routeDelimiter: routeDelimiter,
 	}
-
-	mux.SubjectFunc(getSubject)
 	return mux
 }
 
@@ -104,79 +27,68 @@ func NewMux[Message any](routeDelimiter string, getSubject NewSubjectFunc[Messag
 // Itself is also a HandleFunc, but with added routing capabilities.
 //
 // Message represents a high-level abstraction data structure containing metadata (e.g. header) + body
-type Mux[Message any] struct {
-	node           *trie[Message]
+type Mux struct {
+	node           *trie
 	routeDelimiter string
-
-	handleError Middleware[Message]
-
-	messagePool     *sync.Pool
-	resetMessage    func(*Message)
-	enableRoutePool bool
+	handleError    func(message *Message, dependency any, err error) error
+	messagePool    *sync.Pool
+	resetMessage   func(*Message)
 }
 
 // HandleMessage to handle various messages
 //
 // - route parameter can nil
-func (mux *Mux[Message]) HandleMessage(message *Message, dependency any, route *RouteParam) (err error) {
+func (mux *Mux) HandleMessage(message *Message, dependency any) (err error) {
 	if mux.messagePool != nil {
 		defer func() {
-			mux.resetMessage(message)
+			if mux.resetMessage != nil {
+				mux.resetMessage(message)
+			} else {
+				message.reset()
+			}
 			mux.messagePool.Put(message)
 		}()
 	}
 
-	if route == nil && mux.enableRoutePool {
-		route = routeParamPool.Get()
-		defer func() {
-			route.reset()
-			routeParamPool.Put(route)
-		}()
-	}
-
 	if mux.handleError != nil {
-		defer func() {
-			h := func(_ *Message, _ any, _ *RouteParam) error { return err }
-			err = LinkMiddlewares(h, mux.handleError)(message, dependency, route)
-		}()
+		return mux.handleError(message, dependency, err)
 	}
 
 	if mux.node.transform != nil {
-		return mux.node.handleMessage("", 0, message, dependency, route)
+		return mux.node.handleMessage("", 0, message, dependency)
 	}
 
-	subject := mux.node.getSubject(message)
-	return mux.node.handleMessage(subject, 0, message, dependency, route)
+	return mux.node.handleMessage(message.Subject, 0, message, dependency)
 }
 
 // Middleware
 // Before registering handler, middleware must be defined; otherwise, the handler won't be able to use middleware.
-func (mux *Mux[Message]) Middleware(middlewares ...Middleware[Message]) *Mux[Message] {
-	param := &paramHandler[Message]{
+func (mux *Mux) Middleware(middlewares ...Middleware) *Mux {
+	param := &paramHandler{
 		middlewares: middlewares,
 	}
 
-	mux.node.addRoute("", 0, param, &pathHandler[Message]{})
+	mux.node.addRoute("", 0, param, &pathHandler{})
 	return mux
 }
 
-func (mux *Mux[Message]) PreMiddleware(handleFuncs ...HandleFunc[Message]) *Mux[Message] {
-	param := &paramHandler[Message]{}
+func (mux *Mux) PreMiddleware(handleFuncs ...HandleFunc) *Mux {
+	param := &paramHandler{}
 	for _, h := range handleFuncs {
 		param.middlewares = append(param.middlewares, h.PreMiddleware())
 	}
 
-	mux.node.addRoute("", 0, param, &pathHandler[Message]{})
+	mux.node.addRoute("", 0, param, &pathHandler{})
 	return mux
 }
 
-func (mux *Mux[Message]) PostMiddleware(handleFuncs ...HandleFunc[Message]) *Mux[Message] {
-	param := &paramHandler[Message]{}
+func (mux *Mux) PostMiddleware(handleFuncs ...HandleFunc) *Mux {
+	param := &paramHandler{}
 	for _, h := range handleFuncs {
 		param.middlewares = append(param.middlewares, h.PostMiddleware())
 	}
 
-	mux.node.addRoute("", 0, param, &pathHandler[Message]{})
+	mux.node.addRoute("", 0, param, &pathHandler{})
 	return mux
 }
 
@@ -184,26 +96,17 @@ func (mux *Mux[Message]) PostMiddleware(handleFuncs ...HandleFunc[Message]) *Mux
 // Originally, the message passed through the mux would only call 'getSubject' once.
 // However, if there is a definition of Transform,
 // when the message passes through the Transform function, 'getSubject' will be called again.
-func (mux *Mux[Message]) Transform(transform HandleFunc[Message]) *Mux[Message] {
-	param := &paramHandler[Message]{
+func (mux *Mux) Transform(transform HandleFunc) *Mux {
+	param := &paramHandler{
 		transform: transform,
 	}
 
-	mux.node.addRoute("", 0, param, &pathHandler[Message]{})
+	mux.node.addRoute("", 0, param, &pathHandler{})
 	return mux
 }
 
-func (mux *Mux[Message]) SubjectFunc(getSubject NewSubjectFunc[Message]) *Mux[Message] {
-	param := &paramHandler[Message]{
-		getSubject: getSubject,
-	}
-
-	mux.node.addRoute("", 0, param, &pathHandler[Message]{})
-	return mux
-}
-
-func (mux *Mux[Message]) Handler(subject string, h HandleFunc[Message], mw ...Middleware[Message]) *Mux[Message] {
-	param := &paramHandler[Message]{
+func (mux *Mux) Handler(subject string, h HandleFunc, mw ...Middleware) *Mux {
+	param := &paramHandler{
 		handler: h,
 	}
 	if mw != nil {
@@ -211,25 +114,24 @@ func (mux *Mux[Message]) Handler(subject string, h HandleFunc[Message], mw ...Mi
 		param.handlerName = functionName(h)
 	}
 
-	mux.node.addRoute(subject, 0, param, &pathHandler[Message]{})
+	mux.node.addRoute(subject, 0, param, &pathHandler{})
 	return mux
 }
 
-func (mux *Mux[Message]) HandlerByNumber(subject int, h HandleFunc[Message], mw ...Middleware[Message]) *Mux[Message] {
+func (mux *Mux) HandlerByNumber(subject int, h HandleFunc, mw ...Middleware) *Mux {
 	return mux.Handler(strconv.Itoa(subject)+mux.routeDelimiter, h, mw...)
 }
 
-func (mux *Mux[Message]) Group(groupName string) *Mux[Message] {
-	groupNode := mux.node.addRoute(groupName, 0, nil, &pathHandler[Message]{})
-	return &Mux[Message]{
+func (mux *Mux) Group(groupName string) *Mux {
+	groupNode := mux.node.addRoute(groupName, 0, nil, &pathHandler{})
+	return &Mux{
 		node:           groupNode,
 		routeDelimiter: mux.routeDelimiter,
 		messagePool:    mux.messagePool,
-		resetMessage:   mux.resetMessage,
 	}
 }
 
-func (mux *Mux[Message]) GroupByNumber(groupName int) *Mux[Message] {
+func (mux *Mux) GroupByNumber(groupName int) *Mux {
 	return mux.Group(strconv.Itoa(groupName) + mux.routeDelimiter)
 }
 
@@ -239,8 +141,8 @@ func (mux *Mux[Message]) GroupByNumber(groupName int) *Mux[Message] {
 // "The difference between 'Default' and 'NotFound' is
 // that the 'Default' handler will utilize middleware,
 // whereas 'NotFound' won't use middleware."
-func (mux *Mux[Message]) DefaultHandler(h HandleFunc[Message], mw ...Middleware[Message]) *Mux[Message] {
-	param := &paramHandler[Message]{
+func (mux *Mux) DefaultHandler(h HandleFunc, mw ...Middleware) *Mux {
+	param := &paramHandler{
 		defaultHandler: h,
 	}
 	if mw != nil {
@@ -248,7 +150,7 @@ func (mux *Mux[Message]) DefaultHandler(h HandleFunc[Message], mw ...Middleware[
 		param.defaultHandlerName = functionName(h)
 	}
 
-	mux.node.addRoute("", 0, param, &pathHandler[Message]{})
+	mux.node.addRoute("", 0, param, &pathHandler{})
 	return mux
 }
 
@@ -258,33 +160,29 @@ func (mux *Mux[Message]) DefaultHandler(h HandleFunc[Message], mw ...Middleware[
 // "The difference between 'Default' and 'NotFound' is
 // that the 'Default' handler will utilize middleware,
 // whereas 'NotFound' won't use middleware."
-func (mux *Mux[Message]) NotFoundHandler(h HandleFunc[Message]) *Mux[Message] {
-	param := &paramHandler[Message]{
+func (mux *Mux) NotFoundHandler(h HandleFunc) *Mux {
+	param := &paramHandler{
 		notFoundHandler: h,
 	}
 
-	path := &pathHandler[Message]{}
+	path := &pathHandler{}
 	mux.node.addRoute("", 0, param, path)
 	return mux
 }
 
-func (mux *Mux[Message]) ErrorHandler(handleError Middleware[Message]) *Mux[Message] {
+func (mux *Mux) ErrorHandler(handleError func(message *Message, dependency any, err error) error) *Mux {
 	mux.handleError = handleError
 	return mux
 }
 
-func (mux *Mux[Message]) MessagePool(pool *sync.Pool, reset func(*Message)) *Mux[Message] {
+func (mux *Mux) MessagePool(pool *sync.Pool, reset func(*Message)) *Mux {
 	mux.messagePool = pool
 	mux.resetMessage = reset
 	return mux
 }
 
-func (mux *Mux[Message]) DisableRoutePool() {
-	mux.enableRoutePool = false
-}
-
 // Endpoints get register handler function information
-func (mux *Mux[Message]) Endpoints(action func(subject, handler string)) {
+func (mux *Mux) Endpoints(action func(subject, handler string)) {
 	for _, v := range mux.node.endpoint() {
 		action(v[0], v[1])
 	}

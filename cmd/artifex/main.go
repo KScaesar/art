@@ -12,20 +12,18 @@ func main() {
 	if !ok {
 		return
 	}
-	OpenFileAndRenderTemplate(tmpl, "message", MsgTmpl)
 	OpenFileAndRenderTemplate(tmpl, "adapter", AdapterTmpl)
 }
 
 func PrintHelp(detail bool) {
 	const example = `help: 
-    artifex gen -dir  ./    -pkg  infra    -f  kafka -s  Topic
-    artifex gen -dir {Path} -pkg {Package} -f {File} -s {Subject}
+    artifex gen -dir  ./    -pkg  infra    -f  kafka 
+    artifex gen -dir {Path} -pkg {Package} -f {File} 
 `
 	const text = `
 -dir  Generate code to dir
 -f    File prefix name
 -pkg  Package name
--s    Subject name
 `
 
 	if !detail {
@@ -51,12 +49,10 @@ func LoadDataFromCli(tmpl *Template) bool {
 		var dir string
 		var pkg string
 		var file string
-		var subject string
 
 		cmdGen.StringVar(&dir, "dir", "./", "Generate code to dir")
 		cmdGen.StringVar(&pkg, "pkg", "main", "Package name")
 		cmdGen.StringVar(&file, "f", "", "File prefix name")
-		cmdGen.StringVar(&subject, "s", "Subject", "Subject name")
 		help := cmdGen.Bool("h", false, "Help")
 
 		if cmdGen.Parse(os.Args[2:]) != nil {
@@ -71,7 +67,6 @@ func LoadDataFromCli(tmpl *Template) bool {
 		tmpl.FileDir = dir
 		tmpl.FileName = file
 		tmpl.Package = pkg
-		tmpl.Subject = subject
 		return true
 
 	default:
@@ -121,7 +116,6 @@ type Template struct {
 	FileDir  string
 	FileName string
 	Package  string
-	Subject  string
 }
 
 func (t *Template) Path(postfix string) string {

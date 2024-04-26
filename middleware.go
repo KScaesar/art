@@ -5,59 +5,46 @@ import (
 	"runtime/debug"
 )
 
-type MW[Message any] struct {
-	Logger Logger
+type Use struct {
+	Logger func(dependency any) Logger
 }
 
-func (mw MW[Message]) Recover() Middleware[Message] {
-	if mw.Logger == nil {
-		mw.Logger = DefaultLogger()
-	}
-
-	return func(next HandleFunc[Message]) HandleFunc[Message] {
-		return func(message *Message, dep any, route *RouteParam) error {
+func (use Use) Recover() Middleware {
+	return func(next HandleFunc) HandleFunc {
+		return func(message *Message, dep any) error {
+			logger := use.Logger(dep)
 
 			defer func() {
 				if r := recover(); r != nil {
-					mw.Logger.Error("recovered from panic: %v", r)
-					mw.Logger.Error("call stack: %v", string(debug.Stack()))
+					logger.Error("recovered from panic: %v", r)
+					logger.Error("call stack: %v", string(debug.Stack()))
 				}
 			}()
 
-			return next(message, dep, route)
+			return next(message, dep)
 		}
 	}
 }
 
-func (mw MW[Message]) PrintError(getSubject NewSubjectFunc[Message]) Middleware[Message] {
-	if mw.Logger == nil {
-		mw.Logger = DefaultLogger()
-	}
+func (use Use) PrintError() func(message *Message, dep any, err error) error {
+	return func(message *Message, dep any, err error) error {
+		subject := message.Subject
+		logger := use.Logger(dep)
 
-	return func(next HandleFunc[Message]) HandleFunc[Message] {
-		return func(message *Message, dep any, route *RouteParam) error {
-			subject := getSubject(message)
-
-			err := next(message, dep, route)
-			if err != nil {
-				mw.Logger.Error("handle %v fail: %v", subject, err)
-			}
-			mw.Logger.Info("handle %v ok", subject)
-
-			return nil
+		if err != nil {
+			logger.Error("handle %v: %v", subject, err)
 		}
+		logger.Info("handle %v ok", subject)
+
+		return nil
 	}
 }
 
-func (mw MW[Message]) Retry(retryMaxSecond int) Middleware[Message] {
-	if mw.Logger == nil {
-		mw.Logger = DefaultLogger()
-	}
-
-	return func(next HandleFunc[Message]) HandleFunc[Message] {
-		return func(message *Message, dep any, route *RouteParam) error {
+func (use Use) Retry(retryMaxSecond int) Middleware {
+	return func(next HandleFunc) HandleFunc {
+		return func(message *Message, dep any) error {
 			task := func() error {
-				return next(message, dep, route)
+				return next(message, dep)
 			}
 			taskCanStop := func() bool {
 				return false
@@ -67,37 +54,30 @@ func (mw MW[Message]) Retry(retryMaxSecond int) Middleware[Message] {
 	}
 }
 
-func (mw MW[Message]) ExcludedSubject(excludeSubjects []string, getSubject NewSubjectFunc[Message]) Middleware[Message] {
-	if mw.Logger == nil {
-		mw.Logger = DefaultLogger()
+func (use Use) ExcludedSubject(subjects []string) Middleware {
+	excluded := make(map[string]bool, len(subjects))
+	for i := 0; i < len(subjects); i++ {
+		excluded[subjects[i]] = true
 	}
 
-	excluded := make(map[string]bool, len(excludeSubjects))
-	for i := 0; i < len(excluded); i++ {
-		excluded[excludeSubjects[i]] = true
-	}
-
-	return func(next HandleFunc[Message]) HandleFunc[Message] {
-		return func(message *Message, dep any, route *RouteParam) error {
-			subject := getSubject(message)
-			if excluded[subject] {
+	return func(next HandleFunc) HandleFunc {
+		return func(message *Message, dep any) error {
+			if excluded[message.Subject] {
 				return nil
 			}
-			return next(message, dep, route)
+			return next(message, dep)
 		}
 	}
 }
 
-func HandlePrintDetail[Message any](
-	getSubject NewSubjectFunc[Message],
+func (use Use) PrintDetail(
 	newBody func(subject string) (any, bool),
-	getByteBody func(*Message) []byte,
 	unmarshal func(bBody []byte, body any) error,
-	logger Logger,
-) HandleFunc[Message] {
+) HandleFunc {
 
-	return func(message *Message, dep any, route *RouteParam) error {
-		subject := getSubject(message)
+	return func(message *Message, dep any) error {
+		subject := message.Subject
+		logger := use.Logger(dep)
 
 		if newBody == nil {
 			logger.Debug("print %v", subject)
@@ -110,7 +90,7 @@ func HandlePrintDetail[Message any](
 			return nil
 		}
 
-		bBody := getByteBody(message)
+		bBody := message.Bytes
 		err := unmarshal(bBody, body)
 		if err != nil {
 			return err
@@ -124,8 +104,4 @@ func HandlePrintDetail[Message any](
 		logger.Info("print %q: %T=%v\n\n", subject, body, string(bBody))
 		return nil
 	}
-}
-
-func HandleSkip[Message any]() HandleFunc[Message] {
-	return func(_ *Message, _ any, _ *RouteParam) error { return nil }
 }

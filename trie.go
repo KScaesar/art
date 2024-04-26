@@ -16,44 +16,36 @@ import (
 // https://hackmd.io/@fieliapm/BkHvJjYq3#/5/2
 //
 // middleware 依照定義的順序, 可以運用在不同的 HandleFunc
-// handle message 執行順序, 依照號碼 0~4
-type paramHandler[M any] struct {
+// handle message 執行順序, 依照號碼 0~3
+type paramHandler struct {
 	// any
-	middlewares []Middleware[M]
+	middlewares []Middleware
 
 	// 0
-	transform HandleFunc[M]
+	transform HandleFunc
 
 	// 1
-	getSubject NewSubjectFunc[M]
-
-	// 2
-	handler     HandleFunc[M]
+	handler     HandleFunc
 	handlerName string
 
-	// 3
-	defaultHandler     HandleFunc[M]
+	// 2
+	defaultHandler     HandleFunc
 	defaultHandlerName string
 
-	// 4
-	notFoundHandler HandleFunc[M] // not use middleware
+	// 3
+	notFoundHandler HandleFunc // not use middleware
 }
 
-func (param *paramHandler[M]) register(leafNode *trie[M], path *pathHandler[M]) error {
+func (param *paramHandler) register(leafNode *trie, path *pathHandler) error {
+	if param.middlewares != nil {
+		leafNode.middlewares = append(leafNode.middlewares, param.middlewares...)
+	}
+
 	if param.transform != nil {
 		if leafNode.transform != nil {
 			return errors.New("assign duplicated transform")
 		}
 		leafNode.transform = LinkMiddlewares(param.transform, path.middlewares...)
-		leafNode.getSubject = path.getSubject
-	}
-
-	if param.getSubject != nil {
-		leafNode.getSubject = param.getSubject
-	}
-
-	if param.middlewares != nil {
-		leafNode.middlewares = append(leafNode.middlewares, param.middlewares...)
 	}
 
 	if param.handler != nil {
@@ -96,45 +88,40 @@ func functionName(fn any) string {
 	return runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).Name()
 }
 
-type pathHandler[M any] struct {
-	getSubject  NewSubjectFunc[M]
-	middlewares []Middleware[M]
+type pathHandler struct {
+	middlewares []Middleware
 }
 
-func (path *pathHandler[M]) collect(pathNode *trie[M]) {
-	if pathNode.getSubject != nil {
-		path.getSubject = pathNode.getSubject
-	}
+func (path *pathHandler) collect(pathNode *trie) {
 	if pathNode.middlewares != nil {
 		path.middlewares = append(path.middlewares, pathNode.middlewares...)
 	}
 }
 
-func newTrie[M any](delimiter string) *trie[M] {
-	return &trie[M]{
-		staticChild: make(map[byte]*trie[M]),
+func newTrie(delimiter string) *trie {
+	return &trie{
+		staticChild: make(map[byte]*trie),
 		delimiter:   delimiter,
 	}
 }
 
-type trie[M any] struct {
-	staticChild map[byte]*trie[M] // key:value = char:child
+type trie struct {
+	staticChild map[byte]*trie // key : value => char : child
 
 	wildcardChildWord string
-	wildcardChild     *trie[M]
+	wildcardChild     *trie
 
 	delimiter   string
 	fullSubject string
-	paramHandler[M]
+	paramHandler
 }
 
-func (node *trie[M]) addRoute(subject string, cursor int, param *paramHandler[M], path *pathHandler[M]) *trie[M] {
+func (node *trie) addRoute(subject string, cursor int, param *paramHandler, path *pathHandler) *trie {
 	path.collect(node)
 
 	if len(subject) == cursor {
 		if param == nil { // for Mux.Group
-			param = &paramHandler[M]{
-				getSubject:  path.getSubject,
+			param = &paramHandler{
 				middlewares: path.middlewares,
 			}
 		}
@@ -152,7 +139,7 @@ func (node *trie[M]) addRoute(subject string, cursor int, param *paramHandler[M]
 	if char != '{' {
 		child, exist := node.staticChild[char]
 		if !exist {
-			child = newTrie[M](node.delimiter)
+			child = newTrie(node.delimiter)
 			child.fullSubject = node.fullSubject + string(char)
 			node.staticChild[char] = child
 		}
@@ -179,27 +166,27 @@ func (node *trie[M]) addRoute(subject string, cursor int, param *paramHandler[M]
 		panic(err)
 	}
 
-	child := newTrie[M](node.delimiter)
+	child := newTrie(node.delimiter)
 	child.fullSubject = node.fullSubject + subject[cursor:idx+1] // {word}, include {}
 	node.wildcardChildWord = subject[cursor+1 : idx]             // word, exclude {}
 	node.wildcardChild = child
 	return child.addRoute(subject, idx+1, param, path)
 }
 
-func (node *trie[M]) handleMessage(subject string, cursor int, message *M, dep any, route *RouteParam) (err error) {
+func (node *trie) handleMessage(subject string, cursor int, message *Message, dep any) (err error) {
 	current := node
 
-	var defaultHandler, notFoundHandler HandleFunc[M]
+	var defaultHandler, notFoundHandler HandleFunc
 	var wildcardStart int
-	var wildcardParent *trie[M]
+	var wildcardParent *trie
 
 	for cursor <= len(subject) {
 		if current.transform != nil {
-			err = current.transform(message, dep, route)
+			err = current.transform(message, dep)
 			if err != nil {
 				return err
 			}
-			subject = current.getSubject(message)
+			subject = message.Subject
 		}
 
 		if current.defaultHandler != nil {
@@ -229,14 +216,14 @@ func (node *trie[M]) handleMessage(subject string, cursor int, message *M, dep a
 
 	// for static route
 	if current.handler != nil {
-		return current.handler(message, dep, route)
+		return current.handler(message, dep)
 	}
 	if wildcardParent == nil {
 		if defaultHandler != nil {
-			return defaultHandler(message, dep, route)
+			return defaultHandler(message, dep)
 		}
 		if notFoundHandler != nil {
-			return notFoundHandler(message, dep, route)
+			return notFoundHandler(message, dep)
 		}
 		return ErrNotFoundSubject
 	}
@@ -247,15 +234,15 @@ func (node *trie[M]) handleMessage(subject string, cursor int, message *M, dep a
 		wildcardFinish++
 	}
 
-	route.Set(wildcardParent.wildcardChildWord, subject[wildcardStart:wildcardFinish])
+	message.RouteParam.Set(wildcardParent.wildcardChildWord, subject[wildcardStart:wildcardFinish])
 
-	err = wildcardParent.wildcardChild.handleMessage(subject, wildcardFinish, message, dep, route)
+	err = wildcardParent.wildcardChild.handleMessage(subject, wildcardFinish, message, dep)
 	if err != nil && errors.Is(err, ErrNotFoundSubject) {
 		if defaultHandler != nil {
-			return defaultHandler(message, dep, route)
+			return defaultHandler(message, dep)
 		}
 		if notFoundHandler != nil {
-			return notFoundHandler(message, dep, route)
+			return notFoundHandler(message, dep)
 		}
 		return ErrNotFoundSubject
 	}
@@ -263,7 +250,7 @@ func (node *trie[M]) handleMessage(subject string, cursor int, message *M, dep a
 }
 
 // pair = [subject, function]
-func (node *trie[M]) endpoint() (pairs [][2]string) {
+func (node *trie) endpoint() (pairs [][2]string) {
 	pairs = make([][2]string, 0)
 	node._endpoint_(&pairs)
 
@@ -273,7 +260,7 @@ func (node *trie[M]) endpoint() (pairs [][2]string) {
 	return
 }
 
-func (node *trie[M]) _endpoint_(paris *[][2]string) {
+func (node *trie) _endpoint_(paris *[][2]string) {
 	if node.handler != nil {
 		*paris = append(*paris, [2]string{node.fullSubject, node.handlerName})
 	}

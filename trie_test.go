@@ -5,20 +5,20 @@ import (
 )
 
 func Test_trie_endpoint(t *testing.T) {
-	node := newTrie[string]("/")
+	node := newTrie("/")
 
-	mw := &paramHandler[string]{middlewares: []Middleware[string]{endpoint_mw()}}
-	node.addRoute("", 0, mw, &pathHandler[string]{})
+	mw := &paramHandler{middlewares: []Middleware{endpoint_mw()}}
+	node.addRoute("", 0, mw, &pathHandler{})
 
-	defaultHandler := &paramHandler[string]{defaultHandler: endpoint_default}
-	node.addRoute("topic", 0, defaultHandler, &pathHandler[string]{})
+	defaultHandler := &paramHandler{defaultHandler: endpoint_default}
+	node.addRoute("topic", 0, defaultHandler, &pathHandler{})
 
-	handler1 := &paramHandler[string]{handler: endpoint1}
-	handler2 := &paramHandler[string]{handler: endpoint2}
-	node.addRoute("topic1/", 0, handler1, &pathHandler[string]{})
-	node.addRoute("topic2/users/", 0, handler2, &pathHandler[string]{})
-	node.addRoute("topic2/orders/", 0, handler2, &pathHandler[string]{})
-	node.addRoute("{topic}/game2/kindA/", 0, handler1, &pathHandler[string]{})
+	handler1 := &paramHandler{handler: endpoint1}
+	handler2 := &paramHandler{handler: endpoint2}
+	node.addRoute("topic1/", 0, handler1, &pathHandler{})
+	node.addRoute("topic2/users/", 0, handler2, &pathHandler{})
+	node.addRoute("topic2/orders/", 0, handler2, &pathHandler{})
+	node.addRoute("{topic}/game2/kindA/", 0, handler1, &pathHandler{})
 
 	expectedSubjects := []string{
 		"topic.*",
@@ -37,21 +37,21 @@ func Test_trie_endpoint(t *testing.T) {
 	}
 }
 
-func endpoint_default(_ *string, _ any, _ *RouteParam) error {
+func endpoint_default(_ *Message, _ any) error {
 	return nil
 }
 
-func endpoint1(_ *string, _ any, _ *RouteParam) error {
+func endpoint1(_ *Message, _ any) error {
 	return nil
 }
 
-func endpoint2(_ *string, _ any, _ *RouteParam) error {
+func endpoint2(_ *Message, _ any) error {
 	return nil
 }
 
-func endpoint_mw() Middleware[string] {
-	return func(next HandleFunc[string]) HandleFunc[string] {
-		return func(_ *string, _ any, _ *RouteParam) error {
+func endpoint_mw() Middleware {
+	return func(next HandleFunc) HandleFunc {
+		return func(_ *Message, _ any) error {
 			return nil
 		}
 	}

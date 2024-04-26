@@ -4,30 +4,20 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"strconv"
 	"testing"
 )
 
 func TestMessageMux_HandleMessage(t *testing.T) {
 	// arrange
-	type redisMessage struct {
-		ctx     context.Context
-		body    []byte
-		channel string
-	}
 	recorder := &bytes.Buffer{}
 
-	getSubject := func(message *redisMessage) string {
-		return message.channel
-	}
-
-	mux := NewMux[redisMessage]("", getSubject).
-		Handler("hello", func(dto *redisMessage, dep any, route *RouteParam) error {
-			fmt.Fprintf(recorder, "topic=%v, payload=%v", dto.channel, string(dto.body))
+	mux := NewMux("").
+		Handler("hello", func(message *Message, dep any) error {
+			fmt.Fprintf(recorder, "topic=%v, payload=%v", message.Subject, string(message.Bytes))
 			return nil
 		}).
-		Handler("foo", func(dto *redisMessage, dep any, route *RouteParam) error {
-			fmt.Fprintf(recorder, "topic=%v, payload=%v", dto.channel, string(dto.body))
+		Handler("foo", func(message *Message, dep any) error {
+			fmt.Fprintf(recorder, "topic=%v, payload=%v", message.Subject, string(message.Bytes))
 			return nil
 		})
 
@@ -35,12 +25,12 @@ func TestMessageMux_HandleMessage(t *testing.T) {
 	expected := `topic=hello, payload={"data":"world"}`
 
 	// paramHandler
-	dto := &redisMessage{
+	message := &Message{
 		ctx:     context.Background(),
-		body:    []byte(`{"data":"world"}`),
-		channel: "hello",
+		Bytes:   []byte(`{"data":"world"}`),
+		Subject: "hello",
 	}
-	err := mux.HandleMessage(dto, nil, nil)
+	err := mux.HandleMessage(message, nil)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -52,34 +42,29 @@ func TestMessageMux_HandleMessage(t *testing.T) {
 }
 
 func TestLinkMiddlewares_when_wildcard(t *testing.T) {
-	type testcaseMessage struct {
-		subject string
-		body    string
-	}
-
 	recorder := []string{}
-	newSubject := func(msg *testcaseMessage) string { return msg.subject }
-	mux := NewMux[testcaseMessage](".", newSubject)
+	mux := NewMux(".")
 
 	v1 := mux.Group("v1")
 
 	v1.
-		PreMiddleware(func(message *testcaseMessage, dep any, route *RouteParam) error {
-			message.body = "! " + message.body
+		PreMiddleware(func(message *Message, dep any) error {
+			message.Bytes = append([]byte("! "), message.Bytes...)
 			return nil
 		}).
-		Handler(".{kind}.book.{book_id}", func(message *testcaseMessage, dep any, _ *RouteParam) error {
-			recorder = append(recorder, message.body+" {kind}")
+		Handler(".{kind}.book.{book_id}", func(message *Message, dep any) error {
+			data := append(message.Bytes, []byte(" {kind}")...)
+			recorder = append(recorder, string(data))
 			return nil
 		})
 
 	v1.Group(".dev.book").
-		PreMiddleware(func(message *testcaseMessage, _ any, route *RouteParam) error {
-			message.body = "* " + message.body
+		PreMiddleware(func(message *Message, _ any) error {
+			message.Bytes = append([]byte("* "), message.Bytes...)
 			return nil
 		}).
-		Handler(".discount", func(message *testcaseMessage, _ any, _ *RouteParam) error {
-			recorder = append(recorder, message.body)
+		Handler(".discount", func(message *Message, _ any) error {
+			recorder = append(recorder, string(message.Bytes))
 			return nil
 		})
 
@@ -89,21 +74,21 @@ func TestLinkMiddlewares_when_wildcard(t *testing.T) {
 		"* ! v1.dev.book.discount",
 	}
 
-	messages := []*testcaseMessage{
-		{subject: "v1.devops.book.6263334908"},
-		{subject: "v1.dev.book.1449373321"},
-		{subject: "v1.dev.book.discount"},
+	messages := []*Message{
+		{Subject: "v1.devops.book.6263334908", RouteParam: map[string]any{}},
+		{Subject: "v1.dev.book.1449373321", RouteParam: map[string]any{}},
+		{Subject: "v1.dev.book.discount", RouteParam: map[string]any{}},
 	}
 
 	for i, message := range messages {
-		message.body = message.subject
-		err := mux.HandleMessage(message, nil, nil)
+		message.Bytes = []byte(message.Subject)
+		err := mux.HandleMessage(message, nil)
 		if err != nil {
-			t.Errorf("%v: unexpected error: got %v", message.subject, err)
+			t.Errorf("%v: unexpected error: got %v", message.Subject, err)
 			break
 		}
 		if recorder[i] != expectedResponse[i] {
-			t.Errorf("%v: unexpected output: got %s, want %s", message.subject, recorder[i], expectedResponse[i])
+			t.Errorf("%v: unexpected output: got %s, want %s", message.Subject, recorder[i], expectedResponse[i])
 			break
 		}
 	}
@@ -114,58 +99,58 @@ func TestLinkMiddlewares(t *testing.T) {
 	buf := new(bytes.Buffer)
 	buf.WriteString("\n")
 
-	decorator1 := func(next HandleFunc[string]) HandleFunc[string] {
-		return func(dto *string, dep any, route *RouteParam) error {
-			fmt.Fprintf(buf, "%s_decorator1\n", *dto)
+	decorator1 := func(next HandleFunc) HandleFunc {
+		return func(message *Message, dep any) error {
+			fmt.Fprintf(buf, "%s_decorator1\n", message.Subject)
 
-			err := next(dto, dep, route)
+			err := next(message, dep)
 			if err != nil {
 				return err
 			}
 
-			fmt.Fprintf(buf, "%s_decoratorA\n", *dto)
+			fmt.Fprintf(buf, "%s_decoratorA\n", message.Subject)
 			return nil
 		}
 	}
 
-	decorator2 := func(next HandleFunc[string]) HandleFunc[string] {
-		return func(dto *string, dep any, route *RouteParam) error {
-			fmt.Fprintf(buf, "%s_decorator2\n", *dto)
+	decorator2 := func(next HandleFunc) HandleFunc {
+		return func(message *Message, dep any) error {
+			fmt.Fprintf(buf, "%s_decorator2\n", message.Subject)
 
-			err := next(dto, dep, route)
+			err := next(message, dep)
 			if err != nil {
 				return err
 			}
 
-			fmt.Fprintf(buf, "%s_decoratorB\n", *dto)
+			fmt.Fprintf(buf, "%s_decoratorB\n", message.Subject)
 			return nil
 		}
 	}
 
-	decorator3 := func(next HandleFunc[string]) HandleFunc[string] {
-		return func(dto *string, dep any, route *RouteParam) error {
-			fmt.Fprintf(buf, "%s_decorator3\n", *dto)
+	decorator3 := func(next HandleFunc) HandleFunc {
+		return func(message *Message, dep any) error {
+			fmt.Fprintf(buf, "%s_decorator3\n", message.Subject)
 
-			err := next(dto, dep, route)
+			err := next(message, dep)
 			if err != nil {
 				return err
 			}
 
-			fmt.Fprintf(buf, "%s_decoratorC\n", *dto)
+			fmt.Fprintf(buf, "%s_decoratorC\n", message.Subject)
 			return nil
 		}
 	}
 
 	tests := []struct {
 		name        string
-		msg         string
-		middlewares []Middleware[string]
+		msg         Message
+		middlewares []Middleware
 		expected    string
 	}{
 		{
 			name:        "Multiple decorator check sequence",
-			msg:         "hello_world",
-			middlewares: []Middleware[string]{decorator1, decorator2, decorator3},
+			msg:         Message{Subject: "hello_world"},
+			middlewares: []Middleware{decorator1, decorator2, decorator3},
 			expected: `
 hello_world_decorator1
 hello_world_decorator2
@@ -181,13 +166,13 @@ hello_world_decoratorA
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			baseFunc := func(msg *string, dep any, route *RouteParam) error {
-				fmt.Fprintf(buf, "%s_base\n", *msg)
+			baseFunc := func(msg *Message, dep any) error {
+				fmt.Fprintf(buf, "%s_base\n", msg.Subject)
 				return nil
 			}
 
 			handler := LinkMiddlewares(baseFunc, tt.middlewares...)
-			err := handler(&tt.msg, nil, nil)
+			err := handler(&tt.msg, nil)
 			if err != nil {
 				t.Errorf("unexpected error: got %v", err)
 			}
@@ -199,56 +184,58 @@ hello_world_decoratorA
 }
 
 func TestMessageMux_Transform_when_only_defaultHandler(t *testing.T) {
-	newSubject := func(msg *testcaseTransformMessage) string {
-		return "/" + strconv.Itoa(msg.level0TypeId)
-	}
+	mux := NewMux("/")
 
-	mux := NewMux[testcaseTransformMessage]("/", newSubject)
+	mux.DefaultHandler(func(message *Message, dep any) error { return nil })
 
-	mux.DefaultHandler(func(_ *testcaseTransformMessage, dep any, _ *RouteParam) error {
-		return nil
-	})
+	message := &Message{}
 
-	message := &testcaseTransformMessage{
-		level0TypeId: 0,
-		level1TypeId: 0,
-		body:         "",
-	}
-
-	err := mux.HandleMessage(message, nil, nil)
+	err := mux.HandleMessage(message, nil)
 	if err != nil {
 		t.Errorf("%#v :unexpected error: got %v", message, err)
 	}
 }
 
 func TestMessageMux_Transform(t *testing.T) {
+	const (
+		levelKey = "lv"
+	)
+
 	recorder := []string{}
-	record := func(message *testcaseTransformMessage, dep any, route *RouteParam) error {
-		recorder = append(recorder, message.subject)
+	record := func(message *Message, dep any) error {
+		recorder = append(recorder, message.Subject)
 		return nil
 	}
 
-	newSubject := func(msg *testcaseTransformMessage) string { return msg.subject }
-	mux := NewMux[testcaseTransformMessage]("/", newSubject)
+	mux := NewMux("/")
 
 	mux.HandlerByNumber(2, record)
 
-	mux.GroupByNumber(3).Transform(testcaseTransformLevel1).
+	mux.GroupByNumber(3).Transform(func(message *Message, dep any) error {
+		message.Subject += (string(message.Bytes) + "/")
+		return nil
+	}).
 		HandlerByNumber(1, record).
 		HandlerByNumber(2, record).
-		GroupByNumber(5).Transform(testcaseTransformLevel2).
+		GroupByNumber(5).Transform(func(message *Message, dep any) error {
+		message.Subject += (message.Metadata.Str(levelKey) + "/")
+		return nil
+	}).
 		PreMiddleware(
-			func(message *testcaseTransformMessage, dep any, route *RouteParam) error {
-				message.subject = "^" + message.subject + "^"
+			func(message *Message, dep any) error {
+				message.Subject = "^" + message.Subject + "^"
 				return nil
 			}).
 		HandlerByNumber(1, record).
 		HandlerByNumber(2, record)
 
-	mux.GroupByNumber(4).Transform(testcaseTransformLevel1).
+	mux.GroupByNumber(4).Transform(func(message *Message, dep any) error {
+		message.Subject += (string(message.Bytes) + "/")
+		return nil
+	}).
 		PreMiddleware(
-			func(message *testcaseTransformMessage, dep any, route *RouteParam) error {
-				message.subject = "_" + message.subject + "_"
+			func(message *Message, dep any) error {
+				message.Subject = "_" + message.Subject + "_"
 				return nil
 			}).
 		HandlerByNumber(1, record).
@@ -277,15 +264,30 @@ func TestMessageMux_Transform(t *testing.T) {
 		"_4/2/_",
 	}
 
-	messages := []*testcaseTransformMessage{
-		{"2/", 2, -1, "msg 2/"},
-		{"3/", 3, 1, "msg 3/1/"},
-		{"3/", 3, 5, "1"},
-		{"4/", 4, 2, "msg 4/2/"},
+	messages := []*Message{
+		{
+			Subject: "2/",
+		},
+		{
+			Subject:  "3/",
+			Bytes:    []byte("1"),
+			Metadata: map[string]any{},
+		},
+		{
+			Subject: "3/",
+			Bytes:   []byte("5"),
+			Metadata: map[string]any{
+				levelKey: "1",
+			},
+		},
+		{
+			Subject: "4/",
+			Bytes:   []byte("2"),
+		},
 	}
 
 	for i, message := range messages {
-		err := mux.HandleMessage(message, nil, nil)
+		err := mux.HandleMessage(message, nil)
 		if err != nil {
 			t.Errorf("%#v :unexpected error: got %v", message, err)
 			break
@@ -297,52 +299,17 @@ func TestMessageMux_Transform(t *testing.T) {
 	}
 }
 
-func testcaseTransformLevel1(msg *testcaseTransformMessage, dep any, route *RouteParam) (err error) {
-	old := msg
-	msg.level0TypeId = old.level1TypeId
-	msg.level1TypeId = 0
-	msg.subject += strconv.Itoa(msg.level0TypeId) + "/"
-	return nil
-}
-
-func testcaseTransformLevel2(msg *testcaseTransformMessage, dep any, route *RouteParam) (err error) {
-	level2TypeId, err := strconv.Atoi(msg.body)
-	if err != nil {
-		return err
-	}
-
-	msg.level0TypeId = level2TypeId
-	msg.level1TypeId = 0
-
-	msg.subject += strconv.Itoa(msg.level0TypeId) + "/"
-	return nil
-}
-
-type testcaseTransformMessage struct {
-	subject      string
-	level0TypeId int
-	level1TypeId int
-	body         string
-}
-
 func TestMessageMux_Group(t *testing.T) {
-	type Subject string
-	type testcaseGroupMessage struct {
-		subject Subject
-		body    string
-	}
-
 	recorder := []string{}
-	record := func(message *testcaseGroupMessage, dep any, route *RouteParam) error {
-		recorder = append(recorder, message.body)
+	record := func(message *Message, dep any) error {
+		recorder = append(recorder, string(message.Bytes))
 		return nil
 	}
 
-	newSubject := func(msg *testcaseGroupMessage) string { return string(msg.subject) }
-	mux := NewMux[testcaseGroupMessage]("/", newSubject)
+	mux := NewMux("/")
 
-	mux.PreMiddleware(func(message *testcaseGroupMessage, dep any, route *RouteParam) error {
-		message.body = "*" + message.body + "*"
+	mux.PreMiddleware(func(message *Message, dep any) error {
+		message.Bytes = []byte(fmt.Sprintf("*%s*", message.Bytes))
 		return nil
 	})
 
@@ -361,8 +328,8 @@ func TestMessageMux_Group(t *testing.T) {
 		Handler("/game1", record).
 		Handler("/game2/kindA", record)
 	topic4_game3 := topic4.Group("/game3").
-		PreMiddleware(func(message *testcaseGroupMessage, dep any, route *RouteParam) error {
-			message.body = "&" + message.body + "&"
+		PreMiddleware(func(message *Message, dep any) error {
+			message.Bytes = []byte(fmt.Sprintf("&%s&", message.Bytes))
 			return nil
 		}).
 		Handler("/kindX", record).
@@ -395,7 +362,7 @@ func TestMessageMux_Group(t *testing.T) {
 		i++
 	})
 
-	subjects := []Subject{
+	subjects := []string{
 		"/topic3/upgraded.users",
 		"/topic4/game3/kindX",
 		"/topic5/game3/kindY",
@@ -416,11 +383,11 @@ func TestMessageMux_Group(t *testing.T) {
 	}
 
 	for _, subject := range subjects {
-		message := &testcaseGroupMessage{
-			subject: subject,
-			body:    string(subject),
+		message := &Message{
+			Subject: subject,
+			Bytes:   []byte(subject),
 		}
-		err := mux.HandleMessage(message, nil, nil)
+		err := mux.HandleMessage(message, nil)
 		if err != nil {
 			t.Errorf("unexpected error: got %v", err)
 			break
@@ -455,61 +422,52 @@ func TestMessageMux_Group(t *testing.T) {
 }
 
 func TestMux_DefaultHandler(t *testing.T) {
-	type Subject string
-	type testcaseDefaultHandler struct {
-		subject Subject
-		body    string
-	}
-
 	isCalled := false
-	newSubject := func(msg *testcaseDefaultHandler) string { return string(msg.subject) }
-	mux := NewMux[testcaseDefaultHandler]("/", newSubject).
-		DefaultHandler(func(message *testcaseDefaultHandler, dep any, route *RouteParam) error {
+	mux := NewMux("/").
+		DefaultHandler(func(message *Message, dep any) error {
 			isCalled = true
 			return nil
 		})
 
-	msg := &testcaseDefaultHandler{}
-	err := mux.HandleMessage(msg, nil, nil)
+	msg := &Message{}
+	err := mux.HandleMessage(msg, nil)
 	if err != nil || isCalled != true {
 		t.Errorf("unexpected error: got %v", err)
 	}
 }
 
 func TestMux_SetDefaultHandler_when_wildcard(t *testing.T) {
-	type testcaseMessage struct {
-		subject string
-		body    string
-	}
-
 	recorder := []string{}
-	newSubject := func(msg *testcaseMessage) string { return msg.subject }
-	mux := NewMux[testcaseMessage](".", newSubject).
-		Middleware(MW[testcaseMessage]{}.Recover()).
-		DefaultHandler(func(message *testcaseMessage, dep any, _ *RouteParam) error {
-			recorder = append(recorder, message.body+" default")
+	mux := NewMux(".").
+		Middleware(Use{
+			Logger: func(dependency any) Logger {
+				return DefaultLogger()
+			},
+		}.Recover()).
+		DefaultHandler(func(message *Message, dep any) error {
+			recorder = append(recorder, string(message.Bytes)+" default")
 			return nil
 		})
 
 	v1 := mux.Group("v1")
 
 	v1.
-		PreMiddleware(func(message *testcaseMessage, dep any, route *RouteParam) error {
-			message.body = "! " + message.body
+		PreMiddleware(func(message *Message, dep any) error {
+			message.Bytes = []byte(fmt.Sprintf("! %s", message.Bytes))
 			return nil
 		}).
-		Handler(".{kind}.book.{book_id}", func(message *testcaseMessage, dep any, _ *RouteParam) error {
-			recorder = append(recorder, message.body+" {kind}")
+		Handler(".{kind}.book.{book_id}", func(message *Message, dep any) error {
+			recorder = append(recorder, string(message.Bytes)+" {kind}")
 			return nil
 		})
 
 	v1.Group(".dev.book").
-		PreMiddleware(func(message *testcaseMessage, dep any, route *RouteParam) error {
-			message.body = "* " + message.body
+		PreMiddleware(func(message *Message, dep any) error {
+			message.Bytes = []byte(fmt.Sprintf("* %s", message.Bytes))
 			return nil
 		}).
-		Handler(".discount", func(message *testcaseMessage, dep any, _ *RouteParam) error {
-			recorder = append(recorder, message.body)
+		Handler(".discount", func(message *Message, dep any) error {
+			recorder = append(recorder, string(message.Bytes))
 			return nil
 		})
 
@@ -520,22 +478,22 @@ func TestMux_SetDefaultHandler_when_wildcard(t *testing.T) {
 		"v2 default",
 	}
 
-	messages := []*testcaseMessage{
-		{subject: "v1.devops.book.6263334908"},
-		{subject: "v1.dev.book.1449373321"},
-		{subject: "v1.dev.book.discount"},
-		{subject: "v2"},
+	messages := []*Message{
+		{Subject: "v1.devops.book.6263334908", RouteParam: map[string]any{}},
+		{Subject: "v1.dev.book.1449373321", RouteParam: map[string]any{}},
+		{Subject: "v1.dev.book.discount", RouteParam: map[string]any{}},
+		{Subject: "v2", RouteParam: map[string]any{}},
 	}
 
 	for i, message := range messages {
-		message.body = message.subject
-		err := mux.HandleMessage(message, nil, nil)
+		message.Bytes = []byte(message.Subject)
+		err := mux.HandleMessage(message, nil)
 		if err != nil {
-			t.Errorf("%v: unexpected error: got %v", message.subject, err)
+			t.Errorf("%v: unexpected error: got %v", message.Subject, err)
 			break
 		}
 		if recorder[i] != expectedResponse[i] {
-			t.Errorf("%v: unexpected output: got %s, want %s", message.subject, recorder[i], expectedResponse[i])
+			t.Errorf("%v: unexpected output: got %s, want %s", message.Subject, recorder[i], expectedResponse[i])
 			break
 		}
 	}
@@ -543,43 +501,36 @@ func TestMux_SetDefaultHandler_when_wildcard(t *testing.T) {
 }
 
 func TestMux_RouteParam_when_wildcard_subject(t *testing.T) {
-	type Subject = string
-	type testcaseRouteParam struct {
-		subject Subject
-		body    string
-	}
-
-	newSubject := func(msg *testcaseRouteParam) string { return string(msg.subject) }
-	mux := NewMux[testcaseRouteParam]("/", newSubject)
+	mux := NewMux("/")
 
 	actual := []string{}
 	mux.
-		Handler("order/kind/game", func(message *testcaseRouteParam, dep any, route *RouteParam) error {
-			actual = append(actual, message.subject)
+		Handler("order/kind/game", func(message *Message, dep any) error {
+			actual = append(actual, message.Subject)
 			return nil
 		}).
-		Handler("order/{user_id}", func(message *testcaseRouteParam, dep any, route *RouteParam) error {
-			actual = append(actual, route.Str("user_id"))
+		Handler("order/{user_id}", func(message *Message, dep any) error {
+			actual = append(actual, message.RouteParam.Str("user_id"))
 			return nil
 		}).
-		Handler("/get/test/abc/", func(message *testcaseRouteParam, dep any, route *RouteParam) error {
-			actual = append(actual, message.subject)
+		Handler("/get/test/abc/", func(message *Message, dep any) error {
+			actual = append(actual, message.Subject)
 			return nil
 		}).
-		Handler("/get/{param}/abc/", func(message *testcaseRouteParam, dep any, route *RouteParam) error {
-			actual = append(actual, route.Str("param"))
+		Handler("/get/{param}/abc/", func(message *Message, dep any) error {
+			actual = append(actual, message.RouteParam.Str("param"))
 			return nil
 		}).
-		Handler("{kind}/book/{book_id}", func(message *testcaseRouteParam, dep any, route *RouteParam) error {
-			actual = append(actual, route.Str("kind")+" "+route.Str("book_id"))
+		Handler("{kind}/book/{book_id}", func(message *Message, dep any) error {
+			actual = append(actual, message.RouteParam.Str("kind")+" "+message.RouteParam.Str("book_id"))
 			return nil
 		}).
-		Handler("dev/book/{book_id}", func(message *testcaseRouteParam, dep any, route *RouteParam) error {
-			actual = append(actual, "dev book "+route.Str("book_id"))
+		Handler("dev/book/{book_id}", func(message *Message, dep any) error {
+			actual = append(actual, "dev book "+message.RouteParam.Str("book_id"))
 			return nil
 		}).
-		Handler("dev/ebook/{book_id}", func(message *testcaseRouteParam, dep any, route *RouteParam) error {
-			actual = append(actual, "dev ebook "+route.Str("book_id"))
+		Handler("dev/ebook/{book_id}", func(message *Message, dep any) error {
+			actual = append(actual, "dev ebook "+message.RouteParam.Str("book_id"))
 			return nil
 		})
 
@@ -612,54 +563,50 @@ func TestMux_RouteParam_when_wildcard_subject(t *testing.T) {
 		"dev ebook 1492052205",
 	}
 
-	messages := []*testcaseRouteParam{
-		{subject: "order/kind/game"},
-		{subject: "order/qaz1017"},
-		{subject: "/get/test/abc/"},
-		{subject: "/get/xyz/abc/"},
-		{subject: "/get/tt/abc/"},
-		{subject: "devops/book/6263334908"},
-		{subject: "dev/book/1449373321"},
-		{subject: "dev/ebook/1492052205"},
+	messages := []*Message{
+		{Subject: "order/kind/game", RouteParam: map[string]any{}},
+		{Subject: "order/qaz1017", RouteParam: map[string]any{}},
+		{Subject: "/get/test/abc/", RouteParam: map[string]any{}},
+		{Subject: "/get/xyz/abc/", RouteParam: map[string]any{}},
+		{Subject: "/get/tt/abc/", RouteParam: map[string]any{}},
+		{Subject: "devops/book/6263334908", RouteParam: map[string]any{}},
+		{Subject: "dev/book/1449373321", RouteParam: map[string]any{}},
+		{Subject: "dev/ebook/1492052205", RouteParam: map[string]any{}},
 	}
 
 	for i, message := range messages {
-		err := mux.HandleMessage(message, nil, nil)
+		err := mux.HandleMessage(message, nil)
 		if err != nil {
-			t.Errorf("%v: unexpected error: got %v", message.subject, err)
+			t.Errorf("%v: unexpected error: got %v", message.Subject, err)
 			break
 		}
 		if actual[i] != expectedResponse[i] {
-			t.Errorf("%v: unexpected output: got %s, want %s", message.subject, actual[i], expectedResponse[i])
+			t.Errorf("%v: unexpected output: got %s, want %s", message.Subject, actual[i], expectedResponse[i])
 			break
 		}
 	}
 }
 
 func TestMessageMux_Recover(t *testing.T) {
-	type testcaseRecover struct {
-		subject string
-		body    string
-	}
-
-	newSubject := func(msg *testcaseRecover) string {
-		return msg.subject
-	}
 
 	SetDefaultLogger(SilentLogger())
-	mux := NewMux[testcaseRecover]("/", newSubject).
-		Middleware(MW[testcaseRecover]{}.Recover()).
-		DefaultHandler(func(_ *testcaseRecover, dep any, _ *RouteParam) error {
+	mux := NewMux("/").
+		Middleware(Use{
+			Logger: func(dependency any) Logger {
+				return SilentLogger()
+			},
+		}.Recover()).
+		DefaultHandler(func(_ *Message, dep any) error {
 			panic("testcase")
 			return nil
 		})
 
-	message := &testcaseRecover{
-		subject: "create_order",
-		body:    "",
+	message := &Message{
+		Subject: "create_order",
+		Body:    "",
 	}
 
-	err := mux.HandleMessage(message, nil, nil)
+	err := mux.HandleMessage(message, nil)
 	if err != nil {
 		t.Errorf("%#v :unexpected error: got %v", message, err)
 	}

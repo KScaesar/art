@@ -10,16 +10,19 @@ import (
 
 func main() {
 	routeDelimiter := "/"
-	getSubject := func(msg *MyMessage) string { return msg.Subject }
-	mux := Artifex.NewMux[MyMessage](routeDelimiter, getSubject)
+	mux := Artifex.NewMux(routeDelimiter)
 
-	builtInMiddleware := Artifex.MW[MyMessage]{Logger: Artifex.NewLogger(false, Artifex.LogLevelDebug)}
-	mux.ErrorHandler(builtInMiddleware.PrintError(getSubject))
+	use := Artifex.Use{
+		Logger: func(dependency any) Artifex.Logger {
+			return Artifex.NewLogger(false, Artifex.LogLevelInfo)
+		},
+	}
+	mux.ErrorHandler(use.PrintError())
 
 	// Note:
 	// Before registering handler, middleware must be defined;
 	// otherwise, the handler won't be able to use middleware.
-	mux.Middleware(builtInMiddleware.Recover())
+	mux.Middleware(use.Recover())
 
 	// When a subject cannot be found, execute the 'Default'
 	mux.DefaultHandler(DefaultHandler)
@@ -41,7 +44,7 @@ func main() {
 	Listen(mux, intervalSecond)
 }
 
-func Listen(mux *Artifex.Mux[MyMessage], second int) {
+func Listen(mux *Artifex.Mux, second int) {
 	adapter := NewAdapter(second)
 	fmt.Printf("wait %v seconds\n\n", second)
 	for {
@@ -50,7 +53,7 @@ func Listen(mux *Artifex.Mux[MyMessage], second int) {
 			return
 		}
 
-		mux.HandleMessage(message, nil, nil)
+		mux.HandleMessage(message, nil)
 		fmt.Println()
 	}
 }
@@ -58,7 +61,7 @@ func Listen(mux *Artifex.Mux[MyMessage], second int) {
 // adapter
 
 func NewAdapter(second int) *Adapter {
-	mq := make(chan *MyMessage, 1)
+	mq := make(chan *Artifex.Message, 1)
 	size := len(messages)
 
 	go func() {
@@ -83,10 +86,10 @@ func NewAdapter(second int) *Adapter {
 }
 
 type Adapter struct {
-	mq chan *MyMessage
+	mq chan *Artifex.Message
 }
 
-func (adp *Adapter) Recv() (msg *MyMessage, err error) {
+func (adp *Adapter) Recv() (msg *Artifex.Message, err error) {
 	defer func() {
 		if err == nil {
 			fmt.Printf("recv message: subject=%v\n", msg.Subject)
@@ -104,12 +107,7 @@ func (adp *Adapter) Recv() (msg *MyMessage, err error) {
 
 // message
 
-type MyMessage struct {
-	Subject string
-	Bytes   []byte
-}
-
-var messages = []*MyMessage{
+var messages = []*Artifex.Message{
 	{
 		Subject: "RegisterUser",
 		Bytes:   []byte(`{"user_id": "123456", "username": "john_doe", "email": "john.doe@example.com", "age": 30, "country": "United States"}`),
@@ -138,26 +136,26 @@ var messages = []*MyMessage{
 
 // handler
 
-func HandleAuth() Artifex.HandleFunc[MyMessage] {
-	return func(message *MyMessage, _ any, route *Artifex.RouteParam) error {
+func HandleAuth() Artifex.HandleFunc {
+	return func(message *Artifex.Message, _ any) error {
 		fmt.Println("Middleware: Auth Ok")
 		return nil
 	}
 }
 
-func DefaultHandler(message *MyMessage, _ any, _ *Artifex.RouteParam) error {
+func DefaultHandler(message *Artifex.Message, _ any) error {
 	fmt.Printf("Default: AutoAck message: subject=%v body=%v\n", message.Subject, string(message.Bytes))
 	return nil
 }
 
-func Hello(message *MyMessage, _ any, route *Artifex.RouteParam) error {
-	fmt.Printf("Hello: body=%v user=%v\n", string(message.Bytes), route.Get("user"))
+func Hello(message *Artifex.Message, _ any) error {
+	fmt.Printf("Hello: body=%v user=%v\n", string(message.Bytes), message.RouteParam.Get("user"))
 	return nil
 }
 
-func UpdatedProductPrice(db map[string]any) Artifex.HandleFunc[MyMessage] {
-	return func(message *MyMessage, _ any, route *Artifex.RouteParam) error {
-		brand := route.Str("brand")
+func UpdatedProductPrice(db map[string]any) Artifex.HandleFunc {
+	return func(message *Artifex.Message, _ any) error {
+		brand := message.RouteParam.Str("brand")
 		db[brand] = message.Bytes
 		fmt.Printf("UpdatedProductPrice: saved db: brand=%v\n", brand)
 		return nil

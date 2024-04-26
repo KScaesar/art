@@ -1,185 +1,9 @@
 package main
 
-const MsgTmpl = `
-package {{.Package}}
-
-import (
-	"context"
-	"fmt"
-
-	"github.com/gookit/goutil/maputil"
-
-	"github.com/KScaesar/Artifex"
-)
-
-type {{.Subject}} = string
-
-//
-
-func New{{.FileName}}Ingress() *{{.FileName}}Ingress {
-
-	return &{{.FileName}}Ingress{
-		Subject:  "",
-		Bytes:    nil,
-		Metadata: make(map[string]any),
-	}
-}
-
-type {{.FileName}}Ingress struct {
-	Body any
-
-	Subject {{.Subject}}
-	Bytes   []byte
-
-	msgId    string
-	Metadata maputil.Data
-
-	Logger Artifex.Logger
-	ctx    context.Context
-}
-
-func (in *{{.FileName}}Ingress) MsgId() string {
-	if in.msgId == "" {
-		in.msgId = Artifex.GenerateUlid()
-	}
-	return in.msgId
-}
-
-func (in *{{.FileName}}Ingress) SetMsgId(msgId string) {
-	in.msgId = msgId
-}
-
-func (in *{{.FileName}}Ingress) Context() context.Context {
-	if in.ctx == nil {
-		in.ctx = context.Background()
-	}
-	return in.ctx
-}
-
-func (in *{{.FileName}}Ingress) SetContext(ctx context.Context) {
-	in.ctx = ctx
-}
-
-type {{.FileName}}IngressHandleFunc = Artifex.HandleFunc[{{.FileName}}Ingress]
-type {{.FileName}}IngressMiddleware = Artifex.Middleware[{{.FileName}}Ingress]
-type {{.FileName}}IngressMux = Artifex.Mux[{{.FileName}}Ingress]
-
-func New{{.FileName}}IngressMux() *{{.FileName}}IngressMux {
-	get{{.Subject}} := func(message *{{.FileName}}Ingress) string {
-
-		return message.Subject
-	}
-	mux := Artifex.NewMux("/", get{{.Subject}})
-
-	middleware := Artifex.MW[{{.FileName}}Ingress]{}
-	mux.Middleware(middleware.Recover())
-	mux.ErrorHandler(middleware.PrintError(get{{.Subject}}))
-	return mux
-}
-
-func {{.FileName}}IngressSkip() {{.FileName}}IngressHandleFunc {
-	return func(message *{{.FileName}}Ingress, dependency any, route *Artifex.RouteParam) (err error) {
-		return nil
-	}
-}
-
-//
-
-func New{{.FileName}}Egress(subject {{.Subject}}, message any) *{{.FileName}}Egress {
-	return &{{.FileName}}Egress{
-		Subject:  subject,
-		Body:     message,
-		Metadata: make(map[string]any),
-	}
-}
-
-func New{{.FileName}EgressWithBytes(subject {{.Subject}}, bMessage []byte) *{{.FileName}Egress {
-	return &{{.FileName}Egress{
-		Bytes:    bMessage,
-		Subject:  subject,
-		Metadata: make(map[string]any),
-	}
-}
-
-type {{.FileName}}Egress struct {
-	Bytes []byte
-
-	Subject {{.Subject}}
-	Body    any
-
-	msgId    string
-	Metadata maputil.Data
-
-	ctx context.Context
-}
-
-func (e *{{.FileName}}Egress) MsgId() string {
-	if e.msgId == "" {
-		e.msgId = Artifex.GenerateUlid()
-	}
-	return e.msgId
-}
-
-func (e *{{.FileName}}Egress) SetMsgId(msgId string) {
-	e.msgId = msgId
-}
-
-func (e *{{.FileName}}Egress) Context() context.Context {
-	if e.ctx == nil {
-		e.ctx = context.Background()
-	}
-	return e.ctx
-}
-
-func (e *{{.FileName}}Egress) SetContext(ctx context.Context) {
-	e.ctx = ctx
-}
-
-type {{.FileName}}EgressHandleFunc = Artifex.HandleFunc[{{.FileName}}Egress]
-type {{.FileName}}EgressMiddleware = Artifex.Middleware[{{.FileName}}Egress]
-type {{.FileName}}EgressMux = Artifex.Mux[{{.FileName}}Egress]
-
-func New{{.FileName}}EgressMux() *{{.FileName}}EgressMux {
-	get{{.Subject}} := func(message *{{.FileName}}Egress) string {
-
-		return message.Subject
-	}
-	mux := Artifex.NewMux("/", get{{.Subject}})
-
-	middleware := Artifex.MW[{{.FileName}}Egress]{}
-	mux.Middleware(middleware.Recover())
-	mux.ErrorHandler(middleware.PrintError(get{{.Subject}}))
-	return mux
-}
-
-func {{.FileName}}EgressSkip() {{.FileName}}EgressHandleFunc {
-	return func(message *{{.FileName}}Egress, dependency any, route *Artifex.RouteParam) (err error) {
-		return nil
-	}
-}
-
-//
-
-func ShowMux(name string, offset int, ingressMux *{{.FileName}}IngressMux, egressMux *{{.FileName}}EgressMux) {
-	if ingressMux != nil {
-		ingressMux.Endpoints(func(subject, fn string) {
-			fmt.Printf("[%v-Ingress] subject=%-10q f=%v\n", name, subject, fn[offset:])
-		})
-	}
-	if ingressMux != nil {
-		egressMux.Endpoints(func(subject, fn string) {
-			fmt.Printf("[%v-Egress ] subject=%-10q f=%v\n", name, subject, fn[offset:])
-		})
-	}
-	fmt.Println()
-}
-`
-
 const AdapterTmpl = `
 package {{.Package}}
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/KScaesar/Artifex"
@@ -187,26 +11,8 @@ import (
 
 //
 
-type {{.FileName}}PubSub interface {
-	Artifex.IAdapter
-	Send(messages ...*{{.FileName}}Egress) error
-	Listen() (err error)
-}
-
-type {{.FileName}}Publisher interface {
-	Artifex.IAdapter
-	Send(messages ...*{{.FileName}}Egress) error
-}
-
-type {{.FileName}}Subscriber interface {
-	Artifex.IAdapter
-	Listen() (err error)
-}
-
-//
-
 type {{.FileName}}Factory struct {
-	Hub             *Artifex.Hub[Artifex.IAdapter]
+	Hub             *Artifex.Hub
 	Logger          Artifex.Logger
 	SendPingSeconds int
 	WaitPingSeconds int
@@ -217,8 +23,8 @@ type {{.FileName}}Factory struct {
 	Authenticate func() (name string, err error)
 	AdapterName  string
 
-	IngressMux      *{{.FileName}}IngressMux
-	EgressMux       func() *{{.FileName}}EgressMux
+	IngressMux      *Artifex.Mux
+	EgressMux       func() *Artifex.Mux
 	DecorateAdapter func(adapter Artifex.IAdapter) (application Artifex.IAdapter)
 	Lifecycle       func(lifecycle *Artifex.Lifecycle)
 }
@@ -231,7 +37,7 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter Artifex.IAdapter, err er
 
 	egressMux := f.EgressMux()
 
-	opt := Artifex.NewPubSubOption[{{.FileName}}Ingress, {{.FileName}}Egress]().
+	opt := Artifex.NewAdapterOption().
 		Identifier(name).
 		AdapterHub(f.Hub).
 		Logger(f.Logger).
@@ -263,16 +69,16 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter Artifex.IAdapter, err er
 	}
 	opt.WaitPing(waitPing, f.WaitPingSeconds, sendPong)
 
-	opt.AdapterRecv(func(logger Artifex.Logger) (*{{.FileName}}Ingress, error) {
+	opt.AdapterRecv(func(logger Artifex.Logger) (*Artifex.Message, error) {
 
 		var err error
 		if err != nil {
 			return nil, err
 		}
-		return New{{.FileName}}Ingress(), nil
+		return Artifex.NewMessageWithBytes("",nil), nil
 	})
 
-	opt.AdapterSend(func(logger Artifex.Logger, message *{{.FileName}}Egress) (err error) {
+	opt.AdapterSend(func(logger Artifex.Logger, message *Artifex.Message) (err error) {
 		// 考慮到 broadcast 情境
 		// 因為都是同一個 message
 		// middleware 會重複運算

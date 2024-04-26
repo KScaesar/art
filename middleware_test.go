@@ -11,7 +11,7 @@ import (
 )
 
 func TestMW_Retry(t *testing.T) {
-	mw := MW[string]{}
+	mw := Use[string]{}
 
 	start := time.Now()
 
