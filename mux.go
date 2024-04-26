@@ -91,8 +91,9 @@ func NewMux[Message any](routeDelimiter string, getSubject NewSubjectFunc[Messag
 	}
 
 	mux := &Mux[Message]{
-		node:           newTrie[Message](routeDelimiter),
-		routeDelimiter: routeDelimiter,
+		node:            newTrie[Message](routeDelimiter),
+		routeDelimiter:  routeDelimiter,
+		enableRoutePool: true,
 	}
 
 	mux.SubjectFunc(getSubject)
@@ -109,8 +110,9 @@ type Mux[Message any] struct {
 
 	handleError Middleware[Message]
 
-	messagePool  *sync.Pool
-	resetMessage func(*Message)
+	messagePool     *sync.Pool
+	resetMessage    func(*Message)
+	enableRoutePool bool
 }
 
 // HandleMessage to handle various messages
@@ -124,7 +126,7 @@ func (mux *Mux[Message]) HandleMessage(message *Message, dependency any, route *
 		}()
 	}
 
-	if route == nil {
+	if route == nil && mux.enableRoutePool {
 		route = routeParamPool.Get()
 		defer func() {
 			route.reset()
@@ -275,6 +277,10 @@ func (mux *Mux[Message]) MessagePool(pool *sync.Pool, reset func(*Message)) *Mux
 	mux.messagePool = pool
 	mux.resetMessage = reset
 	return mux
+}
+
+func (mux *Mux[Message]) DisableRoutePool() {
+	mux.enableRoutePool = false
 }
 
 // Endpoints get register handler function information
