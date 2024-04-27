@@ -178,3 +178,9 @@ func (opt *AdapterOption) WaitPing(waitPing chan error, waitPingSecond int, send
 	}
 	return opt
 }
+
+func (opt *AdapterOption) RawInfra(infra any) *AdapterOption {
+	pubsub := opt.adapter
+	pubsub.rawInfra = infra
+	return opt
+}

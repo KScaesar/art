@@ -9,11 +9,72 @@ import (
 	"github.com/KScaesar/Artifex"
 )
 
+func New{{.FileName}}Ingress(infra any, metadata any, bBody []byte) *{{.FileName}}Ingress {
+	message := Artifex.NewMessage()
+
+	message.RawInfra = infra
+	message.Metadata.Set("metadata", metadata)
+	message.Bytes = bBody
+	return message
+}
+
+type {{.FileName}}Ingress = Artifex.Message
+
+//
+
+func New{{.FileName}}IngressMux() *{{.FileName}}IngressMux {
+	mux := Artifex.NewMux("/")
+
+	mux.Transform(func(message *{{.FileName}}Ingress, dep any) error {
+		meta := message.Metadata.Str("metadata")
+		if meta == "pingpong" {
+			message.Subject = "pingpong"
+		}
+		return nil
+	})
+	return mux
+}
+
+type {{.FileName}}IngressMux = Artifex.Mux
+
+//
+
+func New{{.FileName}}Egress() *{{.FileName}}Egress {
+	message := Artifex.NewMessage()
+
+	return message
+}
+
+type {{.FileName}}Egress = Artifex.Message
+
+//
+
+func New{{.FileName}}EgressMux() *{{.FileName}}EgressMux {
+	mux := Artifex.NewMux("/")
+
+	mux.PostMiddleware(func(message *{{.FileName}}Egress, dep any) error {
+		adp := dep.(Artifex.IAdapter)
+		conn := adp.RawInfra().(any)
+		_ = conn
+		return nil
+	})
+	return mux
+}
+
+type {{.FileName}}EgressMux = Artifex.Mux
+
+//
+
+type {{.FileName}}Adapter = Artifex.Prosumer
+type {{.FileName}}Producer = Artifex.Producer
+type {{.FileName}}Consumer = Artifex.Consumer
+
 //
 
 type {{.FileName}}Factory struct {
 	Hub             *Artifex.Hub
 	Logger          Artifex.Logger
+
 	SendPingSeconds int
 	WaitPingSeconds int
 	PrintPingPong   bool
@@ -23,28 +84,29 @@ type {{.FileName}}Factory struct {
 	Authenticate func() (name string, err error)
 	AdapterName  string
 
-	IngressMux      *Artifex.Mux
-	EgressMux       func() *Artifex.Mux
+	DecodeTransform func() (bBody []byte, err error)
+
+	IngressMux      *{{.FileName}}IngressMux
+	EgressMux       *{{.FileName}}EgressMux
 	DecorateAdapter func(adapter Artifex.IAdapter) (application Artifex.IAdapter)
 	Lifecycle       func(lifecycle *Artifex.Lifecycle)
 }
 
-func (f *{{.FileName}}Factory) CreateAdapter() (adapter Artifex.IAdapter, err error) {
+func (f *{{.FileName}}Factory) CreateAdapter() (adapter {{.FileName}}Adapter, err error) {
 	name, err := f.Authenticate()
 	if err != nil {
 		return nil, err
 	}
-
-	egressMux := f.EgressMux()
 
 	opt := Artifex.NewAdapterOption().
 		Identifier(name).
 		AdapterHub(f.Hub).
 		Logger(f.Logger).
 		IngressMux(f.IngressMux).
-		EgressMux(egressMux).
+		EgressMux(f.EgressMux).
 		DecorateAdapter(f.DecorateAdapter).
-		Lifecycle(f.Lifecycle)
+		Lifecycle(f.Lifecycle).
+		RawInfra(nil)
 
 	var mu sync.Mutex
 
@@ -79,11 +141,8 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter Artifex.IAdapter, err er
 	})
 
 	opt.AdapterSend(func(logger Artifex.Logger, message *Artifex.Message) (err error) {
-		// 考慮到 broadcast 情境
-		// 因為都是同一個 message
-		// middleware 會重複運算
-		// 不僅無法取得正確 loger 且 造成 crypto 和 encoding 會重複進行
 		logger = logger.WithKeyValue("msg_id", message.MsgId())
+
 		mu.Lock()
 		defer mu.Unlock()
 
@@ -91,7 +150,7 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter Artifex.IAdapter, err er
 			logger.Error("send %q: %v", message.Subject, err)
 			return
 		}
-		logger.Info("send %q ok", message.Subject)
+		logger.Info("send %q", message.Subject)
 		return 
 	})
 
@@ -128,6 +187,6 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter Artifex.IAdapter, err er
 	if err != nil {
 		return
 	}
-	return adp, err
+	return adp.({{.FileName}}Adapter), err
 }
 `

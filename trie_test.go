@@ -8,17 +8,17 @@ func Test_trie_endpoint(t *testing.T) {
 	node := newTrie("/")
 
 	mw := &paramHandler{middlewares: []Middleware{endpoint_mw()}}
-	node.addRoute("", 0, mw, &pathHandler{})
+	node.addRoute("", 0, mw, []Middleware{})
 
 	defaultHandler := &paramHandler{defaultHandler: endpoint_default}
-	node.addRoute("topic", 0, defaultHandler, &pathHandler{})
+	node.addRoute("topic", 0, defaultHandler, []Middleware{})
 
 	handler1 := &paramHandler{handler: endpoint1}
 	handler2 := &paramHandler{handler: endpoint2}
-	node.addRoute("topic1/", 0, handler1, &pathHandler{})
-	node.addRoute("topic2/users/", 0, handler2, &pathHandler{})
-	node.addRoute("topic2/orders/", 0, handler2, &pathHandler{})
-	node.addRoute("{topic}/game2/kindA/", 0, handler1, &pathHandler{})
+	node.addRoute("topic1/", 0, handler1, []Middleware{})
+	node.addRoute("topic2/users/", 0, handler2, []Middleware{})
+	node.addRoute("topic2/orders/", 0, handler2, []Middleware{})
+	node.addRoute("{topic}/game2/kindA/", 0, handler1, []Middleware{})
 
 	expectedSubjects := []string{
 		"topic.*",

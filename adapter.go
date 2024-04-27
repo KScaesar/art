@@ -10,18 +10,18 @@ type AdapterHub interface {
 	RemoveOne(filter func(IAdapter) bool)
 }
 
-type RedisPubSub interface {
+type Prosumer interface {
 	IAdapter
 	Send(messages ...*Message) error
 	Listen() (err error)
 }
 
-type RedisPublisher interface {
+type Producer interface {
 	IAdapter
 	Send(messages ...*Message) error
 }
 
-type RedisSubscriber interface {
+type Consumer interface {
 	IAdapter
 	Listen() (err error)
 }
@@ -34,6 +34,7 @@ type IAdapter interface {
 	Stop() error
 	IsStopped() bool         // IsStopped is used for polling
 	WaitStop() chan struct{} // WaitStop is used for event push
+	RawInfra() any
 }
 
 type Adapter struct {
@@ -42,6 +43,8 @@ type Adapter struct {
 	egressMux   *Mux
 	adapterSend func(Logger, *Message) error
 	adapterStop func(Logger) error
+
+	rawInfra any
 
 	// WaitPingSendPong or SendPingWaitPong
 	pp         func() error
@@ -105,11 +108,8 @@ func (adp *Adapter) OnStop(terminates ...func(adp IAdapter)) {
 }
 
 func (adp *Adapter) Listen() (err error) {
-	if adp.adapterSend == nil {
-		select {
-		case <-adp.WaitStop():
-			return nil
-		}
+	if adp.adapterRecv == nil {
+		return nil
 	}
 
 	if adp.isStopped.Load() {
@@ -184,16 +184,21 @@ func (adp *Adapter) Send(messages ...*Message) error {
 			if err != nil {
 				return err
 			}
+
 		case adp.egressMux != nil && adp.adapterSend == nil:
 			err = adp.egressMux.HandleMessage(egress, adp.application)
 			if err != nil {
 				return err
 			}
+
 		case adp.egressMux == nil && adp.adapterSend != nil:
 			err = adp.adapterSend(adp.logger, egress)
 			if err != nil {
 				return err
 			}
+
+		default:
+
 		}
 	}
 
@@ -205,15 +210,16 @@ func (adp *Adapter) Stop() error {
 		return ErrorWrapWithMessage(ErrClosed, "repeated execute stop")
 	}
 
-	adp.lifecycle.asyncTerminate(adp.application)
 	err := adp.adapterStop(adp.logger)
-	adp.lifecycle.wait()
 
 	if !reflect.ValueOf(adp.hub).IsZero() {
 		adp.hub.RemoveOne(func(adapter IAdapter) bool {
 			return adapter == adp.application
 		})
 	}
+
+	adp.lifecycle.asyncTerminate(adp.application)
+	adp.lifecycle.wait()
 
 	close(adp.waitStop)
 	return err
@@ -222,3 +228,7 @@ func (adp *Adapter) Stop() error {
 func (adp *Adapter) IsStopped() bool { return adp.isStopped.Load() }
 
 func (adp *Adapter) WaitStop() chan struct{} { return adp.waitStop }
+
+func (adp *Adapter) RawInfra() any {
+	return adp.rawInfra
+}

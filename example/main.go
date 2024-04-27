@@ -8,16 +8,24 @@ import (
 	"github.com/KScaesar/Artifex"
 )
 
+var useLogger = Artifex.UseLogger(false, false)
+
 func main() {
+	Artifex.SetDefaultLogger(Artifex.NewLogger(false, Artifex.LogLevelDebug))
+
 	routeDelimiter := "/"
 	mux := Artifex.NewMux(routeDelimiter)
 
-	use := Artifex.Use{
-		Logger: func(dependency any) Artifex.Logger {
-			return Artifex.NewLogger(false, Artifex.LogLevelInfo)
-		},
-	}
+	use := Artifex.Use{Logger: useLogger}
 	mux.ErrorHandler(use.PrintError())
+
+	mux.Middleware(func(next Artifex.HandleFunc) Artifex.HandleFunc {
+		return func(message *Artifex.Message, dep any) error {
+			logger := useLogger(message, dep)
+			logger.Info(">>>>>> recv %q <<<<<<", message.Subject)
+			return next(message, dep)
+		}
+	})
 
 	// Note:
 	// Before registering handler, middleware must be defined;
@@ -25,7 +33,7 @@ func main() {
 	mux.Middleware(use.Recover())
 
 	// When a subject cannot be found, execute the 'Default'
-	mux.DefaultHandler(DefaultHandler)
+	mux.DefaultHandler(use.PrintDetail(nil, nil))
 
 	v1 := mux.Group("v1/").Middleware(HandleAuth().PreMiddleware())
 
@@ -54,7 +62,6 @@ func Listen(mux *Artifex.Mux, second int) {
 		}
 
 		mux.HandleMessage(message, nil)
-		fmt.Println()
 	}
 }
 
@@ -91,9 +98,7 @@ type Adapter struct {
 
 func (adp *Adapter) Recv() (msg *Artifex.Message, err error) {
 	defer func() {
-		if err == nil {
-			fmt.Printf("recv message: subject=%v\n", msg.Subject)
-		} else {
+		if err != nil {
 			fmt.Printf("recv message fail\n")
 		}
 	}()
@@ -108,56 +113,54 @@ func (adp *Adapter) Recv() (msg *Artifex.Message, err error) {
 // message
 
 var messages = []*Artifex.Message{
-	{
-		Subject: "RegisterUser",
-		Bytes:   []byte(`{"user_id": "123456", "username": "john_doe", "email": "john.doe@example.com", "age": 30, "country": "United States"}`),
-	},
-	{
-		Subject: "v1/Hello/ff1017",
-		Bytes:   []byte("world"),
-	},
-	{
-		Subject: "UpdatedUser",
-		Bytes:   []byte(`{"user_id": "789012", "username": "jane_smith", "email": "jane.smith@example.com", "age": 25, "country": "Canada"}`),
-	},
-	{
-		Subject: "v1/UpdatedProductPrice/Samsung",
-		Bytes:   []byte(`{"product_id": "67890", "name": "Samsung Galaxy Watch 4", "price": 349, "brand": "Samsung", "category": "Wearable Technology"}`),
-	},
+	Artifex.NewMessageWithBytes(
+		"RegisterUser",
+		[]byte(`{"user_id": "123456", "username": "john_doe", "email": "john.doe@example.com", "age": 30, "country": "United States"}`),
+	),
+	Artifex.NewMessageWithBytes(
+		"v1/Hello/ff1017",
+		[]byte("world"),
+	),
+	Artifex.NewMessageWithBytes(
+		"UpdatedUser",
+		[]byte(`{"user_id": "789012", "username": "jane_smith", "email": "jane.smith@example.com", "age": 25, "country": "Canada"}`),
+	),
+	Artifex.NewMessageWithBytes(
+		"v1/UpdatedProductPrice/Samsung",
+		[]byte(`{"product_id": "67890", "name": "Samsung Galaxy Watch 4", "price": 349, "brand": "Samsung", "category": "Wearable Technology"}`),
+	),
 	{
 		Subject: "UpdateLocation",
 		Bytes:   []byte(`{"location_id": "002", "name": "Eiffel Tower", "city": "Paris", "country": "France", "latitude": 48.8584, "longitude": 2.2945}`),
 	},
-	{
-		Subject: "CreatedOrder",
-		Bytes:   []byte(`{"order_id": "ABC123", "customer_name": "John Smith", "total_amount": 150.75, "items": ["T-shirt", "Jeans", "Sneakers"]}`),
-	},
+	Artifex.NewMessageWithBytes(
+		"CreatedOrder",
+		[]byte(`{"order_id": "ABC123", "customer_name": "John Smith", "total_amount": 150.75, "items": ["T-shirt", "Jeans", "Sneakers"]}`),
+	),
 }
 
 // handler
 
 func HandleAuth() Artifex.HandleFunc {
-	return func(message *Artifex.Message, _ any) error {
-		fmt.Println("Middleware: Auth Ok")
+	return func(message *Artifex.Message, dep any) error {
+		useLogger(message, dep).
+			Info("Middleware: Auth ok")
 		return nil
 	}
 }
 
-func DefaultHandler(message *Artifex.Message, _ any) error {
-	fmt.Printf("Default: AutoAck message: subject=%v body=%v\n", message.Subject, string(message.Bytes))
-	return nil
-}
-
-func Hello(message *Artifex.Message, _ any) error {
-	fmt.Printf("Hello: body=%v user=%v\n", string(message.Bytes), message.RouteParam.Get("user"))
+func Hello(message *Artifex.Message, dep any) error {
+	useLogger(message, dep).
+		Info("Hello: body=%v user=%v\n", string(message.Bytes), message.RouteParam.Get("user"))
 	return nil
 }
 
 func UpdatedProductPrice(db map[string]any) Artifex.HandleFunc {
-	return func(message *Artifex.Message, _ any) error {
+	return func(message *Artifex.Message, dep any) error {
 		brand := message.RouteParam.Str("brand")
 		db[brand] = message.Bytes
-		fmt.Printf("UpdatedProductPrice: saved db: brand=%v\n", brand)
+		useLogger(message, dep).
+			Info("UpdatedProductPrice: saved db: brand=%v\n", brand)
 		return nil
 	}
 }

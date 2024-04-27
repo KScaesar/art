@@ -11,8 +11,6 @@ import (
 )
 
 func TestUse_Retry(t *testing.T) {
-	use := Use{}
-
 	start := time.Now()
 
 	msg := Message{
@@ -27,7 +25,7 @@ func TestUse_Retry(t *testing.T) {
 		}
 		return errors.New("timeout")
 	}
-	err := LinkMiddlewares(task, use.Retry(retryMaxSecond))(&msg, nil)
+	err := LinkMiddlewares(task, UseRetry(retryMaxSecond))(&msg, nil)
 	if err != nil {
 		t.Errorf("unexpected output: %v", err)
 	}

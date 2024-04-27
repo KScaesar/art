@@ -265,28 +265,16 @@ func TestMessageMux_Transform(t *testing.T) {
 	}
 
 	messages := []*Message{
-		{
-			Subject: "2/",
-		},
-		{
-			Subject:  "3/",
-			Bytes:    []byte("1"),
-			Metadata: map[string]any{},
-		},
-		{
-			Subject: "3/",
-			Bytes:   []byte("5"),
-			Metadata: map[string]any{
-				levelKey: "1",
-			},
-		},
-		{
-			Subject: "4/",
-			Bytes:   []byte("2"),
-		},
+		NewNumberSubjectMessageWithBody(2, "/", nil),
+		NewNumberSubjectMessageWithBytes(3, "/", []byte("1")),
+		NewNumberSubjectMessageWithBytes(3, "/", []byte("5")),
+		NewNumberSubjectMessageWithBytes(4, "/", []byte("2")),
 	}
 
 	for i, message := range messages {
+		if i == 2 {
+			message.Metadata.Set(levelKey, "1")
+		}
 		err := mux.HandleMessage(message, nil)
 		if err != nil {
 			t.Errorf("%#v :unexpected error: got %v", message, err)
@@ -439,11 +427,7 @@ func TestMux_DefaultHandler(t *testing.T) {
 func TestMux_SetDefaultHandler_when_wildcard(t *testing.T) {
 	recorder := []string{}
 	mux := NewMux(".").
-		Middleware(Use{
-			Logger: func(dependency any) Logger {
-				return DefaultLogger()
-			},
-		}.Recover()).
+		Middleware(Use{}.Recover()).
 		DefaultHandler(func(message *Message, dep any) error {
 			recorder = append(recorder, string(message.Bytes)+" default")
 			return nil
@@ -590,12 +574,9 @@ func TestMux_RouteParam_when_wildcard_subject(t *testing.T) {
 func TestMessageMux_Recover(t *testing.T) {
 
 	SetDefaultLogger(SilentLogger())
+
 	mux := NewMux("/").
-		Middleware(Use{
-			Logger: func(dependency any) Logger {
-				return SilentLogger()
-			},
-		}.Recover()).
+		Middleware(Use{}.Recover()).
 		DefaultHandler(func(_ *Message, dep any) error {
 			panic("testcase")
 			return nil

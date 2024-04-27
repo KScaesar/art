@@ -8,9 +8,9 @@ import (
 //
 
 // NewMux
-// If routeDelimiter is an empty string, RouteParam cannot be used.
-// routeDelimiter can only be set to a string of length 1.
-// this parameter determines the delimiter used between different parts of the route.
+// If routeDelimiter is an empty string, Message.RouteParam cannot be used.
+// RouteDelimiter can only be set to a string of length 1.
+// This parameter determines different parts of the Message.Subject.
 func NewMux(routeDelimiter string) *Mux {
 	if len(routeDelimiter) > 1 {
 		panic("routeDelimiter can only be set to a string of length 1.")
@@ -50,9 +50,11 @@ func (mux *Mux) HandleMessage(message *Message, dependency any) (err error) {
 		}()
 	}
 
-	if mux.handleError != nil {
-		return mux.handleError(message, dependency, err)
-	}
+	defer func() {
+		if mux.handleError != nil {
+			err = mux.handleError(message, dependency, err)
+		}
+	}()
 
 	if mux.node.transform != nil {
 		return mux.node.handleMessage("", 0, message, dependency)
@@ -68,7 +70,7 @@ func (mux *Mux) Middleware(middlewares ...Middleware) *Mux {
 		middlewares: middlewares,
 	}
 
-	mux.node.addRoute("", 0, param, &pathHandler{})
+	mux.node.addRoute("", 0, param, []Middleware{})
 	return mux
 }
 
@@ -78,7 +80,7 @@ func (mux *Mux) PreMiddleware(handleFuncs ...HandleFunc) *Mux {
 		param.middlewares = append(param.middlewares, h.PreMiddleware())
 	}
 
-	mux.node.addRoute("", 0, param, &pathHandler{})
+	mux.node.addRoute("", 0, param, []Middleware{})
 	return mux
 }
 
@@ -88,7 +90,7 @@ func (mux *Mux) PostMiddleware(handleFuncs ...HandleFunc) *Mux {
 		param.middlewares = append(param.middlewares, h.PostMiddleware())
 	}
 
-	mux.node.addRoute("", 0, param, &pathHandler{})
+	mux.node.addRoute("", 0, param, []Middleware{})
 	return mux
 }
 
@@ -101,7 +103,7 @@ func (mux *Mux) Transform(transform HandleFunc) *Mux {
 		transform: transform,
 	}
 
-	mux.node.addRoute("", 0, param, &pathHandler{})
+	mux.node.addRoute("", 0, param, []Middleware{})
 	return mux
 }
 
@@ -114,7 +116,7 @@ func (mux *Mux) Handler(subject string, h HandleFunc, mw ...Middleware) *Mux {
 		param.handlerName = functionName(h)
 	}
 
-	mux.node.addRoute(subject, 0, param, &pathHandler{})
+	mux.node.addRoute(subject, 0, param, []Middleware{})
 	return mux
 }
 
@@ -123,11 +125,10 @@ func (mux *Mux) HandlerByNumber(subject int, h HandleFunc, mw ...Middleware) *Mu
 }
 
 func (mux *Mux) Group(groupName string) *Mux {
-	groupNode := mux.node.addRoute(groupName, 0, nil, &pathHandler{})
+	groupNode := mux.node.addRoute(groupName, 0, nil, []Middleware{})
 	return &Mux{
 		node:           groupNode,
 		routeDelimiter: mux.routeDelimiter,
-		messagePool:    mux.messagePool,
 	}
 }
 
@@ -150,7 +151,7 @@ func (mux *Mux) DefaultHandler(h HandleFunc, mw ...Middleware) *Mux {
 		param.defaultHandlerName = functionName(h)
 	}
 
-	mux.node.addRoute("", 0, param, &pathHandler{})
+	mux.node.addRoute("", 0, param, []Middleware{})
 	return mux
 }
 
@@ -165,8 +166,7 @@ func (mux *Mux) NotFoundHandler(h HandleFunc) *Mux {
 		notFoundHandler: h,
 	}
 
-	path := &pathHandler{}
-	mux.node.addRoute("", 0, param, path)
+	mux.node.addRoute("", 0, param, []Middleware{})
 	return mux
 }
 

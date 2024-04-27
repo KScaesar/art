@@ -8,13 +8,6 @@ import (
 	"sort"
 )
 
-// getSubject 是為了避免 generic type 呼叫 method 所造成的效能降低
-// 也可以因應不同情境, 改變取得 subject 的規則
-//
-// https://www.youtube.com/watch?v=D1hI55EcBB4&t=20260s
-//
-// https://hackmd.io/@fieliapm/BkHvJjYq3#/5/2
-//
 // middleware 依照定義的順序, 可以運用在不同的 HandleFunc
 // handle message 執行順序, 依照號碼 0~3
 type paramHandler struct {
@@ -36,7 +29,7 @@ type paramHandler struct {
 	notFoundHandler HandleFunc // not use middleware
 }
 
-func (param *paramHandler) register(leafNode *trie, path *pathHandler) error {
+func (param *paramHandler) register(leafNode *trie, path []Middleware) error {
 	if param.middlewares != nil {
 		leafNode.middlewares = append(leafNode.middlewares, param.middlewares...)
 	}
@@ -45,14 +38,14 @@ func (param *paramHandler) register(leafNode *trie, path *pathHandler) error {
 		if leafNode.transform != nil {
 			return errors.New("assign duplicated transform")
 		}
-		leafNode.transform = LinkMiddlewares(param.transform, path.middlewares...)
+		leafNode.transform = LinkMiddlewares(param.transform, path...)
 	}
 
 	if param.handler != nil {
 		if leafNode.handler != nil {
 			return errors.New("assign duplicated handler")
 		}
-		leafNode.handler = LinkMiddlewares(param.handler, path.middlewares...)
+		leafNode.handler = LinkMiddlewares(param.handler, path...)
 
 		if param.handlerName == "" {
 			leafNode.handlerName = functionName(param.handler)
@@ -65,7 +58,7 @@ func (param *paramHandler) register(leafNode *trie, path *pathHandler) error {
 		if leafNode.defaultHandler != nil {
 			return errors.New("assign duplicated defaultHandler")
 		}
-		leafNode.defaultHandler = LinkMiddlewares(param.defaultHandler, path.middlewares...)
+		leafNode.defaultHandler = LinkMiddlewares(param.defaultHandler, path...)
 
 		if param.defaultHandlerName == "" {
 			leafNode.defaultHandlerName = functionName(param.defaultHandler)
@@ -88,16 +81,6 @@ func functionName(fn any) string {
 	return runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).Name()
 }
 
-type pathHandler struct {
-	middlewares []Middleware
-}
-
-func (path *pathHandler) collect(pathNode *trie) {
-	if pathNode.middlewares != nil {
-		path.middlewares = append(path.middlewares, pathNode.middlewares...)
-	}
-}
-
 func newTrie(delimiter string) *trie {
 	return &trie{
 		staticChild: make(map[byte]*trie),
@@ -116,13 +99,15 @@ type trie struct {
 	paramHandler
 }
 
-func (node *trie) addRoute(subject string, cursor int, param *paramHandler, path *pathHandler) *trie {
-	path.collect(node)
+func (node *trie) addRoute(subject string, cursor int, param *paramHandler, path []Middleware) *trie {
+	if node.middlewares != nil {
+		path = append(path, node.middlewares...)
+	}
 
 	if len(subject) == cursor {
 		if param == nil { // for Mux.Group
 			param = &paramHandler{
-				middlewares: path.middlewares,
+				middlewares: path,
 			}
 		}
 

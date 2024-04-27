@@ -2,16 +2,35 @@ package Artifex
 
 import (
 	"context"
+	"strconv"
 
 	"github.com/gookit/goutil/maputil"
 )
+
+func NewNumberSubjectMessageWithBytes(number int, delimiter string, bBody []byte) *Message {
+	return &Message{
+		Subject:    strconv.Itoa(number) + delimiter,
+		Bytes:      bBody,
+		Metadata:   map[string]any{},
+		RouteParam: map[string]any{},
+	}
+}
+
+func NewNumberSubjectMessageWithBody(number int, delimiter string, body any) *Message {
+	return &Message{
+		Subject:    strconv.Itoa(number) + delimiter,
+		Body:       body,
+		Metadata:   map[string]any{},
+		RouteParam: map[string]any{},
+	}
+}
 
 func NewMessageWithBytes(subject string, bBody []byte) *Message {
 	return &Message{
 		Subject:    subject,
 		Bytes:      bBody,
-		Metadata:   map[string]any{},
 		RouteParam: map[string]any{},
+		Metadata:   map[string]any{},
 	}
 }
 
@@ -19,13 +38,25 @@ func NewMessageWithBody(subject string, body any) *Message {
 	return &Message{
 		Subject:    subject,
 		Body:       body,
-		Metadata:   map[string]any{},
 		RouteParam: map[string]any{},
+		Metadata:   map[string]any{},
+	}
+}
+
+func NewMessage() *Message {
+	return &Message{
+		RouteParam: map[string]any{},
+		Metadata:   map[string]any{},
 	}
 }
 
 type Message struct {
-	Subject string
+	Subject    string
+	Bytes      []byte
+	Body       any
+	identifier string
+
+	// RFC "OPTIONAL" below
 
 	// RouteParam are used to capture values from subject.
 	// These parameters represent resources or identifiers.
@@ -35,42 +66,16 @@ type Message struct {
 	//	define mux subject = "/users/{id}"
 	//	send or recv subject = "/users/1017"
 	//
-	//	route:
+	//	get route param:
 	//		key : value => id : 1017
 	RouteParam maputil.Data
 
-	identifier string
-	Metadata   maputil.Data
+	Metadata maputil.Data
 
-	Bytes []byte
-	Body  any
-
-	Infra any
+	RawInfra any // for ingress side
 
 	ctx    context.Context
 	Logger Logger
-}
-
-func (msg *Message) reset() {
-	if msg.Bytes != nil {
-		msg.Bytes = msg.Bytes[:0]
-	}
-	msg.Body = nil
-	msg.Subject = ""
-	msg.identifier = ""
-	for key, _ := range msg.Metadata {
-		delete(msg.Metadata, key)
-	}
-	for key, _ := range msg.RouteParam {
-		delete(msg.RouteParam, key)
-	}
-	msg.Infra = nil
-	msg.ctx = nil
-	msg.Logger = nil
-}
-
-func (msg *Message) Log() Logger {
-	return msg.Logger.WithKeyValue("msg_id", msg.identifier)
 }
 
 func (msg *Message) MsgId() string {
@@ -95,51 +100,27 @@ func (msg *Message) SetContext(ctx context.Context) {
 	msg.ctx = ctx
 }
 
-//
-
-type HandleFunc func(message *Message, dep any) error
-
-func (h HandleFunc) PreMiddleware() Middleware {
-	return func(next HandleFunc) HandleFunc {
-		return func(message *Message, dep any) error {
-			err := h(message, dep)
-			if err != nil {
-				return err
-			}
-			return next(message, dep)
-		}
+func (msg *Message) SwapContext(swaps ...func(ctx1 context.Context) (ctx2 context.Context)) context.Context {
+	for _, swap := range swaps {
+		msg.ctx = swap(msg.Context())
 	}
+	return msg.ctx
 }
 
-func (h HandleFunc) PostMiddleware() Middleware {
-	return func(next HandleFunc) HandleFunc {
-		return func(message *Message, dep any) error {
-			err := next(message, dep)
-			if err != nil {
-				return err
-			}
-			return h(message, dep)
-		}
+func (msg *Message) reset() {
+	if msg.Bytes != nil {
+		msg.Bytes = msg.Bytes[:0]
 	}
-}
-
-func (h HandleFunc) LinkMiddlewares(middlewares ...Middleware) HandleFunc {
-	return LinkMiddlewares(h, middlewares...)
-}
-
-type Middleware func(next HandleFunc) HandleFunc
-
-func (mw Middleware) HandleFunc() HandleFunc {
-	return LinkMiddlewares(func(message *Message, dep any) error {
-		return nil
-	}, mw)
-}
-
-func LinkMiddlewares(handler HandleFunc, middlewares ...Middleware) func(*Message, any) error {
-	n := len(middlewares)
-	for i := n - 1; 0 <= i; i-- {
-		decorator := middlewares[i]
-		handler = decorator(handler)
+	msg.Body = nil
+	msg.Subject = ""
+	msg.identifier = ""
+	for key, _ := range msg.Metadata {
+		delete(msg.Metadata, key)
 	}
-	return handler
+	for key, _ := range msg.RouteParam {
+		delete(msg.RouteParam, key)
+	}
+	msg.RawInfra = nil
+	msg.ctx = nil
+	msg.Logger = nil
 }
