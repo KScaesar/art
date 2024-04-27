@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"runtime"
 	"sort"
+	"unsafe"
 )
 
 // middleware 依照定義的順序, 可以運用在不同的 HandleFunc
@@ -114,7 +115,7 @@ func (node *trie) addRoute(subject string, cursor int, param *paramHandler, path
 		leafNode := node
 		err := param.register(leafNode, path)
 		if err != nil {
-			Err := fmt.Errorf("subject=%v: %w", subject, err)
+			Err := fmt.Errorf("subject=%q: %w", subject, err)
 			panic(Err)
 		}
 		return leafNode
@@ -132,7 +133,7 @@ func (node *trie) addRoute(subject string, cursor int, param *paramHandler, path
 	}
 
 	if node.delimiter == "" {
-		err := fmt.Errorf("subject=%v: route delimiter is empty: not support wildcard", subject)
+		err := fmt.Errorf("subject=%q: route delimiter is empty: not support wildcard", subject)
 		panic(err)
 	}
 
@@ -142,13 +143,16 @@ func (node *trie) addRoute(subject string, cursor int, param *paramHandler, path
 	}
 
 	if subject[idx] != '}' {
-		err := fmt.Errorf("subject=%v: lack wildcard '}'", subject)
+		err := fmt.Errorf("subject=%q: lack wildcard '}'", subject)
 		panic(err)
 	}
 
 	if node.wildcardChild != nil {
-		err := fmt.Errorf("subject=%v: assign duplicated wildcard: %v", subject, node.fullSubject)
-		panic(err)
+		if node.wildcardChildWord != subject[cursor+1:idx] {
+			err := fmt.Errorf("subject=%q: assign duplicated wildcard: %q", node.wildcardChild.fullSubject, subject)
+			panic(err)
+		}
+		return node.wildcardChild.addRoute(subject, idx+1, param, path)
 	}
 
 	child := newTrie(node.delimiter)
@@ -158,16 +162,18 @@ func (node *trie) addRoute(subject string, cursor int, param *paramHandler, path
 	return child.addRoute(subject, idx+1, param, path)
 }
 
-func (node *trie) handleMessage(subject string, cursor int, message *Message, dep any) (err error) {
+func (node *trie) handleMessage(subject string, cursor int, message *Message, dep any) error {
 	current := node
 
 	var defaultHandler, notFoundHandler HandleFunc
-	var wildcardStart int
+
+	const notWildcard = -1
+	wildcardStart := notWildcard
 	var wildcardParent *trie
 
 	for cursor <= len(subject) {
 		if current.transform != nil {
-			err = current.transform(message, dep)
+			err := current.transform(message, dep)
 			if err != nil {
 				return err
 			}
@@ -219,9 +225,13 @@ func (node *trie) handleMessage(subject string, cursor int, message *Message, de
 		wildcardFinish++
 	}
 
-	message.RouteParam.Set(wildcardParent.wildcardChildWord, subject[wildcardStart:wildcardFinish])
+	bytes := unsafe.Slice(unsafe.StringData(subject), len(subject))
+	value := bytes[wildcardStart:wildcardFinish]
+	str := unsafe.String(unsafe.SliceData(value), wildcardFinish-wildcardStart)
+	message.RouteParam.Set(wildcardParent.wildcardChildWord, str)
+	// message.RouteParam.Set(wildcardParent.wildcardChildWord, subject[wildcardStart:wildcardFinish])
 
-	err = wildcardParent.wildcardChild.handleMessage(subject, wildcardFinish, message, dep)
+	err := wildcardParent.wildcardChild.handleMessage(subject, wildcardFinish, message, dep)
 	if err != nil && errors.Is(err, ErrNotFoundSubject) {
 		if defaultHandler != nil {
 			return defaultHandler(message, dep)
