@@ -14,41 +14,26 @@ func BenchmarkHandleMessage(b *testing.B) {
 		mux.Handler(subject, UseSkipMessage())
 	}
 
-	msgPool := newPool(func() *Message {
-		return &Message{
-			RouteParam: make(map[string]interface{}),
-			Metadata:   make(map[string]interface{}),
-		}
-	})
-
-	mux.MessagePool(&msgPool.syncPool, nil)
-
 	b.ReportAllocs()
-
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		for _, subject := range githubAPI {
 
 			// cpu: 13th Gen Intel(R) Core(TM) i5-1340P
 			// BenchmarkHandleMessage
-			// BenchmarkHandleMessage-16    	   10000	    143879 ns/op	   78935 B/op	     825 allocs/op
+			// BenchmarkHandleMessage-16    	   10000	    152405 ns/op	   79005 B/op	     825 allocs/op
 			//
-			// message := &Message{
-			// 	Subject:    subject,
-			// 	RouteParam: make(map[string]interface{}),
-			// 	Metadata:   make(map[string]interface{}),
-			// }
+			// message := newMessage()
 
 			// cpu: 13th Gen Intel(R) Core(TM) i5-1340P
 			// BenchmarkHandleMessage
 			// BenchmarkHandleMessage-16    	   20233	     58824 ns/op	    3954 B/op	     247 allocs/op
 			//
-			message := msgPool.Get()
+			message := GetMessage()
+
 			message.Subject = subject
-
-			dependency := struct{}{}
-
-			err := mux.HandleMessage(message, dependency)
+			err := mux.HandleMessage(message, nil)
+			PutMessage(message)
 			if err != nil {
 				b.Errorf("Error handling message: %v", err)
 			}

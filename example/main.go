@@ -17,7 +17,7 @@ func main() {
 	mux := Artifex.NewMux(routeDelimiter)
 
 	use := Artifex.Use{Logger: useLogger}
-	mux.ErrorHandler(use.PrintError())
+	mux.ErrorHandler(use.PrintResult(nil))
 
 	mux.Middleware(func(next Artifex.HandleFunc) Artifex.HandleFunc {
 		return func(message *Artifex.Message, dep any) error {
@@ -33,7 +33,7 @@ func main() {
 	mux.Middleware(use.Recover())
 
 	// When a subject cannot be found, execute the 'Default'
-	mux.DefaultHandler(use.PrintDetail(nil, nil))
+	mux.DefaultHandler(use.PrintDetail())
 
 	v1 := mux.Group("v1/").Middleware(HandleAuth().PreMiddleware())
 
@@ -108,35 +108,38 @@ func (adp *Adapter) Recv() (msg *Artifex.Message, err error) {
 		return nil, io.EOF
 	}
 	return message, nil
+
 }
 
 // message
 
 var messages = []*Artifex.Message{
-	Artifex.NewMessageWithBytes(
-		"RegisterUser",
-		[]byte(`{"user_id": "123456", "username": "john_doe", "email": "john.doe@example.com", "age": 30, "country": "United States"}`),
-	),
-	Artifex.NewMessageWithBytes(
-		"v1/Hello/ff1017",
-		[]byte("world"),
-	),
-	Artifex.NewMessageWithBytes(
-		"UpdatedUser",
-		[]byte(`{"user_id": "789012", "username": "jane_smith", "email": "jane.smith@example.com", "age": 25, "country": "Canada"}`),
-	),
-	Artifex.NewMessageWithBytes(
-		"v1/UpdatedProductPrice/Samsung",
-		[]byte(`{"product_id": "67890", "name": "Samsung Galaxy Watch 4", "price": 349, "brand": "Samsung", "category": "Wearable Technology"}`),
-	),
+	{
+		Subject: "RegisterUser",
+		Bytes:   []byte(`{"user_id": "123456", "username": "john_doe", "email": "john.doe@example.com", "age": 30, "country": "United States"}`),
+	},
+	{
+		Subject:    "v1/Hello/ff1017",
+		Bytes:      []byte("world"),
+		RouteParam: map[string]any{},
+	},
+	{
+		Subject: "UpdatedUser",
+		Bytes:   []byte(`{"user_id": "789012", "username": "jane_smith", "email": "jane.smith@example.com", "age": 25, "country": "Canada"}`),
+	},
+	{
+		Subject:    "v1/UpdatedProductPrice/Samsung",
+		Bytes:      []byte(`{"product_id": "67890", "name": "Samsung Galaxy Watch 4", "price": 349, "brand": "Samsung", "category": "Wearable Technology"}`),
+		RouteParam: map[string]any{},
+	},
 	{
 		Subject: "UpdateLocation",
 		Bytes:   []byte(`{"location_id": "002", "name": "Eiffel Tower", "city": "Paris", "country": "France", "latitude": 48.8584, "longitude": 2.2945}`),
 	},
-	Artifex.NewMessageWithBytes(
-		"CreatedOrder",
-		[]byte(`{"order_id": "ABC123", "customer_name": "John Smith", "total_amount": 150.75, "items": ["T-shirt", "Jeans", "Sneakers"]}`),
-	),
+	{
+		Subject: "CreatedOrder",
+		Bytes:   []byte(`{"order_id": "ABC123", "customer_name": "John Smith", "total_amount": 150.75, "items": ["T-shirt", "Jeans", "Sneakers"]}`),
+	},
 }
 
 // handler

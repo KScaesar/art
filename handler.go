@@ -1,7 +1,6 @@
 package Artifex
 
 import (
-	"encoding/json"
 	"runtime/debug"
 )
 
@@ -60,11 +59,11 @@ func UseLogger(withMsgId, attachToMessage bool) func(message *Message, dep any) 
 
 		var logger Logger
 
-		type getLogger interface {
+		type Getter interface {
 			Log() Logger
 		}
 
-		getter, ok := dep.(getLogger)
+		getter, ok := dep.(Getter)
 		if !ok {
 			logger = DefaultLogger()
 		} else {
@@ -101,7 +100,7 @@ func UseRetry(retryMaxSecond int) Middleware {
 	}
 }
 
-func UseExcludedSubject(subjects []string) Middleware {
+func UseExcluded(subjects []string) Middleware {
 	excluded := make(map[string]bool, len(subjects))
 	for i := 0; i < len(subjects); i++ {
 		excluded[subjects[i]] = true
@@ -113,6 +112,22 @@ func UseExcludedSubject(subjects []string) Middleware {
 				return nil
 			}
 			return next(message, dep)
+		}
+	}
+}
+
+func UseIncluded(subjects []string) Middleware {
+	included := make(map[string]bool, len(subjects))
+	for i := 0; i < len(subjects); i++ {
+		included[subjects[i]] = true
+	}
+
+	return func(next HandleFunc) HandleFunc {
+		return func(message *Message, dep any) error {
+			if included[message.Subject] {
+				return next(message, dep)
+			}
+			return nil
 		}
 	}
 }
@@ -145,7 +160,12 @@ func (use Use) Recover() Middleware {
 	}
 }
 
-func (use Use) PrintError() func(message *Message, dep any, err error) error {
+func (use Use) PrintResult(excludedSubjects []string) func(message *Message, dep any, err error) error {
+	excluded := make(map[string]bool, len(excludedSubjects))
+	for i := 0; i < len(excludedSubjects); i++ {
+		excluded[excludedSubjects[i]] = true
+	}
+
 	return func(message *Message, dep any, err error) error {
 		subject := message.Subject
 		logger := use.logger(message, dep)
@@ -154,61 +174,28 @@ func (use Use) PrintError() func(message *Message, dep any, err error) error {
 			logger.Error("handle %q: %v", subject, err)
 			return err
 		}
+
+		if excluded[subject] {
+			return nil
+		}
 		logger.Info("handle %q ok", subject)
 		return nil
 	}
 }
 
-func (use Use) PrintDetail(
-	newBody func(subject string) (body any, found bool),
-	unmarshal func(bBody []byte, body any) error,
-) HandleFunc {
-
+func (use Use) PrintDetail() HandleFunc {
 	return func(message *Message, dep any) error {
 		subject := message.Subject
 		logger := use.logger(message, dep)
-		bBody := message.Bytes
 
-		switch {
-		case newBody != nil && unmarshal != nil:
-			body, ok := newBody(subject)
-			if !ok {
-				logger.Debug("print %q", subject)
-				return nil
-			}
-
-			err := unmarshal(bBody, body)
-			if err != nil {
-				return err
-			}
-
-			bBody, err = json.Marshal(body)
-			if err != nil {
-				return err
-			}
-
-			logger.Debug("print %q: %T=%v", subject, body, string(bBody))
-			return nil
-
-		case newBody != nil && unmarshal == nil:
-			body, ok := newBody(subject)
-			if !ok {
-				logger.Debug("print %q", subject)
-				return nil
-			}
-
-			logger.Debug("print %q: %T=%v", subject, body, string(bBody))
-			return nil
-
-		case newBody == nil && unmarshal != nil:
-			logger.Error("invalid middleware param: print %q", subject)
-			return nil
-
-		case newBody == nil && unmarshal == nil:
-			logger.Debug("print %q: %v", subject, string(bBody))
+		if message.Body != nil {
+			logger.WithKeyValue("payload", message.Body).Debug("print %q: %T=%v", subject, message.Body)
 			return nil
 		}
-
+		if len(message.Bytes) != 0 {
+			logger.WithKeyValue("payload", message.Bytes).Debug("print %q", subject)
+			return nil
+		}
 		return nil
 	}
 }

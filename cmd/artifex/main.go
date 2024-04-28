@@ -13,6 +13,7 @@ func main() {
 		return
 	}
 	OpenFileAndRenderTemplate(tmpl, "adapter", AdapterTmpl)
+	OpenFileAndRenderTemplate(tmpl, "metadata", MetadataTmpl)
 }
 
 func PrintHelp(detail bool) {

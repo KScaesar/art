@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"strconv"
 	"testing"
 )
 
@@ -143,13 +144,13 @@ func TestLinkMiddlewares(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		msg         Message
+		msg         *Message
 		middlewares []Middleware
 		expected    string
 	}{
 		{
 			name:        "Multiple decorator check sequence",
-			msg:         Message{Subject: "hello_world"},
+			msg:         &Message{Subject: "hello_world"},
 			middlewares: []Middleware{decorator1, decorator2, decorator3},
 			expected: `
 hello_world_decorator1
@@ -265,16 +266,26 @@ func TestMessageMux_Transform(t *testing.T) {
 	}
 
 	messages := []*Message{
-		NewNumberSubjectMessageWithBody(2, "/", nil),
-		NewNumberSubjectMessageWithBytes(3, "/", []byte("1")),
-		NewNumberSubjectMessageWithBytes(3, "/", []byte("5")),
-		NewNumberSubjectMessageWithBytes(4, "/", []byte("2")),
+		{
+			Subject: strconv.Itoa(2) + "/",
+			Bytes:   nil,
+		},
+		{
+			Subject: strconv.Itoa(3) + "/",
+			Bytes:   []byte("1"),
+		},
+		{
+			Subject:  strconv.Itoa(3) + "/",
+			Bytes:    []byte("5"),
+			Metadata: map[string]any{levelKey: "1"},
+		},
+		{
+			Subject: strconv.Itoa(4) + "/",
+			Bytes:   []byte("2"),
+		},
 	}
 
 	for i, message := range messages {
-		if i == 2 {
-			message.Metadata.Set(levelKey, "1")
-		}
 		err := mux.HandleMessage(message, nil)
 		if err != nil {
 			t.Errorf("%#v :unexpected error: got %v", message, err)
@@ -584,7 +595,6 @@ func TestMessageMux_Recover(t *testing.T) {
 
 	message := &Message{
 		Subject: "create_order",
-		Body:    "",
 	}
 
 	err := mux.HandleMessage(message, nil)

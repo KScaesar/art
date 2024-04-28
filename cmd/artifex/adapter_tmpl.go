@@ -9,58 +9,63 @@ import (
 	"github.com/KScaesar/Artifex"
 )
 
-func New{{.FileName}}Ingress(infra any, metadata any, bBody []byte) *{{.FileName}}Ingress {
-	message := Artifex.NewMessage()
+func New{{.FileName}}Ingress(bBody []byte, metadata any, pingpong chan error) *Artifex.Message {
+	message := Artifex.GetMessage()
 
-	message.RawInfra = infra
-	message.Metadata.Set("metadata", metadata)
 	message.Bytes = bBody
+	{{.FileName}}Metadata.SetPingPong(message.Metadata, pingpong)
+	message.RawInfra = nil
 	return message
 }
 
-type {{.FileName}}Ingress = Artifex.Message
+func New{{.FileName}}Egress(body any) *Artifex.Message {
+	message := Artifex.GetMessage()
+
+	message.Body = body
+	return message
+}
+
+func New{{.FileName}}EgressWithSubject(subject string, body any) *Artifex.Message {
+	message := Artifex.GetMessage()
+
+	message.Subject = subject
+	message.Body = body
+	return message
+}
 
 //
 
-func New{{.FileName}}IngressMux() *{{.FileName}}IngressMux {
-	mux := Artifex.NewMux("/")
+func New{{.FileName}}IngressMux(pingpong bool) *{{.FileName}}IngressMux {
+	in := Artifex.NewMux("/").
+		Transform(func(message *Artifex.Message, dep any) error {
+			return nil
+		}).
+		Handler("pingpong", func(message *Artifex.Message, dep any) error {
+			if pingpong {
+				dep.(Artifex.IAdapter).Log().Info("ack pingpong")
+			}
+			{{.FileName}}Metadata.PingPong(message.Metadata) <- nil
+			return nil
+		})
+	return in
+}
 
-	mux.Transform(func(message *{{.FileName}}Ingress, dep any) error {
-		meta := message.Metadata.Str("metadata")
-		if meta == "pingpong" {
-			message.Subject = "pingpong"
-		}
-		return nil
-	})
-	return mux
+func New{{.FileName}}EgressMux(pingpong bool) *{{.FileName}}EgressMux {
+	out := Artifex.NewMux("/").
+		Transform(func(message *Artifex.Message, dep any) error {
+			return nil
+		}).
+		Handler("pingpong", func(message *Artifex.Message, dep any) error {
+			if pingpong {
+				dep.(Artifex.IAdapter).Log().Info("send pingpong")
+			}
+			return nil
+		}).
+		DefaultHandler(Artifex.UseSkipMessage())
+	return out
 }
 
 type {{.FileName}}IngressMux = Artifex.Mux
-
-//
-
-func New{{.FileName}}Egress() *{{.FileName}}Egress {
-	message := Artifex.NewMessage()
-
-	return message
-}
-
-type {{.FileName}}Egress = Artifex.Message
-
-//
-
-func New{{.FileName}}EgressMux() *{{.FileName}}EgressMux {
-	mux := Artifex.NewMux("/")
-
-	mux.PostMiddleware(func(message *{{.FileName}}Egress, dep any) error {
-		adp := dep.(Artifex.IAdapter)
-		conn := adp.RawInfra().(any)
-		_ = conn
-		return nil
-	})
-	return mux
-}
-
 type {{.FileName}}EgressMux = Artifex.Mux
 
 //
@@ -72,19 +77,16 @@ type {{.FileName}}Consumer = Artifex.Consumer
 //
 
 type {{.FileName}}Factory struct {
-	Hub             *Artifex.Hub
-	Logger          Artifex.Logger
+	Hub    *Artifex.Hub
+	Logger Artifex.Logger
 
 	SendPingSeconds int
 	WaitPingSeconds int
-	PrintPingPong   bool
 
 	MaxRetrySeconds int
 
 	Authenticate func() (name string, err error)
 	AdapterName  string
-
-	DecodeTransform func() (bBody []byte, err error)
 
 	IngressMux      *{{.FileName}}IngressMux
 	EgressMux       *{{.FileName}}EgressMux
@@ -99,22 +101,19 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter {{.FileName}}Adapter, er
 	}
 
 	opt := Artifex.NewAdapterOption().
+		RawInfra(nil).
 		Identifier(name).
 		AdapterHub(f.Hub).
 		Logger(f.Logger).
 		IngressMux(f.IngressMux).
 		EgressMux(f.EgressMux).
 		DecorateAdapter(f.DecorateAdapter).
-		Lifecycle(f.Lifecycle).
-		RawInfra(nil)
+		Lifecycle(f.Lifecycle)
 
 	var mu sync.Mutex
 
 	// send pint, wait pong
 	sendPing := func(adp Artifex.IAdapter) error {
-		if f.PrintPingPong {
-			adp.(Artifex.IAdapter).Log().Info("send ping")
-		}
 		return nil
 	}
 	waitPong := make(chan error, 1)
@@ -123,10 +122,6 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter {{.FileName}}Adapter, er
 	// wait ping, send pong
 	waitPing := make(chan error, 1)
 	sendPong := func(adp Artifex.IAdapter) error {
-		if f.PrintPingPong {
-			adp.(Artifex.IAdapter).Log().Info("send pong")
-		}
-
 		return nil
 	}
 	opt.WaitPing(waitPing, f.WaitPingSeconds, sendPong)
@@ -135,14 +130,13 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter {{.FileName}}Adapter, er
 
 		var err error
 		if err != nil {
+			logger.Error("recv: %v", err)
 			return nil, err
 		}
-		return Artifex.NewMessageWithBytes("",nil), nil
+		return New{{.FileName}}Ingress(nil, nil, nil), nil
 	})
 
 	opt.AdapterSend(func(logger Artifex.Logger, message *Artifex.Message) (err error) {
-		logger = logger.WithKeyValue("msg_id", message.MsgId())
-
 		mu.Lock()
 		defer mu.Unlock()
 
@@ -150,7 +144,6 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter {{.FileName}}Adapter, er
 			logger.Error("send %q: %v", message.Subject, err)
 			return
 		}
-		logger.Info("send %q", message.Subject)
 		return 
 	})
 
@@ -162,7 +155,6 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter {{.FileName}}Adapter, er
 			logger.Error("stop: %v", err)
 			return
 		}
-		logger.Info("stop")
 		return nil
 	})
 

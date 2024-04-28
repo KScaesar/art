@@ -2,48 +2,23 @@ package Artifex
 
 import (
 	"context"
-	"strconv"
+	"sync"
 
 	"github.com/gookit/goutil/maputil"
 )
 
-func NewNumberSubjectMessageWithBytes(number int, delimiter string, bBody []byte) *Message {
-	return &Message{
-		Subject:    strconv.Itoa(number) + delimiter,
-		Bytes:      bBody,
-		Metadata:   map[string]any{},
-		RouteParam: map[string]any{},
-	}
+func GetMessage() *Message {
+	return messagePool.Get()
 }
 
-func NewNumberSubjectMessageWithBody(number int, delimiter string, body any) *Message {
-	return &Message{
-		Subject:    strconv.Itoa(number) + delimiter,
-		Body:       body,
-		Metadata:   map[string]any{},
-		RouteParam: map[string]any{},
-	}
+func PutMessage(message *Message) {
+	message.reset()
+	messagePool.Put(message)
 }
 
-func NewMessageWithBytes(subject string, bBody []byte) *Message {
-	return &Message{
-		Subject:    subject,
-		Bytes:      bBody,
-		RouteParam: map[string]any{},
-		Metadata:   map[string]any{},
-	}
-}
+var messagePool = newPool(newMessage)
 
-func NewMessageWithBody(subject string, body any) *Message {
-	return &Message{
-		Subject:    subject,
-		Body:       body,
-		RouteParam: map[string]any{},
-		Metadata:   map[string]any{},
-	}
-}
-
-func NewMessage() *Message {
+func newMessage() *Message {
 	return &Message{
 		RouteParam: map[string]any{},
 		Metadata:   map[string]any{},
@@ -51,12 +26,14 @@ func NewMessage() *Message {
 }
 
 type Message struct {
-	Subject    string
-	Bytes      []byte
-	Body       any
+	Subject string
+
+	Bytes []byte
+	Body  any
+
 	identifier string
 
-	// RFC "OPTIONAL" below
+	Mutex sync.Mutex
 
 	// RouteParam are used to capture values from subject.
 	// These parameters represent resources or identifiers.
@@ -72,7 +49,7 @@ type Message struct {
 
 	Metadata maputil.Data
 
-	RawInfra any // for ingress side
+	RawInfra any
 
 	ctx    context.Context
 	Logger Logger
@@ -108,18 +85,22 @@ func (msg *Message) SwapContext(swaps ...func(ctx1 context.Context) (ctx2 contex
 }
 
 func (msg *Message) reset() {
+	msg.Subject = ""
+
 	if msg.Bytes != nil {
 		msg.Bytes = msg.Bytes[:0]
 	}
 	msg.Body = nil
-	msg.Subject = ""
+
 	msg.identifier = ""
-	for key, _ := range msg.Metadata {
-		delete(msg.Metadata, key)
-	}
-	for key, _ := range msg.RouteParam {
+
+	for key := range msg.RouteParam {
 		delete(msg.RouteParam, key)
 	}
+	for key := range msg.Metadata {
+		delete(msg.Metadata, key)
+	}
+
 	msg.RawInfra = nil
 	msg.ctx = nil
 	msg.Logger = nil

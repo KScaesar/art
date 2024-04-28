@@ -14,7 +14,7 @@ func TestUse_Retry(t *testing.T) {
 	start := time.Now()
 
 	msg := Message{
-		Subject: "Rtry",
+		Subject: "Retry",
 	}
 	retryMaxSecond := 20
 	task := func(message *Message, dependency any) error {

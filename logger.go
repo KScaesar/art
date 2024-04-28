@@ -221,6 +221,8 @@ func anyToString(v any) string {
 	switch val := v.(type) {
 	case string:
 		return val
+	case []byte:
+		return string(val)
 	case bool:
 		return strconv.FormatBool(val)
 	case int:

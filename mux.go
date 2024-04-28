@@ -2,10 +2,7 @@ package Artifex
 
 import (
 	"strconv"
-	"sync"
 )
-
-//
 
 // NewMux
 // If routeDelimiter is an empty string, Message.RouteParam cannot be used.
@@ -28,31 +25,25 @@ func NewMux(routeDelimiter string) *Mux {
 //
 // Message represents a high-level abstraction data structure containing metadata (e.g. header) + body
 type Mux struct {
-	node           *trie
-	routeDelimiter string
-	handleError    func(message *Message, dependency any, err error) error
-	messagePool    *sync.Pool
-	resetMessage   func(*Message)
+	node              *trie
+	routeDelimiter    string
+	errorHandlers     []func(message *Message, dependency any, err error) error
+	enableMessagePool bool
 }
 
 // HandleMessage to handle various messages
 //
 // - route parameter can nil
 func (mux *Mux) HandleMessage(message *Message, dependency any) (err error) {
-	if mux.messagePool != nil {
-		defer func() {
-			if mux.resetMessage != nil {
-				mux.resetMessage(message)
-			} else {
-				message.reset()
-			}
-			mux.messagePool.Put(message)
-		}()
+	if mux.enableMessagePool {
+		defer PutMessage(message)
 	}
 
 	defer func() {
-		if mux.handleError != nil {
-			err = mux.handleError(message, dependency, err)
+		if mux.errorHandlers != nil {
+			for _, errHandler := range mux.errorHandlers {
+				err = errHandler(message, dependency, err)
+			}
 		}
 	}()
 
@@ -127,8 +118,10 @@ func (mux *Mux) HandlerByNumber(subject int, h HandleFunc, mw ...Middleware) *Mu
 func (mux *Mux) Group(groupName string) *Mux {
 	groupNode := mux.node.addRoute(groupName, 0, nil, []Middleware{})
 	return &Mux{
-		node:           groupNode,
-		routeDelimiter: mux.routeDelimiter,
+		node:              groupNode,
+		routeDelimiter:    mux.routeDelimiter,
+		errorHandlers:     mux.errorHandlers,
+		enableMessagePool: mux.enableMessagePool,
 	}
 }
 
@@ -170,14 +163,13 @@ func (mux *Mux) NotFoundHandler(h HandleFunc) *Mux {
 	return mux
 }
 
-func (mux *Mux) ErrorHandler(handleError func(message *Message, dependency any, err error) error) *Mux {
-	mux.handleError = handleError
+func (mux *Mux) ErrorHandler(errHandlers ...func(message *Message, dependency any, err error) error) *Mux {
+	mux.errorHandlers = errHandlers
 	return mux
 }
 
-func (mux *Mux) MessagePool(pool *sync.Pool, reset func(*Message)) *Mux {
-	mux.messagePool = pool
-	mux.resetMessage = reset
+func (mux *Mux) EnableMessagePool() *Mux {
+	mux.enableMessagePool = true
 	return mux
 }
 
