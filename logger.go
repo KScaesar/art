@@ -197,7 +197,7 @@ func (c content) deepCopyAndSet(key string, v any) content {
 
 	// set
 	fresh.keys = append(fresh.keys, key)
-	fresh.contents[key] = anyToString(v)
+	fresh.contents[key] = AnyToString(v)
 
 	return fresh
 }
@@ -217,7 +217,7 @@ func encode(c content, format string, other ...any) string {
 	return builder.String()
 }
 
-func anyToString(v any) string {
+func AnyToString(v any) string {
 	switch val := v.(type) {
 	case string:
 		return val
@@ -251,8 +251,8 @@ func anyToString(v any) string {
 		return strconv.FormatFloat(val, 'f', -1, 64)
 	case error:
 		return val.Error()
-	case fmt.Stringer:
-		return val.String()
+	// case fmt.Stringer:
+	// 	return val.String()
 	case encoding.TextMarshaler:
 		text, err := val.MarshalText()
 		if err != nil {

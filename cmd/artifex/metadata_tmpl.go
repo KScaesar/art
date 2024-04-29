@@ -21,7 +21,7 @@ type {{.FileName}}MetadataKey struct {
 	pingpong string
 }
 
-func (key *{{.FileName}}MetadataKey) PingPong(md maputil.Data) (pingpong Artifex.WaitPingPong) {
+func (key *{{.FileName}}MetadataKey) GetPingPong(md maputil.Data) (pingpong Artifex.WaitPingPong) {
 	return md.Get(key.pingpong).(Artifex.WaitPingPong)
 }
 

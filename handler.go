@@ -1,6 +1,7 @@
 package Artifex
 
 import (
+	"fmt"
 	"runtime/debug"
 )
 
@@ -38,6 +39,10 @@ type Middleware func(next HandleFunc) HandleFunc
 
 func (mw Middleware) HandleFunc() HandleFunc {
 	return LinkMiddlewares(UseSkipMessage(), mw)
+}
+
+func (mw Middleware) LinkMiddlewares(handler HandleFunc) HandleFunc {
+	return LinkMiddlewares(handler, mw)
 }
 
 func LinkMiddlewares(handler HandleFunc, middlewares ...Middleware) HandleFunc {
@@ -100,15 +105,15 @@ func UseRetry(retryMaxSecond int) Middleware {
 	}
 }
 
-func UseExcluded(subjects []string) Middleware {
-	excluded := make(map[string]bool, len(subjects))
+func UseExclude(subjects []string) Middleware {
+	exclude := make(map[string]bool, len(subjects))
 	for i := 0; i < len(subjects); i++ {
-		excluded[subjects[i]] = true
+		exclude[subjects[i]] = true
 	}
 
 	return func(next HandleFunc) HandleFunc {
 		return func(message *Message, dep any) error {
-			if excluded[message.Subject] {
+			if exclude[message.Subject] {
 				return nil
 			}
 			return next(message, dep)
@@ -116,15 +121,15 @@ func UseExcluded(subjects []string) Middleware {
 	}
 }
 
-func UseIncluded(subjects []string) Middleware {
-	included := make(map[string]bool, len(subjects))
+func UseInclude(subjects []string) Middleware {
+	include := make(map[string]bool, len(subjects))
 	for i := 0; i < len(subjects); i++ {
-		included[subjects[i]] = true
+		include[subjects[i]] = true
 	}
 
 	return func(next HandleFunc) HandleFunc {
 		return func(message *Message, dep any) error {
-			if included[message.Subject] {
+			if include[message.Subject] {
 				return next(message, dep)
 			}
 			return nil
@@ -133,23 +138,31 @@ func UseIncluded(subjects []string) Middleware {
 }
 
 type Use struct {
-	Logger func(message *Message, dep any) Logger
+	LoggerPolicy func(message *Message, dep any) Logger
 }
 
 func (use Use) logger(message *Message, dep any) Logger {
-	if use.Logger == nil {
+	if use.LoggerPolicy == nil {
 		return UseLogger(false, false)(message, dep)
 	}
-	return use.Logger(message, dep)
+	return use.LoggerPolicy(message, dep)
+}
+
+func (use Use) Logger() HandleFunc {
+	return func(message *Message, dep any) error {
+		use.logger(message, dep)
+		return nil
+	}
 }
 
 func (use Use) Recover() Middleware {
 	return func(next HandleFunc) HandleFunc {
-		return func(message *Message, dep any) error {
+		return func(message *Message, dep any) (err error) {
 			logger := use.logger(message, dep)
 
 			defer func() {
 				if r := recover(); r != nil {
+					err = fmt.Errorf("%v", r)
 					logger.Error("recovered from panic: %v", r)
 					logger.Error("call stack: %v", string(debug.Stack()))
 				}
@@ -189,11 +202,11 @@ func (use Use) PrintDetail() HandleFunc {
 		logger := use.logger(message, dep)
 
 		if message.Body != nil {
-			logger.WithKeyValue("payload", message.Body).Debug("print %q: %T=%v", subject, message.Body)
+			logger.Debug("print %q: %T %v", subject, message.Body, AnyToString(message.Body))
 			return nil
 		}
 		if len(message.Bytes) != 0 {
-			logger.WithKeyValue("payload", message.Bytes).Debug("print %q", subject)
+			logger.Debug("print %q: %v", subject, AnyToString(message.Bytes))
 			return nil
 		}
 		return nil

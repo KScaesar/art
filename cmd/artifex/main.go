@@ -13,6 +13,8 @@ func main() {
 		return
 	}
 	OpenFileAndRenderTemplate(tmpl, "adapter", AdapterTmpl)
+	OpenFileAndRenderTemplate(tmpl, "message", MessageTmpl)
+	OpenFileAndRenderTemplate(tmpl, "handler", HandlerTmpl)
 	OpenFileAndRenderTemplate(tmpl, "metadata", MetadataTmpl)
 }
 

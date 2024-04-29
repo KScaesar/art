@@ -16,7 +16,7 @@ func main() {
 	routeDelimiter := "/"
 	mux := Artifex.NewMux(routeDelimiter)
 
-	use := Artifex.Use{Logger: useLogger}
+	use := Artifex.Use{LoggerPolicy: useLogger}
 	mux.ErrorHandler(use.PrintResult(nil))
 
 	mux.Middleware(func(next Artifex.HandleFunc) Artifex.HandleFunc {

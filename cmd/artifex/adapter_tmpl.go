@@ -9,67 +9,6 @@ import (
 	"github.com/KScaesar/Artifex"
 )
 
-func New{{.FileName}}Ingress(bBody []byte, metadata any, pingpong Artifex.WaitPingPong) *Artifex.Message {
-	message := Artifex.GetMessage()
-
-	message.Bytes = bBody
-	{{.FileName}}Metadata.SetPingPong(message.Metadata, pingpong)
-	message.RawInfra = nil
-	return message
-}
-
-func New{{.FileName}}Egress(body any) *Artifex.Message {
-	message := Artifex.GetMessage()
-
-	message.Body = body
-	return message
-}
-
-func New{{.FileName}}EgressWithSubject(subject string, body any) *Artifex.Message {
-	message := Artifex.GetMessage()
-
-	message.Subject = subject
-	message.Body = body
-	return message
-}
-
-//
-
-func New{{.FileName}}IngressMux(pingpong bool) *{{.FileName}}IngressMux {
-	in := Artifex.NewMux("/").
-		Transform(func(message *Artifex.Message, dep any) error {
-			return nil
-		}).
-		Handler("pingpong", func(message *Artifex.Message, dep any) error {
-			if pingpong {
-				dep.(Artifex.IAdapter).Log().Info("ack pingpong")
-			}
-			{{.FileName}}Metadata.PingPong(message.Metadata).Ack()
-			return nil
-		})
-	return in
-}
-
-func New{{.FileName}}EgressMux(pingpong bool) *{{.FileName}}EgressMux {
-	out := Artifex.NewMux("/").
-		Transform(func(message *Artifex.Message, dep any) error {
-			return nil
-		}).
-		Handler("pingpong", func(message *Artifex.Message, dep any) error {
-			if pingpong {
-				dep.(Artifex.IAdapter).Log().Info("send pingpong")
-			}
-			return nil
-		}).
-		DefaultHandler(Artifex.UseSkipMessage())
-	return out
-}
-
-type {{.FileName}}IngressMux = Artifex.Mux
-type {{.FileName}}EgressMux = Artifex.Mux
-
-//
-
 type {{.FileName}}Adapter = Artifex.Prosumer
 type {{.FileName}}Producer = Artifex.Producer
 type {{.FileName}}Consumer = Artifex.Consumer
@@ -112,7 +51,7 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter {{.FileName}}Adapter, er
 
 	var mu sync.Mutex
 
-	// send pint, wait pong
+	// send ping, wait pong
 	sendPing := func(adp Artifex.IAdapter) error {
 		return nil
 	}
@@ -144,6 +83,7 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter {{.FileName}}Adapter, er
 			logger.Error("send %q: %v", message.Subject, err)
 			return
 		}
+		logger.Info("send %q", message.Subject)
 		return 
 	})
 
