@@ -9,7 +9,7 @@ import (
 	"github.com/KScaesar/Artifex"
 )
 
-func New{{.FileName}}Ingress(bBody []byte, metadata any, pingpong chan error) *Artifex.Message {
+func New{{.FileName}}Ingress(bBody []byte, metadata any, pingpong Artifex.WaitPingPong) *Artifex.Message {
 	message := Artifex.GetMessage()
 
 	message.Bytes = bBody
@@ -44,7 +44,7 @@ func New{{.FileName}}IngressMux(pingpong bool) *{{.FileName}}IngressMux {
 			if pingpong {
 				dep.(Artifex.IAdapter).Log().Info("ack pingpong")
 			}
-			{{.FileName}}Metadata.PingPong(message.Metadata) <- nil
+			{{.FileName}}Metadata.PingPong(message.Metadata).Ack()
 			return nil
 		})
 	return in
@@ -116,15 +116,15 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter {{.FileName}}Adapter, er
 	sendPing := func(adp Artifex.IAdapter) error {
 		return nil
 	}
-	waitPong := make(chan error, 1)
-	opt.SendPing(sendPing, waitPong, f.SendPingSeconds*2)
+	waitPong := Artifex.NewWaitPingPong()
+	opt.SendPing(f.SendPingSeconds, waitPong, sendPing)
 
 	// wait ping, send pong
-	waitPing := make(chan error, 1)
+	waitPing := Artifex.NewWaitPingPong()
 	sendPong := func(adp Artifex.IAdapter) error {
 		return nil
 	}
-	opt.WaitPing(waitPing, f.WaitPingSeconds, sendPong)
+	opt.WaitPing(f.WaitPingSeconds, waitPing, sendPong)
 
 	opt.AdapterRecv(func(logger Artifex.Logger) (*Artifex.Message, error) {
 

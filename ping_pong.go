@@ -6,8 +6,22 @@ import (
 	"time"
 )
 
-func WaitPingSendPong(waitPing <-chan error, sendPong func() error, isStop func() bool, waitPingSecond int) error {
-	waitPingTime := time.Duration(waitPingSecond) * time.Second
+func NewWaitPingPong() WaitPingPong {
+	wait := make(WaitPingPong, 1)
+	return wait
+}
+
+type WaitPingPong chan struct{}
+
+func (wait WaitPingPong) Ack() {
+	select {
+	case wait <- struct{}{}:
+	default:
+	}
+}
+
+func WaitPingSendPong(waitPingSeconds int, waitPing WaitPingPong, sendPong func() error, isStop func() bool) error {
+	waitPingTime := time.Duration(waitPingSeconds) * time.Second
 
 	waitPingTimer := time.NewTimer(waitPingTime)
 	defer waitPingTimer.Stop()
@@ -21,12 +35,8 @@ func WaitPingSendPong(waitPing <-chan error, sendPong func() error, isStop func(
 
 			return errors.New("wait ping timeout")
 
-		case err := <-waitPing:
-			if err != nil {
-				return fmt.Errorf("handle ping: %v", err)
-			}
-
-			err = sendPong()
+		case <-waitPing:
+			err := sendPong()
 			if err != nil {
 				return fmt.Errorf("send pong: %v", err)
 			}
@@ -41,9 +51,9 @@ func WaitPingSendPong(waitPing <-chan error, sendPong func() error, isStop func(
 	return nil
 }
 
-func SendPingWaitPong(sendPing func() error, waitPong <-chan error, isStopped func() bool, waitPongSecond int) error {
-	waitPongTime := time.Duration(waitPongSecond) * time.Second
-	sendPingPeriod := waitPongTime / 2
+func SendPingWaitPong(sendPingSeconds int, sendPing func() error, waitPong WaitPingPong, isStopped func() bool) error {
+	sendPingPeriod := time.Duration(sendPingSeconds) * time.Second
+	waitPongTime := sendPingPeriod * 2
 
 	done := make(chan struct{})
 	defer close(done)
@@ -90,12 +100,7 @@ func SendPingWaitPong(sendPing func() error, waitPong <-chan error, isStopped fu
 				result <- errors.New("wait pong timeout")
 				return
 
-			case err := <-waitPong:
-				if err != nil {
-					result <- fmt.Errorf("handle pong: %v", err)
-					return
-				}
-
+			case <-waitPong:
 				ok := waitPongTimer.Reset(waitPongTime)
 				if !ok {
 					waitPongTimer = time.NewTimer(waitPongTime)

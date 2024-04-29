@@ -129,25 +129,18 @@ func (opt *AdapterOption) AdapterFixup(maxRetrySecond int, adapterFixup func(IAd
 //
 // When SendPingWaitPong sends a ping message and waits for a corresponding pong message.
 // SendPeriod = WaitSecond / 2
-func (opt *AdapterOption) SendPing(sendPing func(IAdapter) error, waitPong chan error, waitPongSecond int) *AdapterOption {
-	waitSeconds := waitPongSecond
-	if waitSeconds < 0 {
+func (opt *AdapterOption) SendPing(sendPingSeconds int, waitPong WaitPingPong, sendPing func(IAdapter) error) *AdapterOption {
+	sendSeconds := sendPingSeconds
+	if sendSeconds < 0 {
 		return opt
 	}
-	if waitSeconds == 0 {
-		waitSeconds = 30
+	if sendSeconds == 0 {
+		sendSeconds = 30
 	}
 
 	pubsub := opt.adapter
 	pubsub.pp = func() error {
-		return SendPingWaitPong(
-			func() error {
-				return sendPing(pubsub)
-			},
-			waitPong,
-			pubsub.IsStopped,
-			waitSeconds,
-		)
+		return SendPingWaitPong(sendSeconds, func() error { return sendPing(pubsub) }, waitPong, pubsub.IsStopped)
 	}
 	return opt
 }
@@ -156,8 +149,8 @@ func (opt *AdapterOption) SendPing(sendPing func(IAdapter) error, waitPong chan 
 //
 // When WaitPingSendPong waits for a ping message and response a corresponding pong message.
 // SendPeriod = WaitSecond
-func (opt *AdapterOption) WaitPing(waitPing chan error, waitPingSecond int, sendPong func(IAdapter) error) *AdapterOption {
-	waitSeconds := waitPingSecond
+func (opt *AdapterOption) WaitPing(waitPingSeconds int, waitPing WaitPingPong, sendPong func(IAdapter) error) *AdapterOption {
+	waitSeconds := waitPingSeconds
 	if waitSeconds < 0 {
 		return opt
 	}
@@ -167,14 +160,7 @@ func (opt *AdapterOption) WaitPing(waitPing chan error, waitPingSecond int, send
 
 	pubsub := opt.adapter
 	pubsub.pp = func() error {
-		return WaitPingSendPong(
-			waitPing,
-			func() error {
-				return sendPong(pubsub)
-			},
-			pubsub.IsStopped,
-			waitSeconds,
-		)
+		return WaitPingSendPong(waitSeconds, waitPing, func() error { return sendPong(pubsub) }, pubsub.IsStopped)
 	}
 	return opt
 }

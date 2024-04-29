@@ -173,7 +173,7 @@ hello_world_decoratorA
 			}
 
 			handler := LinkMiddlewares(baseFunc, tt.middlewares...)
-			err := handler(&tt.msg, nil)
+			err := handler(tt.msg, nil)
 			if err != nil {
 				t.Errorf("unexpected error: got %v", err)
 			}

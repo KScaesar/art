@@ -5,67 +5,67 @@ import (
 	"testing"
 )
 
-func Test_NoTimeout_When_PingWait_gt_PongWait(t *testing.T) {
-	err := pingpong(t, 2, 1)
+func Test_NoTimeout_When_ClientSendPingSeconds_LessThan_ServerWaitPingSeconds(t *testing.T) {
+	clientSendPingSeconds := 1
+	serverWaitPingSeconds := 2
+	err := pingpong(t, clientSendPingSeconds, serverWaitPingSeconds)
 	if err != nil {
-		t.Errorf("PingPing fail: %v", err)
+		t.Errorf("pingping should success: %v", err)
 		return
 	}
-	t.Logf("PingPing success")
 }
 
-func Test_HasTimeout_When_PingWait_lt_PongWait(t *testing.T) {
-	err := pingpong(t, 1, 2)
-	if err != nil {
-		t.Logf("PingPing fail: %v", err)
-		return
+func Test_HasTimeout_When_ClientSendPingSeconds_GreaterThan_ServerWaitPingSeconds(t *testing.T) {
+	clientSendPingSeconds := 2
+	serverWaitPingSeconds := 1
+	err := pingpong(t, clientSendPingSeconds, serverWaitPingSeconds)
+	if err == nil {
+		t.Errorf("pingping should timeout")
 	}
-	t.Errorf("PingPing success")
+	t.Logf("pingping fail: %v", err)
 }
 
-func pingpong(t *testing.T, pingWaitSecond, pongWaitSecond int) error {
+func pingpong(t *testing.T, clientSendPingSeconds, serverWaitPingSeconds int) error {
 	sendPingCount := 0
 	targetCount := 2
+	isStop := func() bool { return sendPingCount == targetCount }
 
-	actor1WaitPong := make(chan error, 1)
-	actor2WaitPing := make(chan error, 1)
-
-	actr1SendPing := func() error {
-		sendPingCount++
-		t.Logf("actor1 ping")
-		actor2WaitPing <- nil
-		return nil
-	}
-	actor2SendPong := func() error {
-		t.Logf("actor2 pong")
-		actor1WaitPong <- nil
-		return nil
-	}
-
-	isStop := func() bool {
-		return sendPingCount == targetCount
-	}
-
+	clientWaitPong := NewWaitPingPong()
+	serverWaitPing := NewWaitPingPong()
 	notify := make(chan error, 2)
 
-	actor1 := func() {
-		err := SendPingWaitPong(actr1SendPing, actor1WaitPong, isStop, pongWaitSecond)
+	client := func() {
+		clientSendPing := func() error {
+			sendPingCount++
+			t.Logf("client send ping")
+			serverWaitPing.Ack()
+			t.Logf("server ack ping")
+			return nil
+		}
+		err := SendPingWaitPong(clientSendPingSeconds, clientSendPing, clientWaitPong, isStop)
 		if err != nil {
-			notify <- fmt.Errorf("actor1: %w", err)
+			notify <- fmt.Errorf("client: %w", err)
 		}
 		notify <- nil
 	}
 
-	actor2 := func() {
-		err := WaitPingSendPong(actor2WaitPing, actor2SendPong, isStop, pingWaitSecond)
+	server := func() {
+		serverSendPong := func() error {
+			t.Logf("server send pong")
+			clientWaitPong.Ack()
+			t.Logf("client ack pong")
+			t.Logf("")
+			return nil
+		}
+		err := WaitPingSendPong(serverWaitPingSeconds, serverWaitPing, serverSendPong, isStop)
 		if err != nil {
-			notify <- fmt.Errorf("actor2: %w", err)
+			notify <- fmt.Errorf("server: %w", err)
 			return
 		}
 		notify <- nil
 	}
 
-	go actor1()
-	go actor2()
+	go client()
+	go server()
 	return <-notify
 }
