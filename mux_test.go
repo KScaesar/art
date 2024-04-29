@@ -96,7 +96,7 @@ func TestLinkMiddlewares_when_wildcard(t *testing.T) {
 
 }
 
-func TestLinkMiddlewares(t *testing.T) {
+func TestLink(t *testing.T) {
 	buf := new(bytes.Buffer)
 	buf.WriteString("\n")
 
@@ -172,7 +172,7 @@ hello_world_decoratorA
 				return nil
 			}
 
-			handler := LinkMiddlewares(baseFunc, tt.middlewares...)
+			handler := Link(baseFunc, tt.middlewares...)
 			err := handler(tt.msg, nil)
 			if err != nil {
 				t.Errorf("unexpected error: got %v", err)

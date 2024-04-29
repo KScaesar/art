@@ -39,14 +39,14 @@ func (param *paramHandler) register(leafNode *trie, path []Middleware) error {
 		if leafNode.transform != nil {
 			return errors.New("assign duplicated transform")
 		}
-		leafNode.transform = LinkMiddlewares(param.transform, path...)
+		leafNode.transform = Link(param.transform, path...)
 	}
 
 	if param.handler != nil {
 		if leafNode.handler != nil {
 			return errors.New("assign duplicated handler")
 		}
-		leafNode.handler = LinkMiddlewares(param.handler, path...)
+		leafNode.handler = Link(param.handler, path...)
 
 		if param.handlerName == "" {
 			leafNode.handlerName = functionName(param.handler)
@@ -59,7 +59,7 @@ func (param *paramHandler) register(leafNode *trie, path []Middleware) error {
 		if leafNode.defaultHandler != nil {
 			return errors.New("assign duplicated defaultHandler")
 		}
-		leafNode.defaultHandler = LinkMiddlewares(param.defaultHandler, path...)
+		leafNode.defaultHandler = Link(param.defaultHandler, path...)
 
 		if param.defaultHandlerName == "" {
 			leafNode.defaultHandlerName = functionName(param.defaultHandler)

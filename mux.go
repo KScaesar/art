@@ -103,7 +103,7 @@ func (mux *Mux) Handler(subject string, h HandleFunc, mw ...Middleware) *Mux {
 		handler: h,
 	}
 	if mw != nil {
-		param.handler = LinkMiddlewares(param.handler, mw...)
+		param.handler = Link(param.handler, mw...)
 		param.handlerName = functionName(h)
 	}
 
@@ -140,7 +140,7 @@ func (mux *Mux) DefaultHandler(h HandleFunc, mw ...Middleware) *Mux {
 		defaultHandler: h,
 	}
 	if mw != nil {
-		param.defaultHandler = LinkMiddlewares(param.defaultHandler, mw...)
+		param.defaultHandler = Link(param.defaultHandler, mw...)
 		param.defaultHandlerName = functionName(h)
 	}
 

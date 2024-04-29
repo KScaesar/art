@@ -31,21 +31,21 @@ func (h HandleFunc) PostMiddleware() Middleware {
 	}
 }
 
-func (h HandleFunc) LinkMiddlewares(middlewares ...Middleware) HandleFunc {
-	return LinkMiddlewares(h, middlewares...)
+func (h HandleFunc) Link(middlewares ...Middleware) HandleFunc {
+	return Link(h, middlewares...)
 }
 
 type Middleware func(next HandleFunc) HandleFunc
 
 func (mw Middleware) HandleFunc() HandleFunc {
-	return LinkMiddlewares(UseSkipMessage(), mw)
+	return Link(UseSkipMessage(), mw)
 }
 
-func (mw Middleware) LinkMiddlewares(handler HandleFunc) HandleFunc {
-	return LinkMiddlewares(handler, mw)
+func (mw Middleware) Link(handler HandleFunc) HandleFunc {
+	return Link(handler, mw)
 }
 
-func LinkMiddlewares(handler HandleFunc, middlewares ...Middleware) HandleFunc {
+func Link(handler HandleFunc, middlewares ...Middleware) HandleFunc {
 	n := len(middlewares)
 	for i := n - 1; 0 <= i; i-- {
 		decorator := middlewares[i]
