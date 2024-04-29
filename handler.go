@@ -3,6 +3,7 @@ package Artifex
 import (
 	"fmt"
 	"runtime/debug"
+	"time"
 )
 
 type HandleFunc func(message *Message, dep any) error
@@ -194,6 +195,23 @@ func (use Use) PrintResult(excludedSubjects []string) func(message *Message, dep
 		logger.Info("handle %q ok", subject)
 		return nil
 	}
+}
+
+func (use Use) HowMuchTime() Middleware {
+	return func(next HandleFunc) HandleFunc {
+		return func(message *Message, dep any) error {
+			startTime := time.Now()
+			defer func() {
+				subject := message.Subject
+				logger := use.logger(message, dep)
+
+				finishTime := time.Now()
+				logger.Info("handle %q spend %v", subject, finishTime.Sub(startTime))
+			}()
+			return next(message, dep)
+		}
+	}
+
 }
 
 func (use Use) PrintDetail() HandleFunc {

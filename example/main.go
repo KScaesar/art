@@ -8,7 +8,7 @@ import (
 	"github.com/KScaesar/Artifex"
 )
 
-var useLogger = Artifex.UseLogger(false, false)
+var useLogger = Artifex.UseLogger(true, false)
 
 func main() {
 	Artifex.SetDefaultLogger(Artifex.NewLogger(false, Artifex.LogLevelDebug))
@@ -19,13 +19,16 @@ func main() {
 	use := Artifex.Use{LoggerPolicy: useLogger}
 	mux.ErrorHandler(use.PrintResult(nil))
 
-	mux.Middleware(func(next Artifex.HandleFunc) Artifex.HandleFunc {
-		return func(message *Artifex.Message, dep any) error {
-			logger := useLogger(message, dep)
-			logger.Info(">>>>>> recv %q <<<<<<", message.Subject)
-			return next(message, dep)
-		}
-	})
+	mux.Middleware(
+		use.HowMuchTime(),
+		func(next Artifex.HandleFunc) Artifex.HandleFunc {
+			return func(message *Artifex.Message, dep any) error {
+				logger := useLogger(message, dep)
+				logger.Info(">>>>>> recv %q <<<<<<", message.Subject)
+				return next(message, dep)
+			}
+		},
+	)
 
 	// Note:
 	// Before registering handler, middleware must be defined;
