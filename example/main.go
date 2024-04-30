@@ -25,7 +25,7 @@ func main() {
 		Artifex.UseHowMuchTime(),
 		func(next Artifex.HandleFunc) Artifex.HandleFunc {
 			return func(message *Artifex.Message, dep any) error {
-				logger := Artifex.CtxGetLogger(message.Ctx)
+				logger := Artifex.CtxGetLogger(message.Ctx, dep)
 				logger.Info(">>>>>> recv %q <<<<<<", message.Subject)
 				return next(message, dep)
 			}
@@ -161,14 +161,14 @@ func createMessages() (messages []*Artifex.Message) {
 
 func HandleAuth() Artifex.HandleFunc {
 	return func(message *Artifex.Message, dep any) error {
-		Artifex.CtxGetLogger(message.Ctx).
+		Artifex.CtxGetLogger(message.Ctx, dep).
 			Info("Middleware: Auth ok")
 		return nil
 	}
 }
 
 func Hello(message *Artifex.Message, dep any) error {
-	Artifex.CtxGetLogger(message.Ctx).
+	Artifex.CtxGetLogger(message.Ctx, dep).
 		Info("Hello: body=%v user=%v\n", string(message.Bytes), message.RouteParam.Get("user"))
 	return nil
 }
@@ -178,7 +178,7 @@ func UpdatedProductPrice(db map[string]any) Artifex.HandleFunc {
 		brand := message.RouteParam.Str("brand")
 		db[brand] = message.Bytes
 
-		Artifex.CtxGetLogger(message.Ctx).
+		Artifex.CtxGetLogger(message.Ctx, dep).
 			Info("UpdatedProductPrice: saved db: brand=%v\n", brand)
 		return nil
 	}

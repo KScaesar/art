@@ -146,7 +146,7 @@ func UseLogger(withMsgId bool, isEgress bool) HandleFunc {
 
 		message.UpdateContext(
 			func(ctx context.Context) context.Context {
-				return CtxWithLogger(ctx, logger)
+				return CtxWithLogger(ctx, dep, logger)
 			},
 		)
 
@@ -158,7 +158,7 @@ func UsePrintResult() Middleware {
 	return func(next HandleFunc) HandleFunc {
 		return func(message *Message, dep any) error {
 			subject := message.Subject
-			logger := CtxGetLogger(message.Ctx)
+			logger := CtxGetLogger(message.Ctx, dep)
 
 			err := next(message, dep)
 			if err != nil {
@@ -177,7 +177,7 @@ func UseHowMuchTime() Middleware {
 			startTime := time.Now()
 			defer func() {
 				subject := message.Subject
-				logger := CtxGetLogger(message.Ctx)
+				logger := CtxGetLogger(message.Ctx, dep)
 
 				finishTime := time.Now()
 				logger.Info("handle %q spend %v", subject, finishTime.Sub(startTime))
@@ -190,7 +190,7 @@ func UseHowMuchTime() Middleware {
 func UsePrintDetail() HandleFunc {
 	return func(message *Message, dep any) error {
 		subject := message.Subject
-		logger := CtxGetLogger(message.Ctx)
+		logger := CtxGetLogger(message.Ctx, dep)
 
 		if message.Body != nil {
 			logger.Debug("print %q: %T %v", subject, message.Body, AnyToString(message.Body))

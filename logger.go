@@ -12,16 +12,20 @@ import (
 	"strings"
 )
 
-//
-
 var loggerKey = "logger"
 
-func CtxWithLogger(ctx context.Context, v Logger) context.Context {
-	return context.WithValue(ctx, &loggerKey, v)
+func CtxWithLogger(ctx context.Context, dep any, v Logger) context.Context {
+	if dep == nil {
+		dep = &loggerKey
+	}
+	return context.WithValue(ctx, dep, v)
 }
 
-func CtxGetLogger(ctx context.Context) Logger {
-	logger, ok := ctx.Value(&loggerKey).(Logger)
+func CtxGetLogger(ctx context.Context, dep any) Logger {
+	if dep == nil {
+		dep = &loggerKey
+	}
+	logger, ok := ctx.Value(dep).(Logger)
 	if !ok {
 		return DefaultLogger()
 	}
