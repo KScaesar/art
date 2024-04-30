@@ -4,6 +4,8 @@ const MessageTmpl = `
 package {{.Package}}
 
 import (
+	"context"
+
 	"github.com/KScaesar/Artifex"
 )
 
@@ -11,8 +13,11 @@ func New{{.FileName}}Ingress(bBody []byte, metadata any, pingpong Artifex.WaitPi
 	message := Artifex.GetMessage()
 
 	message.Bytes = bBody
-	{{.FileName}}Metadata.SetPingPong(message.Metadata, pingpong)
+	{{.FileName}}Metadata.SetCorrelationId(message.Metadata, metadata)
 	message.RawInfra = nil
+	message.UpdateContext(func(ctx context.Context) context.Context {
+		return Artifex.CtxWithPingPong(ctx, pingpong)
+	})
 	return message
 }
 

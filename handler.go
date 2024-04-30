@@ -123,8 +123,6 @@ func UseRecover() Middleware {
 
 func UseLogger(withMsgId bool) HandleFunc {
 	return func(message *Message, dep any) error {
-		message.Ctx = context.Background()
-
 		type Getter interface {
 			Log() Logger
 		}
@@ -141,9 +139,11 @@ func UseLogger(withMsgId bool) HandleFunc {
 			logger = logger.WithKeyValue("msg_id", message.MsgId())
 		}
 
+		message.Mutex.Lock()
+		defer message.Mutex.Unlock()
 		message.UpdateContext(
-			func(ctx1 context.Context) (ctx2 context.Context) {
-				return CtxWithLogger(ctx1, logger)
+			func(ctx context.Context) context.Context {
+				return CtxWithLogger(ctx, logger)
 			},
 		)
 
@@ -151,26 +151,20 @@ func UseLogger(withMsgId bool) HandleFunc {
 	}
 }
 
-func UsePrintResult(excludedSubjects []string) func(message *Message, dep any, err error) error {
-	excluded := make(map[string]bool, len(excludedSubjects))
-	for i := 0; i < len(excludedSubjects); i++ {
-		excluded[excludedSubjects[i]] = true
-	}
+func UsePrintResult() Middleware {
+	return func(next HandleFunc) HandleFunc {
+		return func(message *Message, dep any) error {
+			subject := message.Subject
+			logger := CtxGetLogger(message.Ctx)
 
-	return func(message *Message, dep any, err error) error {
-		subject := message.Subject
-		logger := CtxGetLogger(message.Ctx)
-
-		if err != nil {
-			logger.Error("handle %q: %v", subject, err)
-			return err
-		}
-
-		if excluded[subject] {
+			err := next(message, dep)
+			if err != nil {
+				logger.Error("handle %q: %v", subject, err)
+				return err
+			}
+			logger.Info("handle %q ok", subject)
 			return nil
 		}
-		logger.Info("handle %q ok", subject)
-		return nil
 	}
 }
 
@@ -190,10 +184,10 @@ func UseHowMuchTime() Middleware {
 	}
 }
 
-func UsePrintDetail(useLogger func(message *Message, dep any) Logger) HandleFunc {
+func UsePrintDetail() HandleFunc {
 	return func(message *Message, dep any) error {
 		subject := message.Subject
-		logger := useLogger(message, dep)
+		logger := CtxGetLogger(message.Ctx)
 
 		if message.Body != nil {
 			logger.Debug("print %q: %T %v", subject, message.Body, AnyToString(message.Body))

@@ -27,7 +27,7 @@ func NewMux(routeDelimiter string) *Mux {
 type Mux struct {
 	node              *trie
 	routeDelimiter    string
-	errorHandlers     []func(message *Message, dependency any, err error) error
+	errorHandlers     []Middleware
 	enableMessagePool bool
 }
 
@@ -41,9 +41,9 @@ func (mux *Mux) HandleMessage(message *Message, dependency any) (err error) {
 
 	defer func() {
 		if mux.errorHandlers != nil {
-			for _, errHandler := range mux.errorHandlers {
-				err = errHandler(message, dependency, err)
-			}
+			err = Link(func(message *Message, dep any) error {
+				return err
+			}, mux.errorHandlers...)(message, dependency)
 		}
 	}()
 
@@ -163,8 +163,8 @@ func (mux *Mux) NotFoundHandler(h HandleFunc) *Mux {
 	return mux
 }
 
-func (mux *Mux) ErrorHandler(errHandlers ...func(message *Message, dependency any, err error) error) *Mux {
-	mux.errorHandlers = errHandlers
+func (mux *Mux) ErrorHandler(errHandlers ...Middleware) *Mux {
+	mux.errorHandlers = append(mux.errorHandlers, errHandlers...)
 	return mux
 }
 

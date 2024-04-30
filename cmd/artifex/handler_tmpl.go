@@ -15,10 +15,10 @@ func New{{.FileName}}IngressMux(pingpong bool) *{{.FileName}}IngressMux {
 		Transform(func(message *Artifex.Message, dep any) error {
 			return nil
 		}).
-		Handler("ping", func(message *Artifex.Message, dep any) error {
-			{{.FileName}}Metadata.GetPingPong(message.Metadata).Ack()
+		Handler("pong", func(message *Artifex.Message, dep any) error {
+			Artifex.CtxGetPingPong(message.Ctx).Ack()
 			if pingpong {
-				dep.(Artifex.IAdapter).Log().Debug("ack ping")
+				dep.(Artifex.IAdapter).Log().Debug("ack pong")
 			}
 			return nil
 		})
@@ -30,9 +30,9 @@ func New{{.FileName}}EgressMux(pingpong bool) *{{.FileName}}EgressMux {
 		Transform(func(message *Artifex.Message, dep any) error {
 			return nil
 		}).
-		Handler("pong", func(message *Artifex.Message, dep any) error {
+		Handler("ping", func(message *Artifex.Message, dep any) error {
 			if pingpong {
-				dep.(Artifex.IAdapter).Log().Debug("send pong")
+				dep.(Artifex.IAdapter).Log().Debug("send ping")
 			}
 			return nil
 		})

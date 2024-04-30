@@ -22,6 +22,7 @@ func newMessage() *Message {
 	return &Message{
 		RouteParam: map[string]any{},
 		Metadata:   map[string]any{},
+		Ctx:        context.Background(),
 	}
 }
 
@@ -65,7 +66,7 @@ func (msg *Message) SetMsgId(msgId string) {
 	msg.identifier = msgId
 }
 
-func (msg *Message) UpdateContext(updates ...func(ctx1 context.Context) (ctx2 context.Context)) context.Context {
+func (msg *Message) UpdateContext(updates ...func(ctx context.Context) context.Context) context.Context {
 	for _, update := range updates {
 		msg.Ctx = update(msg.Ctx)
 	}
@@ -90,4 +91,5 @@ func (msg *Message) reset() {
 	}
 
 	msg.RawInfra = nil
+	msg.Ctx = context.Background()
 }

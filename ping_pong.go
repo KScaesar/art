@@ -1,10 +1,25 @@
 package Artifex
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
 )
+
+var ppKey = "logger"
+
+func CtxWithPingPong(ctx context.Context, v WaitPingPong) context.Context {
+	return context.WithValue(ctx, &ppKey, v)
+}
+
+func CtxGetPingPong(ctx context.Context) WaitPingPong {
+	wait, ok := ctx.Value(&ppKey).(WaitPingPong)
+	if !ok {
+		panic("not found ping pong")
+	}
+	return wait
+}
 
 func NewWaitPingPong() WaitPingPong {
 	wait := make(WaitPingPong, 1)

@@ -14,9 +14,13 @@ func main() {
 	routeDelimiter := "/"
 	mux := Artifex.NewMux(routeDelimiter)
 
-	mux.ErrorHandler(Artifex.UsePrintResult(nil))
+	mux.ErrorHandler(Artifex.UsePrintResult())
 
+	// Note:
+	// Before registering handler, middleware must be defined;
+	// otherwise, the handler won't be able to use middleware.
 	mux.Middleware(
+		Artifex.UseExclude([]string{"RegisterUser"}),
 		Artifex.UseLogger(false).PreMiddleware(),
 		Artifex.UseHowMuchTime(),
 		func(next Artifex.HandleFunc) Artifex.HandleFunc {
@@ -26,19 +30,11 @@ func main() {
 				return next(message, dep)
 			}
 		},
+		Artifex.UseRecover(),
 	)
-
-	// Note:
-	// Before registering handler, middleware must be defined;
-	// otherwise, the handler won't be able to use middleware.
-	mux.Middleware(Artifex.UseRecover())
 
 	// When a subject cannot be found, execute the 'Default'
-	mux.DefaultHandler(
-		Artifex.UsePrintDetail(func(message *Artifex.Message, dep any) Artifex.Logger {
-			return Artifex.CtxGetLogger(message.Ctx)
-		}),
-	)
+	mux.DefaultHandler(Artifex.UsePrintDetail())
 
 	v1 := mux.Group("v1/").Middleware(HandleAuth().PreMiddleware())
 
@@ -48,9 +44,9 @@ func main() {
 	v1.Handler("UpdatedProductPrice/{brand}", UpdatedProductPrice(db))
 
 	// Endpoints:
-	// [Artifex] subject=".*"                                f="main.DefaultHandler"
+	// [Artifex] subject=".*"                                f="main.main.UsePrintDetail.func9"
 	// [Artifex] subject="v1/Hello/{user}"                   f="main.Hello"
-	// [Artifex] subject="v1/UpdatedProductPrice/{brand}"    f="main.main.UpdatedProductPrice.func5"
+	// [Artifex] subject="v1/UpdatedProductPrice/{brand}"    f="main.main.UpdatedProductPrice.func12"
 	mux.Endpoints(func(subject, fn string) { fmt.Printf("[Artifex] subject=%-35q f=%q\n", subject, fn) })
 
 	intervalSecond := 2
@@ -118,33 +114,47 @@ func (adp *Adapter) Recv() (msg *Artifex.Message, err error) {
 
 // message
 
-var messages = []*Artifex.Message{
-	{
-		Subject: "RegisterUser",
-		Bytes:   []byte(`{"user_id": "123456", "username": "john_doe", "email": "john.doe@example.com", "age": 30, "country": "United States"}`),
-	},
-	{
-		Subject:    "v1/Hello/ff1017",
-		Bytes:      []byte("world"),
-		RouteParam: map[string]any{},
-	},
-	{
-		Subject: "UpdatedUser",
-		Bytes:   []byte(`{"user_id": "789012", "username": "jane_smith", "email": "jane.smith@example.com", "age": 25, "country": "Canada"}`),
-	},
-	{
-		Subject:    "v1/UpdatedProductPrice/Samsung",
-		Bytes:      []byte(`{"product_id": "67890", "name": "Samsung Galaxy Watch 4", "price": 349, "brand": "Samsung", "category": "Wearable Technology"}`),
-		RouteParam: map[string]any{},
-	},
-	{
-		Subject: "UpdateLocation",
-		Bytes:   []byte(`{"location_id": "002", "name": "Eiffel Tower", "city": "Paris", "country": "France", "latitude": 48.8584, "longitude": 2.2945}`),
-	},
-	{
-		Subject: "CreatedOrder",
-		Bytes:   []byte(`{"order_id": "ABC123", "customer_name": "John Smith", "total_amount": 150.75, "items": ["T-shirt", "Jeans", "Sneakers"]}`),
-	},
+var messages = createMessages()
+
+func createMessages() (messages []*Artifex.Message) {
+	type param struct {
+		Subject string
+		Bytes   []byte
+	}
+	params := []param{
+		{
+			Subject: "RegisterUser",
+			Bytes:   []byte(`{"user_id": "123456", "username": "john_doe", "email": "john.doe@example.com", "age": 30, "country": "United States"}`),
+		},
+		{
+			Subject: "v1/Hello/ff1017",
+			Bytes:   []byte("world"),
+		},
+		{
+			Subject: "UpdatedUser",
+			Bytes:   []byte(`{"user_id": "789012", "username": "jane_smith", "email": "jane.smith@example.com", "age": 25, "country": "Canada"}`),
+		},
+		{
+			Subject: "v1/UpdatedProductPrice/Samsung",
+			Bytes:   []byte(`{"product_id": "67890", "name": "Samsung Galaxy Watch 4", "price": 349, "brand": "Samsung", "category": "Wearable Technology"}`),
+		},
+		{
+			Subject: "UpdateLocation",
+			Bytes:   []byte(`{"location_id": "002", "name": "Eiffel Tower", "city": "Paris", "country": "France", "latitude": 48.8584, "longitude": 2.2945}`),
+		},
+		{
+			Subject: "CreatedOrder",
+			Bytes:   []byte(`{"order_id": "ABC123", "customer_name": "John Smith", "total_amount": 150.75, "items": ["T-shirt", "Jeans", "Sneakers"]}`),
+		},
+	}
+
+	for i := range params {
+		message := Artifex.GetMessage()
+		message.Subject = params[i].Subject
+		message.Bytes = params[i].Bytes
+		messages = append(messages, message)
+	}
+	return messages
 }
 
 // handler

@@ -5,27 +5,25 @@ package {{.Package}}
 
 import (
 	"github.com/gookit/goutil/maputil"
-
-	"github.com/KScaesar/Artifex"
 )
 
 var {{.FileName}}Metadata = new{{.FileName}}MetadataKey()
 
 func new{{.FileName}}MetadataKey() *{{.FileName}}MetadataKey {
 	return &{{.FileName}}MetadataKey{
-		pingpong: "pingpong",
+		corId: "corId",
 	}
 }
 
 type {{.FileName}}MetadataKey struct {
-	pingpong string
+	corId string
 }
 
-func (key *{{.FileName}}MetadataKey) GetPingPong(md maputil.Data) (pingpong Artifex.WaitPingPong) {
-	return md.Get(key.pingpong).(Artifex.WaitPingPong)
+func (key *{{.FileName}}MetadataKey) GetCorrelationId(md maputil.Data) any {
+	return md.Get(key.corId).(any)
 }
 
-func (key *{{.FileName}}MetadataKey) SetPingPong(md maputil.Data, value Artifex.WaitPingPong) {
-	md.Set(key.pingpong, value)
+func (key *{{.FileName}}MetadataKey) SetCorrelationId(md maputil.Data, value any) {
+	md.Set(key.corId, value)
 }
 `

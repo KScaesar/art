@@ -585,9 +585,7 @@ func TestMessageMux_Recover(t *testing.T) {
 	SetDefaultLogger(SilentLogger())
 
 	mux := NewMux("/").
-		ErrorHandler(func(message *Message, dependency any, err error) error {
-			return nil
-		}).
+		ErrorHandler(UseInclude(nil)).
 		Middleware(UseRecover()).
 		DefaultHandler(func(_ *Message, dep any) error {
 			panic("dependency is nil")
