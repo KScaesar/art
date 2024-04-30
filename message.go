@@ -55,6 +55,13 @@ type Message struct {
 	Ctx context.Context
 }
 
+func (msg *Message) UpdateContext(updates ...func(ctx context.Context) context.Context) context.Context {
+	for _, update := range updates {
+		msg.Ctx = update(msg.Ctx)
+	}
+	return msg.Ctx
+}
+
 func (msg *Message) MsgId() string {
 	if msg.identifier == "" {
 		msg.identifier = GenerateUlid()
@@ -64,13 +71,6 @@ func (msg *Message) MsgId() string {
 
 func (msg *Message) SetMsgId(msgId string) {
 	msg.identifier = msgId
-}
-
-func (msg *Message) UpdateContext(updates ...func(ctx context.Context) context.Context) context.Context {
-	for _, update := range updates {
-		msg.Ctx = update(msg.Ctx)
-	}
-	return msg.Ctx
 }
 
 func (msg *Message) reset() {
@@ -92,4 +92,24 @@ func (msg *Message) reset() {
 
 	msg.RawInfra = nil
 	msg.Ctx = context.Background()
+}
+
+func (msg *Message) Copy() *Message {
+	message := GetMessage()
+
+	message.Subject = msg.Subject
+	message.Bytes = msg.Bytes
+	message.Body = msg.Body
+	message.identifier = msg.identifier
+
+	for key, v := range msg.RouteParam {
+		message.RouteParam.Set(key, v)
+	}
+	for key, v := range msg.Metadata {
+		message.Metadata.Set(key, v)
+	}
+
+	message.RawInfra = message.RawInfra
+	message.Ctx = message.Ctx
+	return message
 }
