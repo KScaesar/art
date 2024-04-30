@@ -2,7 +2,6 @@ package Artifex
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"strconv"
 	"testing"
@@ -27,7 +26,6 @@ func TestMessageMux_HandleMessage(t *testing.T) {
 
 	// paramHandler
 	message := &Message{
-		ctx:     context.Background(),
 		Bytes:   []byte(`{"data":"world"}`),
 		Subject: "hello",
 	}
@@ -438,7 +436,7 @@ func TestMux_DefaultHandler(t *testing.T) {
 func TestMux_SetDefaultHandler_when_wildcard(t *testing.T) {
 	recorder := []string{}
 	mux := NewMux(".").
-		Middleware(Use{}.Recover()).
+		Middleware(UseRecover()).
 		DefaultHandler(func(message *Message, dep any) error {
 			recorder = append(recorder, string(message.Bytes)+" default")
 			return nil
@@ -587,9 +585,12 @@ func TestMessageMux_Recover(t *testing.T) {
 	SetDefaultLogger(SilentLogger())
 
 	mux := NewMux("/").
-		Middleware(Use{}.Recover()).
+		ErrorHandler(func(message *Message, dependency any, err error) error {
+			return nil
+		}).
+		Middleware(UseRecover()).
 		DefaultHandler(func(_ *Message, dep any) error {
-			panic("testcase")
+			panic("dependency is nil")
 			return nil
 		})
 
@@ -599,6 +600,6 @@ func TestMessageMux_Recover(t *testing.T) {
 
 	err := mux.HandleMessage(message, nil)
 	if err != nil {
-		t.Errorf("%#v :unexpected error: got %v", message, err)
+		t.Errorf("unexpected error: got %v", err)
 	}
 }

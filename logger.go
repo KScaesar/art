@@ -1,6 +1,7 @@
 package Artifex
 
 import (
+	"context"
 	"encoding"
 	"encoding/json"
 	"fmt"
@@ -10,6 +11,22 @@ import (
 	"strconv"
 	"strings"
 )
+
+//
+
+var loggerKey = "logger"
+
+func CtxWithLogger(ctx context.Context, v Logger) context.Context {
+	return context.WithValue(ctx, &loggerKey, v)
+}
+
+func CtxGetLogger(ctx context.Context) Logger {
+	logger, ok := ctx.Value(&loggerKey).(Logger)
+	if !ok {
+		return DefaultLogger()
+	}
+	return logger
+}
 
 // Level
 

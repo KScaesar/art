@@ -51,8 +51,7 @@ type Message struct {
 
 	RawInfra any
 
-	ctx    context.Context
-	Logger Logger
+	Ctx context.Context
 }
 
 func (msg *Message) MsgId() string {
@@ -66,22 +65,11 @@ func (msg *Message) SetMsgId(msgId string) {
 	msg.identifier = msgId
 }
 
-func (msg *Message) Context() context.Context {
-	if msg.ctx == nil {
-		msg.ctx = context.Background()
+func (msg *Message) UpdateContext(updates ...func(ctx1 context.Context) (ctx2 context.Context)) context.Context {
+	for _, update := range updates {
+		msg.Ctx = update(msg.Ctx)
 	}
-	return msg.ctx
-}
-
-func (msg *Message) SetContext(ctx context.Context) {
-	msg.ctx = ctx
-}
-
-func (msg *Message) SwapContext(swaps ...func(ctx1 context.Context) (ctx2 context.Context)) context.Context {
-	for _, swap := range swaps {
-		msg.ctx = swap(msg.Context())
-	}
-	return msg.ctx
+	return msg.Ctx
 }
 
 func (msg *Message) reset() {
@@ -102,6 +90,4 @@ func (msg *Message) reset() {
 	}
 
 	msg.RawInfra = nil
-	msg.ctx = nil
-	msg.Logger = nil
 }

@@ -8,22 +8,20 @@ import (
 	"github.com/KScaesar/Artifex"
 )
 
-var useLogger = Artifex.UseLogger(true, false)
-
 func main() {
 	Artifex.SetDefaultLogger(Artifex.NewLogger(false, Artifex.LogLevelDebug))
 
 	routeDelimiter := "/"
 	mux := Artifex.NewMux(routeDelimiter)
 
-	use := Artifex.Use{LoggerPolicy: useLogger}
-	mux.ErrorHandler(use.PrintResult(nil))
+	mux.ErrorHandler(Artifex.UsePrintResult(nil))
 
 	mux.Middleware(
-		use.HowMuchTime(),
+		Artifex.UseLogger(false).PreMiddleware(),
+		Artifex.UseHowMuchTime(),
 		func(next Artifex.HandleFunc) Artifex.HandleFunc {
 			return func(message *Artifex.Message, dep any) error {
-				logger := useLogger(message, dep)
+				logger := Artifex.CtxGetLogger(message.Ctx)
 				logger.Info(">>>>>> recv %q <<<<<<", message.Subject)
 				return next(message, dep)
 			}
@@ -33,10 +31,14 @@ func main() {
 	// Note:
 	// Before registering handler, middleware must be defined;
 	// otherwise, the handler won't be able to use middleware.
-	mux.Middleware(use.Recover())
+	mux.Middleware(Artifex.UseRecover())
 
 	// When a subject cannot be found, execute the 'Default'
-	mux.DefaultHandler(use.PrintDetail())
+	mux.DefaultHandler(
+		Artifex.UsePrintDetail(func(message *Artifex.Message, dep any) Artifex.Logger {
+			return Artifex.CtxGetLogger(message.Ctx)
+		}),
+	)
 
 	v1 := mux.Group("v1/").Middleware(HandleAuth().PreMiddleware())
 
@@ -149,14 +151,14 @@ var messages = []*Artifex.Message{
 
 func HandleAuth() Artifex.HandleFunc {
 	return func(message *Artifex.Message, dep any) error {
-		useLogger(message, dep).
+		Artifex.CtxGetLogger(message.Ctx).
 			Info("Middleware: Auth ok")
 		return nil
 	}
 }
 
 func Hello(message *Artifex.Message, dep any) error {
-	useLogger(message, dep).
+	Artifex.CtxGetLogger(message.Ctx).
 		Info("Hello: body=%v user=%v\n", string(message.Bytes), message.RouteParam.Get("user"))
 	return nil
 }
@@ -165,7 +167,8 @@ func UpdatedProductPrice(db map[string]any) Artifex.HandleFunc {
 	return func(message *Artifex.Message, dep any) error {
 		brand := message.RouteParam.Str("brand")
 		db[brand] = message.Bytes
-		useLogger(message, dep).
+
+		Artifex.CtxGetLogger(message.Ctx).
 			Info("UpdatedProductPrice: saved db: brand=%v\n", brand)
 		return nil
 	}

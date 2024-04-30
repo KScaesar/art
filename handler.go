@@ -1,6 +1,7 @@
 package Artifex
 
 import (
+	"context"
 	"fmt"
 	"runtime/debug"
 	"time"
@@ -57,37 +58,6 @@ func Link(handler HandleFunc, middlewares ...Middleware) HandleFunc {
 
 //
 
-func UseLogger(withMsgId, attachToMessage bool) func(message *Message, dep any) Logger {
-	return func(message *Message, dep any) Logger {
-		if message.Logger != nil {
-			return message.Logger
-		}
-
-		var logger Logger
-
-		type Getter interface {
-			Log() Logger
-		}
-
-		getter, ok := dep.(Getter)
-		if !ok {
-			logger = DefaultLogger()
-		} else {
-			logger = getter.Log()
-		}
-
-		if withMsgId {
-			logger = logger.WithKeyValue("msg_id", message.MsgId())
-		}
-
-		if attachToMessage {
-			message.Logger = logger
-		}
-
-		return logger
-	}
-}
-
 func UseSkipMessage() func(message *Message, dep any) error {
 	return func(message *Message, dep any) error { return nil }
 }
@@ -138,43 +108,50 @@ func UseInclude(subjects []string) Middleware {
 	}
 }
 
-type Use struct {
-	LoggerPolicy func(message *Message, dep any) Logger
-}
-
-func (use Use) logger(message *Message, dep any) Logger {
-	if use.LoggerPolicy == nil {
-		return UseLogger(false, false)(message, dep)
-	}
-	return use.LoggerPolicy(message, dep)
-}
-
-func (use Use) Logger() HandleFunc {
-	return func(message *Message, dep any) error {
-		use.logger(message, dep)
-		return nil
-	}
-}
-
-func (use Use) Recover() Middleware {
+func UseRecover() Middleware {
 	return func(next HandleFunc) HandleFunc {
 		return func(message *Message, dep any) (err error) {
-			logger := use.logger(message, dep)
-
 			defer func() {
 				if r := recover(); r != nil {
-					err = fmt.Errorf("%v", r)
-					logger.Error("recovered from panic: %v", r)
-					logger.Error("call stack: %v", string(debug.Stack()))
+					err = fmt.Errorf("recovered from panic: %v\n%v", r, string(debug.Stack()))
 				}
 			}()
-
 			return next(message, dep)
 		}
 	}
 }
 
-func (use Use) PrintResult(excludedSubjects []string) func(message *Message, dep any, err error) error {
+func UseLogger(withMsgId bool) HandleFunc {
+	return func(message *Message, dep any) error {
+		message.Ctx = context.Background()
+
+		type Getter interface {
+			Log() Logger
+		}
+
+		var logger Logger
+		getter, ok := dep.(Getter)
+		if !ok {
+			logger = DefaultLogger()
+		} else {
+			logger = getter.Log()
+		}
+
+		if withMsgId {
+			logger = logger.WithKeyValue("msg_id", message.MsgId())
+		}
+
+		message.UpdateContext(
+			func(ctx1 context.Context) (ctx2 context.Context) {
+				return CtxWithLogger(ctx1, logger)
+			},
+		)
+
+		return nil
+	}
+}
+
+func UsePrintResult(excludedSubjects []string) func(message *Message, dep any, err error) error {
 	excluded := make(map[string]bool, len(excludedSubjects))
 	for i := 0; i < len(excludedSubjects); i++ {
 		excluded[excludedSubjects[i]] = true
@@ -182,7 +159,7 @@ func (use Use) PrintResult(excludedSubjects []string) func(message *Message, dep
 
 	return func(message *Message, dep any, err error) error {
 		subject := message.Subject
-		logger := use.logger(message, dep)
+		logger := CtxGetLogger(message.Ctx)
 
 		if err != nil {
 			logger.Error("handle %q: %v", subject, err)
@@ -197,13 +174,13 @@ func (use Use) PrintResult(excludedSubjects []string) func(message *Message, dep
 	}
 }
 
-func (use Use) HowMuchTime() Middleware {
+func UseHowMuchTime() Middleware {
 	return func(next HandleFunc) HandleFunc {
 		return func(message *Message, dep any) error {
 			startTime := time.Now()
 			defer func() {
 				subject := message.Subject
-				logger := use.logger(message, dep)
+				logger := CtxGetLogger(message.Ctx)
 
 				finishTime := time.Now()
 				logger.Info("handle %q spend %v", subject, finishTime.Sub(startTime))
@@ -211,13 +188,12 @@ func (use Use) HowMuchTime() Middleware {
 			return next(message, dep)
 		}
 	}
-
 }
 
-func (use Use) PrintDetail() HandleFunc {
+func UsePrintDetail(useLogger func(message *Message, dep any) Logger) HandleFunc {
 	return func(message *Message, dep any) error {
 		subject := message.Subject
-		logger := use.logger(message, dep)
+		logger := useLogger(message, dep)
 
 		if message.Body != nil {
 			logger.Debug("print %q: %T %v", subject, message.Body, AnyToString(message.Body))
