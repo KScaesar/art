@@ -10,22 +10,21 @@ import (
 )
 
 func LoadJsonFileByLocal[T any](path, defaultEnv, defaultName string) (T, error) {
-	decode := func(data []byte, v *T) error {
+	decode := func(data []byte, v any) error {
 		return json.Unmarshal(data, v)
 	}
 	return LoadFileByLocal[T](decode, path, defaultEnv, defaultName)
 }
 
-func LoadFileByLocal[T any](decode Unmarshal[T], path, defaultEnv, defaultFileName string) (T, error) {
-	var empty T
-	obj, err := loadFileByLocal(decode, path, defaultEnv, defaultFileName)
+func LoadFileByLocal[T any](decode Unmarshal, path, defaultEnv, defaultFileName string) (T, error) {
+	obj, err := loadFileByLocal[T](decode, path, defaultEnv, defaultFileName)
 	if err != nil {
-		return empty, ErrorJoin3rdParty(ErrUniversal, err)
+		return obj, ErrorJoin3rdParty(ErrUniversal, err)
 	}
 	return obj, nil
 }
 
-func loadFileByLocal[T any](decode Unmarshal[T], path, defaultEnv, defaultFileName string) (T, error) {
+func loadFileByLocal[T any](decode Unmarshal, path, defaultEnv, defaultFileName string) (obj T, err error) {
 	const (
 		byNormal int = iota + 1
 		byEnvironmentVariable
@@ -56,8 +55,6 @@ func loadFileByLocal[T any](decode Unmarshal[T], path, defaultEnv, defaultFileNa
 
 	var targetPath string
 	var file *os.File
-	var empty T
-	var err error
 
 	for searchKind := byNormal; searchKind < stop; searchKind++ {
 		targetPath, err = getPath(searchKind)
@@ -78,19 +75,19 @@ func loadFileByLocal[T any](decode Unmarshal[T], path, defaultEnv, defaultFileNa
 	}
 
 	if err != nil {
-		return empty, err
+		return
 	}
 	defer file.Close()
 
 	data, err := io.ReadAll(file)
 	if err != nil {
-		return empty, err
+		return
 	}
 
 	body := new(T)
 	err = decode(data, body)
 	if err != nil {
-		return empty, err
+		return
 	}
 
 	return *body, err
