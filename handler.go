@@ -121,36 +121,54 @@ func UseRecover() Middleware {
 	}
 }
 
-func UseLogger(withMsgId bool, isEgress bool) HandleFunc {
-	return func(message *Message, dep any) error {
-		type Getter interface {
-			Log() Logger
+func UseLogger(withMsgId bool, isEgress bool) Middleware {
+	return func(next HandleFunc) HandleFunc {
+		return func(message *Message, dep any) error {
+			type Getter interface {
+				Log() Logger
+			}
+
+			var logger Logger
+			getter, ok := dep.(Getter)
+			if !ok {
+				logger = DefaultLogger()
+			} else {
+				logger = getter.Log()
+			}
+
+			if isEgress {
+				message.Mutex.Lock()
+				defer message.Mutex.Unlock()
+			}
+
+			if withMsgId {
+				logger = logger.WithKeyValue("msg_id", message.MsgId())
+			}
+
+			message.UpdateContext(
+				func(ctx context.Context) context.Context {
+					return CtxWithLogger(ctx, dep, logger)
+				},
+			)
+
+			return next(message, dep)
 		}
+	}
+}
 
-		var logger Logger
-		getter, ok := dep.(Getter)
-		if !ok {
-			logger = DefaultLogger()
-		} else {
-			logger = getter.Log()
+func UseHowMuchTime() Middleware {
+	return func(next HandleFunc) HandleFunc {
+		return func(message *Message, dep any) error {
+			startTime := time.Now()
+			defer func() {
+				subject := message.Subject
+				logger := CtxGetLogger(message.Ctx, dep)
+
+				finishTime := time.Now()
+				logger.Info("%q spend %v", subject, finishTime.Sub(startTime))
+			}()
+			return next(message, dep)
 		}
-
-		if isEgress {
-			message.Mutex.Lock()
-			defer message.Mutex.Unlock()
-		}
-
-		if withMsgId {
-			logger = logger.WithKeyValue("msg_id", message.MsgId())
-		}
-
-		message.UpdateContext(
-			func(ctx context.Context) context.Context {
-				return CtxWithLogger(ctx, dep, logger)
-			},
-		)
-
-		return nil
 	}
 }
 
@@ -171,35 +189,23 @@ func UsePrintResult() Middleware {
 	}
 }
 
-func UseHowMuchTime() Middleware {
-	return func(next HandleFunc) HandleFunc {
-		return func(message *Message, dep any) error {
-			startTime := time.Now()
-			defer func() {
-				subject := message.Subject
-				logger := CtxGetLogger(message.Ctx, dep)
-
-				finishTime := time.Now()
-				logger.Info("handle %q spend %v", subject, finishTime.Sub(startTime))
-			}()
-			return next(message, dep)
-		}
-	}
-}
-
 func UsePrintDetail() HandleFunc {
 	return func(message *Message, dep any) error {
 		subject := message.Subject
 		logger := CtxGetLogger(message.Ctx, dep)
 
 		if message.Body != nil {
-			logger.Debug("print %q: %T %v", subject, message.Body, AnyToString(message.Body))
+			logger.Debug("print detail %q: %T %v", subject, message.Body, AnyToString(message.Body))
 			return nil
 		}
 		if len(message.Bytes) != 0 {
-			logger.Debug("print %q: %v", subject, AnyToString(message.Bytes))
+			logger.Debug("print detail %q: %v", subject, AnyToString(message.Bytes))
 			return nil
 		}
 		return nil
 	}
+}
+
+func UsePrint(print HandleFunc) HandleFunc {
+	return print
 }

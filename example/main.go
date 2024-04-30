@@ -20,21 +20,19 @@ func main() {
 	// Before registering handler, middleware must be defined;
 	// otherwise, the handler won't be able to use middleware.
 	mux.Middleware(
-		Artifex.UseExclude([]string{"RegisterUser"}),
-		Artifex.UseLogger(false, false).PreMiddleware(),
-		Artifex.UseHowMuchTime(),
-		func(next Artifex.HandleFunc) Artifex.HandleFunc {
-			return func(message *Artifex.Message, dep any) error {
-				logger := Artifex.CtxGetLogger(message.Ctx, dep)
-				logger.Info(">>>>>> recv %q <<<<<<", message.Subject)
-				return next(message, dep)
-			}
-		},
 		Artifex.UseRecover(),
+		Artifex.UsePrintDetail().Link(Artifex.UseExclude([]string{"RegisterUser"})).PostMiddleware(),
+		Artifex.UseLogger(false, false),
+		Artifex.UseHowMuchTime(),
+		Artifex.UsePrint(func(message *Artifex.Message, dep any) error {
+			logger := Artifex.CtxGetLogger(message.Ctx, dep)
+			logger.Info("    >> recv %q <<", message.Subject)
+			return nil
+		}).PreMiddleware(),
 	)
 
 	// When a subject cannot be found, execute the 'Default'
-	mux.DefaultHandler(Artifex.UsePrintDetail())
+	mux.DefaultHandler(Artifex.UseSkipMessage())
 
 	v1 := mux.Group("v1/").Middleware(HandleAuth().PreMiddleware())
 
@@ -44,9 +42,9 @@ func main() {
 	v1.Handler("UpdatedProductPrice/{brand}", UpdatedProductPrice(db))
 
 	// Endpoints:
-	// [Artifex] subject=".*"                                f="main.main.UsePrintDetail.func9"
+	// [Artifex] subject=".*"                                f="main.main.UseSkipMessage.func11"
 	// [Artifex] subject="v1/Hello/{user}"                   f="main.Hello"
-	// [Artifex] subject="v1/UpdatedProductPrice/{brand}"    f="main.main.UpdatedProductPrice.func12"
+	// [Artifex] subject="v1/UpdatedProductPrice/{brand}"    f="main.main.UpdatedProductPrice.func14"
 	mux.Endpoints(func(subject, fn string) { fmt.Printf("[Artifex] subject=%-35q f=%q\n", subject, fn) })
 
 	intervalSecond := 2
