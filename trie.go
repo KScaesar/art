@@ -9,7 +9,7 @@ import (
 	"unsafe"
 )
 
-// middleware 依照定義的順序, 可以運用在不同的 HandleFunc
+// middleware 只會用在 handler 和 defaultHandler
 // handle message 執行順序, 依照號碼 0~3
 type paramHandler struct {
 	// any
@@ -27,7 +27,7 @@ type paramHandler struct {
 	defaultHandlerName string
 
 	// 3
-	notFoundHandler HandleFunc // not use middleware
+	notFoundHandler HandleFunc
 }
 
 func (param *paramHandler) register(leafNode *trie, path []Middleware) error {
@@ -39,7 +39,7 @@ func (param *paramHandler) register(leafNode *trie, path []Middleware) error {
 		if leafNode.transform != nil {
 			return errors.New("assign duplicated transform")
 		}
-		leafNode.transform = Link(param.transform, path...)
+		leafNode.transform = param.transform
 	}
 
 	if param.handler != nil {
