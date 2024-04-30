@@ -121,7 +121,7 @@ func UseRecover() Middleware {
 	}
 }
 
-func UseLogger(withMsgId bool, isEgress bool) Middleware {
+func UseLogger(withMsgId bool, isConcurrency bool) Middleware {
 	return func(next HandleFunc) HandleFunc {
 		return func(message *Message, dep any) error {
 			type Getter interface {
@@ -136,7 +136,7 @@ func UseLogger(withMsgId bool, isEgress bool) Middleware {
 				logger = getter.Log()
 			}
 
-			if isEgress {
+			if isConcurrency {
 				message.Mutex.Lock()
 				defer message.Mutex.Unlock()
 			}
