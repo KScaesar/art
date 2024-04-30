@@ -121,7 +121,7 @@ func UseRecover() Middleware {
 	}
 }
 
-func UseLogger(withMsgId bool) HandleFunc {
+func UseLogger(withMsgId bool, isEgress bool) HandleFunc {
 	return func(message *Message, dep any) error {
 		type Getter interface {
 			Log() Logger
@@ -135,12 +135,15 @@ func UseLogger(withMsgId bool) HandleFunc {
 			logger = getter.Log()
 		}
 
+		if isEgress {
+			message.Mutex.Lock()
+			defer message.Mutex.Unlock()
+		}
+
 		if withMsgId {
 			logger = logger.WithKeyValue("msg_id", message.MsgId())
 		}
 
-		message.Mutex.Lock()
-		defer message.Mutex.Unlock()
 		message.UpdateContext(
 			func(ctx context.Context) context.Context {
 				return CtxWithLogger(ctx, logger)

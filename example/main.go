@@ -21,7 +21,7 @@ func main() {
 	// otherwise, the handler won't be able to use middleware.
 	mux.Middleware(
 		Artifex.UseExclude([]string{"RegisterUser"}),
-		Artifex.UseLogger(false).PreMiddleware(),
+		Artifex.UseLogger(false, false).PreMiddleware(),
 		Artifex.UseHowMuchTime(),
 		func(next Artifex.HandleFunc) Artifex.HandleFunc {
 			return func(message *Artifex.Message, dep any) error {
