@@ -22,7 +22,7 @@ func main() {
 	mux.Middleware(
 		Artifex.UseRecover(),
 		Artifex.UsePrintDetail().Link(Artifex.UseExclude([]string{"RegisterUser"})).PostMiddleware(),
-		Artifex.UseLogger(false, false),
+		Artifex.UseLogger(false, Artifex.SafeConcurrency_Skip),
 		Artifex.UseHowMuchTime(),
 		Artifex.UsePrint(func(message *Artifex.Message, dep any) error {
 			logger := Artifex.CtxGetLogger(message.Ctx, dep)

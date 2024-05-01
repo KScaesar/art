@@ -121,7 +121,15 @@ func UseRecover() Middleware {
 	}
 }
 
-func UseLogger(withMsgId bool, isConcurrency bool) Middleware {
+type SafeConcurrencyKind int
+
+const (
+	SafeConcurrency_Skip SafeConcurrencyKind = iota
+	SafeConcurrency_Mutex
+	SafeConcurrency_Copy
+)
+
+func UseLogger(withMsgId bool, safeConcurrency SafeConcurrencyKind) Middleware {
 	return func(next HandleFunc) HandleFunc {
 		return func(message *Message, dep any) error {
 			type Getter interface {
@@ -136,9 +144,13 @@ func UseLogger(withMsgId bool, isConcurrency bool) Middleware {
 				logger = getter.Log()
 			}
 
-			if isConcurrency {
+			switch {
+			case safeConcurrency == SafeConcurrency_Mutex:
 				message.Mutex.Lock()
 				defer message.Mutex.Unlock()
+
+			case safeConcurrency == SafeConcurrency_Copy:
+				message = message.Copy()
 			}
 
 			if withMsgId {
