@@ -21,10 +21,12 @@ func main() {
 	// otherwise, the handler won't be able to use middleware.
 	mux.Middleware(
 		Artifex.UseRecover(),
-		Artifex.UsePrintDetail().Link(Artifex.UseExclude([]string{"RegisterUser"})).PostMiddleware(),
+		Artifex.UsePrintDetail().
+			Link(Artifex.UseExclude([]string{"RegisterUser"})).
+			PostMiddleware(),
 		Artifex.UseLogger(false, Artifex.SafeConcurrency_Skip),
 		Artifex.UseHowMuchTime(),
-		Artifex.UsePrint(func(message *Artifex.Message, dep any) error {
+		Artifex.UseAdHocFunc(func(message *Artifex.Message, dep any) error {
 			logger := Artifex.CtxGetLogger(message.Ctx, dep)
 			logger.Info("    >> recv %q <<", message.Subject)
 			return nil

@@ -58,6 +58,10 @@ func Link(handler HandleFunc, middlewares ...Middleware) HandleFunc {
 
 //
 
+func UseAdHocFunc(AdHoc func(message *Message, dep any) error) HandleFunc {
+	return AdHoc
+}
+
 func UseSkipMessage() func(message *Message, dep any) error {
 	return func(message *Message, dep any) error { return nil }
 }
@@ -226,8 +230,4 @@ func UsePrintDetail() HandleFunc {
 		}
 		return nil
 	}
-}
-
-func UsePrint(print HandleFunc) HandleFunc {
-	return print
 }
