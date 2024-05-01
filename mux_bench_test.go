@@ -4,8 +4,8 @@ import (
 	"testing"
 )
 
-func BenchmarkHandleMessage(b *testing.B) {
-	mux := NewMux("/")
+func BenchmarkMux_HandleMessage(b *testing.B) {
+	mux := NewMux("/").EnableMessagePool()
 
 	b.StopTimer()
 	for i, subject := range githubAPI {
@@ -20,20 +20,19 @@ func BenchmarkHandleMessage(b *testing.B) {
 		for _, subject := range githubAPI {
 
 			// cpu: 13th Gen Intel(R) Core(TM) i5-1340P
-			// BenchmarkHandleMessage
-			// BenchmarkHandleMessage-16    	   10000	    152405 ns/op	   79005 B/op	     825 allocs/op
+			// BenchmarkMux_HandleMessage
+			// BenchmarkMux_HandleMessage-16    	   10000	    137605 ns/op	   79285 B/op	     977 allocs/op
 			//
 			// message := newMessage()
 
 			// cpu: 13th Gen Intel(R) Core(TM) i5-1340P
-			// BenchmarkHandleMessage
-			// BenchmarkHandleMessage-16    	   20233	     58824 ns/op	    3954 B/op	     247 allocs/op
+			// BenchmarkMux_HandleMessage
+			// BenchmarkMux_HandleMessage-16    	   19755	     59605 ns/op	    6387 B/op	     399 allocs/op
 			//
 			message := GetMessage()
 
 			message.Subject = subject
 			err := mux.HandleMessage(message, nil)
-			PutMessage(message)
 			if err != nil {
 				b.Errorf("Error handling message: %v", err)
 			}

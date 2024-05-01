@@ -1,3 +1,6 @@
+//go:build longtime
+// +build longtime
+
 package Artifex
 
 import (
@@ -22,7 +25,7 @@ func Test_HasTimeout_When_ClientSendPingSeconds_GreaterThan_ServerWaitPingSecond
 	if err == nil {
 		t.Errorf("pingping should timeout")
 	}
-	t.Logf("pingping fail: %v", err)
+	// t.Logf("pingping fail: %v", err)
 }
 
 func pingpong(t *testing.T, clientSendPingSeconds, serverWaitPingSeconds int) error {

@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var loggerKey = "logger"
@@ -272,18 +273,18 @@ func AnyToString(v any) string {
 		return strconv.FormatFloat(val, 'f', -1, 64)
 	case error:
 		return val.Error()
-	// case fmt.Stringer:
-	// 	return val.String()
+	case time.Duration:
+		return val.String()
 	case encoding.TextMarshaler:
 		text, err := val.MarshalText()
 		if err != nil {
-			return fmt.Sprintf("%v", v)
+			return fmt.Sprintf("%v", val)
 		}
 		return string(text)
 	default:
 		bData, err := json.Marshal(val)
 		if err != nil {
-			return fmt.Sprintf("%v", v)
+			return fmt.Sprintf("%v", val)
 		}
 		return string(bData)
 	}

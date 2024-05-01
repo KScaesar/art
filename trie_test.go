@@ -32,8 +32,9 @@ func Test_trie_endpoint(t *testing.T) {
 	for i, endpoint := range endpoints {
 		if endpoint[0] != expectedSubjects[i] {
 			t.Errorf("unexpected output: got %s, want %s", endpoint[0], expectedSubjects[i])
+			return
 		}
-		t.Logf("subject=%v fn=%v\n", endpoint[0], endpoint[1])
+		// t.Logf("subject=%v fn=%v\n", endpoint[0], endpoint[1])
 	}
 }
 
