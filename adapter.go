@@ -30,7 +30,7 @@ type IAdapter interface {
 	Identifier() string
 	Log() Logger
 	SetLog(Logger)
-	OnStop(terminates ...func(adp IAdapter))
+	OnDisconnect(terminates ...func(adp IAdapter))
 	Stop() error
 	IsStopped() bool         // IsStopped is used for polling
 	WaitStop() chan struct{} // WaitStop is used for event push
@@ -103,8 +103,8 @@ func (adp *Adapter) pingpong() {
 
 func (adp *Adapter) Identifier() string { return adp.identifier }
 
-func (adp *Adapter) OnStop(terminates ...func(adp IAdapter)) {
-	adp.lifecycle.OnStop(terminates...)
+func (adp *Adapter) OnDisconnect(terminates ...func(adp IAdapter)) {
+	adp.lifecycle.OnDisconnect(terminates...)
 }
 
 func (adp *Adapter) Listen() (err error) {
@@ -213,9 +213,7 @@ func (adp *Adapter) Stop() error {
 	err := adp.adapterStop(adp.logger)
 
 	if !reflect.ValueOf(adp.hub).IsZero() {
-		adp.hub.RemoveOne(func(adapter IAdapter) bool {
-			return adapter == adp.application
-		})
+		adp.hub.RemoveOne(func(adapter IAdapter) bool { return adapter == adp.application })
 	}
 
 	adp.lifecycle.asyncTerminate(adp.application)
