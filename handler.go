@@ -121,6 +121,16 @@ func UseRecover() Middleware {
 	}
 }
 
+func UseAsync() Middleware {
+	return func(next HandleFunc) HandleFunc {
+		return func(message *Message, dep any) error {
+			message = message.Copy()
+			go next(message, dep)
+			return nil
+		}
+	}
+}
+
 type SafeConcurrencyKind int
 
 const (
