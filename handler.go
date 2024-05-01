@@ -129,7 +129,10 @@ func UseAsync() Middleware {
 	return func(next HandleFunc) HandleFunc {
 		return func(message *Message, dep any) error {
 			message = message.Copy()
-			go next(message, dep)
+			go func() {
+				next(message, dep)
+				PutMessage(message)
+			}()
 			return nil
 		}
 	}
