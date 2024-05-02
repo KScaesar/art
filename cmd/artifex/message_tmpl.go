@@ -21,14 +21,21 @@ func New{{.FileName}}Ingress(bBody []byte, metadata any, pingpong Artifex.WaitPi
 	return message
 }
 
-func New{{.FileName}}Egress(body any) *Artifex.Message {
+func NewBytes{{.FileName}}Egress(bMessage []byte) *Artifex.Message {
+	message := Artifex.GetMessage()
+
+	message.Bytes = bMessage
+	return message
+}
+
+func NewBody{{.FileName}}Egress(body any) *Artifex.Message {
 	message := Artifex.GetMessage()
 
 	message.Body = body
 	return message
 }
 
-func New{{.FileName}}EgressWithSubject(subject string, body any) *Artifex.Message {
+func NewBody{{.FileName}}EgressWithSubject(subject string, body any) *Artifex.Message {
 	message := Artifex.GetMessage()
 
 	message.Subject = subject
