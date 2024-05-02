@@ -196,7 +196,7 @@ func UseHowMuchTime() Middleware {
 	}
 }
 
-func UsePrintResult(ignoreOkSubjects []string) Middleware {
+func UsePrintResult(isEgress bool, ignoreOkSubjects []string) Middleware {
 	ignore := make(map[string]bool, len(ignoreOkSubjects))
 	for i := 0; i < len(ignoreOkSubjects); i++ {
 		ignore[ignoreOkSubjects[i]] = true
@@ -210,14 +210,23 @@ func UsePrintResult(ignoreOkSubjects []string) Middleware {
 			logger := CtxGetLogger(message.Ctx, dep)
 
 			if err != nil {
-				logger.Error("handle %q fail: %v", subject, err)
+				if isEgress {
+					logger.Error("send %q fail: %v", subject, err)
+				} else {
+					logger.Error("handle %q fail: %v", subject, err)
+				}
 				return err
 			}
 
 			if ignore[subject] {
 				return nil
 			}
-			logger.Info("handle %q ok", subject)
+
+			if isEgress {
+				logger.Info("send %q ok", subject)
+			} else {
+				logger.Info("handle %q ok", subject)
+			}
 			return nil
 		}
 	}
