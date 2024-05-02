@@ -93,19 +93,22 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter {{.FileName}}Adapter, er
 	})
 
 	retry := 0
-	opt.AdapterFixup(f.MaxRetrySeconds, func(adp Artifex.IAdapter) error {
+	opt.AdapterFixup(f.MaxRetrySeconds, func(adp Artifex.IAdapter) (err error) {
 		mu.Lock()
 		defer mu.Unlock()
-		logger := adp.Log()
 
 		retry++
-		logger.Info("retry %v times start", retry)
+		logger := adp.Log()
+		logger.Info("retry %v times", retry)
+
+		logger.Info("retry xxx start")
 		if err != nil {
-			logger.Error("retry: %v", err)
+			logger.Error("retry xxx fail: %v", err)
 			return err
 		}
+		logger.Info("retry xxx ok")
+
 		retry = 0
-		logger.Info("retry ok")
 		return nil
 	})
 

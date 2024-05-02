@@ -9,12 +9,13 @@ import (
 	"github.com/KScaesar/Artifex"
 )
 
-func New{{.FileName}}Ingress(bBody []byte, metadata any, pingpong Artifex.WaitPingPong) *Artifex.Message {
+func New{{.FileName}}Ingress(bBody []byte, rawInfra any, pingpong Artifex.WaitPingPong) *Artifex.Message {
 	message := Artifex.GetMessage()
 
 	message.Bytes = bBody
-	{{.FileName}}Metadata.SetCorrelationId(message.Metadata, metadata)
-	message.RawInfra = nil
+	{{.FileName}}Metadata.SetCorrelationId(message.Metadata, "")
+	message.SetMsgId("")
+	message.RawInfra = rawInfra
 	message.UpdateContext(func(ctx context.Context) context.Context {
 		return Artifex.CtxWithPingPong(ctx, pingpong)
 	})

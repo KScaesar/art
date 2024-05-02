@@ -19,11 +19,11 @@ type {{.FileName}}MetadataKey struct {
 	corId string
 }
 
-func (key *{{.FileName}}MetadataKey) GetCorrelationId(md maputil.Data) any {
-	return md.Get(key.corId).(any)
+func (key *{{.FileName}}MetadataKey) GetCorrelationId(md maputil.Data) string {
+	return md.Get(key.corId).(string)
 }
 
-func (key *{{.FileName}}MetadataKey) SetCorrelationId(md maputil.Data, value any) {
+func (key *{{.FileName}}MetadataKey) SetCorrelationId(md maputil.Data, value string) {
 	md.Set(key.corId, value)
 }
 `
