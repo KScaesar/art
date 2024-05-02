@@ -1,4 +1,4 @@
-package Artifex
+package art
 
 import (
 	"reflect"
@@ -83,7 +83,7 @@ func (adp *Adapter) pingpong() {
 				adp.Stop()
 			}
 			if Err != nil {
-				adp.logger.Error("Artifex Adapter pingpong: %v", Err)
+				adp.logger.Error("art Adapter pingpong: %v", Err)
 			}
 			adp.recvResult <- Err
 		}()
@@ -113,7 +113,7 @@ func (adp *Adapter) Listen() (err error) {
 	}
 
 	if adp.isStopped.Load() {
-		return ErrorWrapWithMessage(ErrClosed, "Artifex Adapter Listen")
+		return ErrorWrapWithMessage(ErrClosed, "art Adapter Listen")
 	}
 
 	go func() {
@@ -123,7 +123,7 @@ func (adp *Adapter) Listen() (err error) {
 				adp.Stop()
 			}
 			if Err != nil {
-				adp.logger.Error("Artifex Adapter Listen: %v", Err)
+				adp.logger.Error("art Adapter Listen: %v", Err)
 			}
 			adp.recvResult <- Err
 		}()
@@ -165,7 +165,7 @@ func (adp *Adapter) listen() error {
 
 func (adp *Adapter) Send(messages ...*Message) error {
 	if adp.isStopped.Load() {
-		return ErrorWrapWithMessage(ErrClosed, "Artifex Adapter Send")
+		return ErrorWrapWithMessage(ErrClosed, "art Adapter Send")
 	}
 
 	for _, egress := range messages {
@@ -183,7 +183,7 @@ func (adp *Adapter) Send(messages ...*Message) error {
 
 func (adp *Adapter) RawSend(messages ...*Message) error {
 	if adp.isStopped.Load() {
-		return ErrorWrapWithMessage(ErrClosed, "Artifex Adapter RawSend")
+		return ErrorWrapWithMessage(ErrClosed, "art Adapter RawSend")
 	}
 
 	for _, egress := range messages {

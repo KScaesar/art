@@ -1,7 +1,7 @@
 //go:build longtime
 // +build longtime
 
-package Artifex
+package art
 
 import (
 	"errors"

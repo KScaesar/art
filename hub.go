@@ -1,4 +1,4 @@
-package Artifex
+package art
 
 import (
 	"sync"
@@ -22,7 +22,7 @@ type Hub struct {
 
 func (hub *Hub) Join(key string, adp IAdapter) error {
 	if hub.isStopped.Load() {
-		return ErrorWrapWithMessage(ErrClosed, "Artifex Hub Join")
+		return ErrorWrapWithMessage(ErrClosed, "art Hub Join")
 	}
 
 	loaded := true

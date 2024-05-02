@@ -1,4 +1,4 @@
-package Artifex
+package art
 
 import (
 	"context"

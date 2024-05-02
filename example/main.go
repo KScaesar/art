@@ -5,36 +5,36 @@ import (
 	"io"
 	"time"
 
-	"github.com/KScaesar/Artifex"
+	"github.com/KScaesar/art"
 )
 
 func main() {
-	Artifex.SetDefaultLogger(Artifex.NewLogger(false, Artifex.LogLevelDebug))
+	art.SetDefaultLogger(art.NewLogger(false, art.LogLevelDebug))
 
 	routeDelimiter := "/"
-	mux := Artifex.NewMux(routeDelimiter)
+	mux := art.NewMux(routeDelimiter)
 
-	mux.ErrorHandler(Artifex.UsePrintResult(false, nil))
+	mux.ErrorHandler(art.UsePrintResult(false, nil))
 
 	// Note:
 	// Before registering handler, middleware must be defined;
 	// otherwise, the handler won't be able to use middleware.
 	mux.Middleware(
-		Artifex.UseRecover(),
-		Artifex.UsePrintDetail().
-			Link(Artifex.UseExclude([]string{"RegisterUser"})).
+		art.UseRecover(),
+		art.UsePrintDetail().
+			Link(art.UseExclude([]string{"RegisterUser"})).
 			PostMiddleware(),
-		Artifex.UseLogger(true, Artifex.SafeConcurrency_Skip),
-		Artifex.UseHowMuchTime(),
-		Artifex.UseAdHocFunc(func(message *Artifex.Message, dep any) error {
-			logger := Artifex.CtxGetLogger(message.Ctx, dep)
+		art.UseLogger(true, art.SafeConcurrency_Skip),
+		art.UseHowMuchTime(),
+		art.UseAdHocFunc(func(message *art.Message, dep any) error {
+			logger := art.CtxGetLogger(message.Ctx, dep)
 			logger.Info("    >> recv %q <<", message.Subject)
 			return nil
 		}).PreMiddleware(),
 	)
 
 	// When a subject cannot be found, execute the 'Default'
-	mux.DefaultHandler(Artifex.UseSkipMessage())
+	mux.DefaultHandler(art.UseSkipMessage())
 
 	v1 := mux.Group("v1/").Middleware(HandleAuth().PreMiddleware())
 
@@ -44,16 +44,16 @@ func main() {
 	v1.Handler("UpdatedProductPrice/{brand}", UpdatedProductPrice(db))
 
 	// Endpoints:
-	// [Artifex] subject=".*"                                f="main.main.UseSkipMessage.func11"
-	// [Artifex] subject="v1/Hello/{user}"                   f="main.Hello"
-	// [Artifex] subject="v1/UpdatedProductPrice/{brand}"    f="main.main.UpdatedProductPrice.func14"
-	mux.Endpoints(func(subject, fn string) { fmt.Printf("[Artifex] subject=%-35q f=%q\n", subject, fn) })
+	// [art] subject=".*"                                f="main.main.UseSkipMessage.func11"
+	// [art] subject="v1/Hello/{user}"                   f="main.Hello"
+	// [art] subject="v1/UpdatedProductPrice/{brand}"    f="main.main.UpdatedProductPrice.func14"
+	mux.Endpoints(func(subject, fn string) { fmt.Printf("[art] subject=%-35q f=%q\n", subject, fn) })
 
 	intervalSecond := 2
 	Listen(mux, intervalSecond)
 }
 
-func Listen(mux *Artifex.Mux, second int) {
+func Listen(mux *art.Mux, second int) {
 	adapter := NewAdapter(second)
 	fmt.Printf("wait %v seconds\n\n", second)
 	for {
@@ -69,7 +69,7 @@ func Listen(mux *Artifex.Mux, second int) {
 // adapter
 
 func NewAdapter(second int) *Adapter {
-	mq := make(chan *Artifex.Message, 1)
+	mq := make(chan *art.Message, 1)
 	size := len(messages)
 
 	go func() {
@@ -94,10 +94,10 @@ func NewAdapter(second int) *Adapter {
 }
 
 type Adapter struct {
-	mq chan *Artifex.Message
+	mq chan *art.Message
 }
 
-func (adp *Adapter) Recv() (msg *Artifex.Message, err error) {
+func (adp *Adapter) Recv() (msg *art.Message, err error) {
 	defer func() {
 		if err != nil {
 			fmt.Printf("recv message fail\n")
@@ -116,7 +116,7 @@ func (adp *Adapter) Recv() (msg *Artifex.Message, err error) {
 
 var messages = createMessages()
 
-func createMessages() (messages []*Artifex.Message) {
+func createMessages() (messages []*art.Message) {
 	type param struct {
 		Subject string
 		Bytes   []byte
@@ -149,7 +149,7 @@ func createMessages() (messages []*Artifex.Message) {
 	}
 
 	for i := range params {
-		message := Artifex.GetMessage()
+		message := art.GetMessage()
 		message.Subject = params[i].Subject
 		message.Bytes = params[i].Bytes
 		messages = append(messages, message)
@@ -159,26 +159,26 @@ func createMessages() (messages []*Artifex.Message) {
 
 // handler
 
-func HandleAuth() Artifex.HandleFunc {
-	return func(message *Artifex.Message, dep any) error {
-		Artifex.CtxGetLogger(message.Ctx, dep).
+func HandleAuth() art.HandleFunc {
+	return func(message *art.Message, dep any) error {
+		art.CtxGetLogger(message.Ctx, dep).
 			Info("Middleware: Auth ok")
 		return nil
 	}
 }
 
-func Hello(message *Artifex.Message, dep any) error {
-	Artifex.CtxGetLogger(message.Ctx, dep).
+func Hello(message *art.Message, dep any) error {
+	art.CtxGetLogger(message.Ctx, dep).
 		Info("Hello: body=%v user=%v\n", string(message.Bytes), message.RouteParam.Get("user"))
 	return nil
 }
 
-func UpdatedProductPrice(db map[string]any) Artifex.HandleFunc {
-	return func(message *Artifex.Message, dep any) error {
+func UpdatedProductPrice(db map[string]any) art.HandleFunc {
+	return func(message *art.Message, dep any) error {
 		brand := message.RouteParam.Str("brand")
 		db[brand] = message.Bytes
 
-		Artifex.CtxGetLogger(message.Ctx, dep).
+		art.CtxGetLogger(message.Ctx, dep).
 			Info("UpdatedProductPrice: saved db: brand=%v\n", brand)
 		return nil
 	}

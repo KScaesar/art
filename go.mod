@@ -1,4 +1,4 @@
-module github.com/KScaesar/Artifex
+module github.com/KScaesar/art
 
 go 1.20
 

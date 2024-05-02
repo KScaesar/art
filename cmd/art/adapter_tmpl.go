@@ -6,18 +6,18 @@ package {{.Package}}
 import (
 	"sync"
 
-	"github.com/KScaesar/Artifex"
+	"github.com/KScaesar/art"
 )
 
-type {{.FileName}}Adapter = Artifex.Prosumer
-type {{.FileName}}Producer = Artifex.Producer
-type {{.FileName}}Consumer = Artifex.Consumer
+type {{.FileName}}Adapter = art.Prosumer
+type {{.FileName}}Producer = art.Producer
+type {{.FileName}}Consumer = art.Consumer
 
 //
 
 type {{.FileName}}Factory struct {
-	Hub    *Artifex.Hub
-	Logger Artifex.Logger
+	Hub    *art.Hub
+	Logger art.Logger
 
 	SendPingSeconds int
 	WaitPingSeconds int
@@ -29,8 +29,8 @@ type {{.FileName}}Factory struct {
 
 	IngressMux      *{{.FileName}}IngressMux
 	EgressMux       *{{.FileName}}EgressMux
-	DecorateAdapter func(adapter Artifex.IAdapter) (application Artifex.IAdapter)
-	Lifecycle       func(lifecycle *Artifex.Lifecycle)
+	DecorateAdapter func(adapter art.IAdapter) (application art.IAdapter)
+	Lifecycle       func(lifecycle *art.Lifecycle)
 }
 
 func (f *{{.FileName}}Factory) CreateAdapter() (adapter {{.FileName}}Adapter, err error) {
@@ -39,7 +39,7 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter {{.FileName}}Adapter, er
 		return nil, err
 	}
 
-	opt := Artifex.NewAdapterOption().
+	opt := art.NewAdapterOption().
 		RawInfra(nil).
 		Identifier(name).
 		AdapterHub(f.Hub).
@@ -52,20 +52,20 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter {{.FileName}}Adapter, er
 	var mu sync.Mutex
 
 	// send ping, wait pong
-	sendPing := func(adp Artifex.IAdapter) error {
+	sendPing := func(adp art.IAdapter) error {
 		return nil
 	}
-	waitPong := Artifex.NewWaitPingPong()
+	waitPong := art.NewWaitPingPong()
 	opt.SendPing(f.SendPingSeconds, waitPong, sendPing)
 
 	// wait ping, send pong
-	waitPing := Artifex.NewWaitPingPong()
-	sendPong := func(adp Artifex.IAdapter) error {
+	waitPing := art.NewWaitPingPong()
+	sendPong := func(adp art.IAdapter) error {
 		return nil
 	}
 	opt.WaitPing(f.WaitPingSeconds, waitPing, sendPong)
 
-	opt.AdapterRecv(func(logger Artifex.Logger) (*Artifex.Message, error) {
+	opt.AdapterRecv(func(logger art.Logger) (*art.Message, error) {
 
 		var err error
 		if err != nil {
@@ -75,13 +75,13 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter {{.FileName}}Adapter, er
 		return New{{.FileName}}Ingress(nil, nil, nil), nil
 	})
 
-	opt.AdapterSend(func(logger Artifex.Logger, message *Artifex.Message) (err error) {
+	opt.AdapterSend(func(logger art.Logger, message *art.Message) (err error) {
 		mu.Lock()
 		defer mu.Unlock()
 		return 
 	})
 
-	opt.AdapterStop(func(logger Artifex.Logger) (err error) {
+	opt.AdapterStop(func(logger art.Logger) (err error) {
 		mu.Lock()
 		defer mu.Unlock()
 
@@ -93,7 +93,7 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter {{.FileName}}Adapter, er
 	})
 
 	retry := 0
-	opt.AdapterFixup(f.MaxRetrySeconds, func(adp Artifex.IAdapter) (err error) {
+	opt.AdapterFixup(f.MaxRetrySeconds, func(adp art.IAdapter) (err error) {
 		mu.Lock()
 		defer mu.Unlock()
 

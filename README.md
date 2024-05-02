@@ -1,4 +1,4 @@
-# Artifex
+# art
 
 - [Features](#Features)
 - [Installation go package](#installation-go-package)
@@ -18,7 +18,7 @@
 ## Installation go package
 
 ```shell
-go get -u github.com/KScaesar/Artifex
+go get -u github.com/KScaesar/art
 ```
 
 ## Why Create This Package
@@ -49,19 +49,19 @@ One example like the following:
 ```go
 package main
 
-var useLogger = Artifex.UseLogger(false, false)
+var useLogger = art.UseLogger(false, false)
 
 func main() {
-	Artifex.SetDefaultLogger(Artifex.NewLogger(false, Artifex.LogLevelDebug))
+	art.SetDefaultLogger(art.NewLogger(false, art.LogLevelDebug))
 
 	routeDelimiter := "/"
-	mux := Artifex.NewMux(routeDelimiter)
+	mux := art.NewMux(routeDelimiter)
 
-	use := Artifex.Use{Logger: useLogger}
+	use := art.Use{Logger: useLogger}
 	mux.ErrorHandler(use.PrintResult(nil))
 
-	mux.Middleware(func(next Artifex.HandleFunc) Artifex.HandleFunc {
-		return func(message *Artifex.Message, dep any) error {
+	mux.Middleware(func(next art.HandleFunc) art.HandleFunc {
+		return func(message *art.Message, dep any) error {
 			logger := useLogger(message, dep)
 			logger.Info(">>>>>> recv %q <<<<<<", message.Subject)
 			return next(message, dep)
@@ -84,10 +84,10 @@ func main() {
 	v1.Handler("UpdatedProductPrice/{brand}", UpdatedProductPrice(db))
 
 	// Endpoints:
-	// [Artifex] subject=".*"                                f="main.DefaultHandler"
-	// [Artifex] subject="v1/Hello/{user}"                   f="main.Hello"
-	// [Artifex] subject="v1/UpdatedProductPrice/{brand}"    f="main.main.UpdatedProductPrice.func5"
-	mux.Endpoints(func(subject, fn string) { fmt.Printf("[Artifex] subject=%-35q f=%q\n", subject, fn) })
+	// [art] subject=".*"                                f="main.DefaultHandler"
+	// [art] subject="v1/Hello/{user}"                   f="main.Hello"
+	// [art] subject="v1/UpdatedProductPrice/{brand}"    f="main.main.UpdatedProductPrice.func5"
+	mux.Endpoints(func(subject, fn string) { fmt.Printf("[art] subject=%-35q f=%q\n", subject, fn) })
 
 	intervalSecond := 2
 	Listen(mux, intervalSecond)
@@ -101,28 +101,28 @@ Generate code cli is used to generate template code for `message.go` and `adapte
 Modify the template content according to the requirements,  
 select PubSub, Publisher, or Subscriber as needed, and delete unused code.
 
-- [Artifex-Adapter](https://github.com/KScaesar/Artifex-Adapter?tab=readme-ov-file#artifex-adapter)
-    - [SSE: Publisher Example](https://github.com/KScaesar/Artifex-Adapter?tab=readme-ov-file#sse)
-    - [Rabbitmq: Publisher Subscriber Example](https://github.com/KScaesar/Artifex-Adapter?tab=readme-ov-file#rabbitmq)
+- [art-Adapter](https://github.com/KScaesar/art-Adapter?tab=readme-ov-file#art-adapter)
+    - [SSE: Publisher Example](https://github.com/KScaesar/art-Adapter?tab=readme-ov-file#sse)
+    - [Rabbitmq: Publisher Subscriber Example](https://github.com/KScaesar/art-Adapter?tab=readme-ov-file#rabbitmq)
 
 ```shell
-go install github.com/KScaesar/Artifex/cmd/artifex@latest
+go install github.com/KScaesar/art/cmd/art@latest
 ```
 
 ```
-artifex gen
+art gen
 
 or
 
-artifex gen -dir {Path} -pkg {Package} -f {File} -s {Subject}
+art gen -dir {Path} -pkg {Package} -f {File} -s {Subject}
 ```
 
 ```
-artifex -h
+art -h
 
 help: 
-    artifex gen -dir  ./    -pkg  infra    -f  kafka -s  Topic
-    artifex gen -dir {Path} -pkg {Package} -f {File} -s {Subject}
+    art gen -dir  ./    -pkg  infra    -f  kafka -s  Topic
+    art gen -dir {Path} -pkg {Package} -f {File} -s {Subject}
 
 -dir  Generate code to dir
 -f    File prefix name
