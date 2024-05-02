@@ -150,7 +150,10 @@ func (hub *Hub) remove(key string) {
 	if !loaded {
 		return
 	}
-	adp.(IAdapter).Stop()
+	adapter := adp.(IAdapter)
+	if !adapter.IsStopped() {
+		adapter.Stop()
+	}
 }
 
 // DoSync
