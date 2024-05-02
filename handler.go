@@ -196,10 +196,10 @@ func UseHowMuchTime() Middleware {
 	}
 }
 
-func UsePrintResult(excludeSubjects []string) Middleware {
-	exclude := make(map[string]bool, len(excludeSubjects))
-	for i := 0; i < len(excludeSubjects); i++ {
-		exclude[excludeSubjects[i]] = true
+func UsePrintResult(ignoreOkSubjects []string) Middleware {
+	ignore := make(map[string]bool, len(ignoreOkSubjects))
+	for i := 0; i < len(ignoreOkSubjects); i++ {
+		ignore[ignoreOkSubjects[i]] = true
 	}
 
 	return func(next HandleFunc) HandleFunc {
@@ -214,7 +214,7 @@ func UsePrintResult(excludeSubjects []string) Middleware {
 				return err
 			}
 
-			if exclude[subject] {
+			if ignore[subject] {
 				return nil
 			}
 			logger.Info("handle %q ok", subject)
