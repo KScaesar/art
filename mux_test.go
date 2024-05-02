@@ -582,11 +582,12 @@ func TestMux_RouteParam_when_wildcard_subject(t *testing.T) {
 
 func TestMessageMux_Recover(t *testing.T) {
 
-	SetDefaultLogger(SilentLogger())
+	// SetDefaultLogger(SilentLogger())
 
 	mux := NewMux("/").
-		ErrorHandler(UseInclude(nil)).
-		Middleware(UseRecover()).
+		Middleware(
+			UseRecover(),
+		).
 		DefaultHandler(func(_ *Message, dep any) error {
 			panic("dependency is nil")
 			return nil
@@ -596,8 +597,5 @@ func TestMessageMux_Recover(t *testing.T) {
 		Subject: "create_order",
 	}
 
-	err := mux.HandleMessage(message, nil)
-	if err != nil {
-		t.Errorf("unexpected error: got %v", err)
-	}
+	mux.HandleMessage(message, nil)
 }

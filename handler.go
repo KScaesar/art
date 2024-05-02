@@ -39,10 +39,6 @@ func (h HandleFunc) Link(middlewares ...Middleware) HandleFunc {
 
 type Middleware func(next HandleFunc) HandleFunc
 
-func (mw Middleware) HandleFunc() HandleFunc {
-	return Link(UseSkipMessage(), mw)
-}
-
 func (mw Middleware) Link(handler HandleFunc) HandleFunc {
 	return Link(handler, mw)
 }
