@@ -160,7 +160,6 @@ func UseLogger(withMsgId bool, safeConcurrency SafeConcurrencyKind) Middleware {
 			switch {
 			case safeConcurrency == SafeConcurrency_Mutex:
 				message.Mutex.Lock()
-				defer message.Mutex.Unlock()
 
 			case safeConcurrency == SafeConcurrency_Copy:
 				message = message.Copy()
@@ -176,6 +175,10 @@ func UseLogger(withMsgId bool, safeConcurrency SafeConcurrencyKind) Middleware {
 					return CtxWithLogger(ctx, dep, logger)
 				},
 			)
+
+			if safeConcurrency == SafeConcurrency_Mutex {
+				message.Mutex.Unlock()
+			}
 
 			return next(message, dep)
 		}
