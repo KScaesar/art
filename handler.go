@@ -197,7 +197,12 @@ func UseHowMuchTime() Middleware {
 	}
 }
 
-func UsePrintResult() Middleware {
+func UsePrintResult(excludeSubjects []string) Middleware {
+	exclude := make(map[string]bool, len(excludeSubjects))
+	for i := 0; i < len(excludeSubjects); i++ {
+		exclude[excludeSubjects[i]] = true
+	}
+
 	return func(next HandleFunc) HandleFunc {
 		return func(message *Message, dep any) error {
 			subject := message.Subject
@@ -207,6 +212,10 @@ func UsePrintResult() Middleware {
 			if err != nil {
 				logger.Error("handle %q: %v", subject, err)
 				return err
+			}
+
+			if exclude[subject] {
+				return nil
 			}
 			logger.Info("handle %q ok", subject)
 			return nil

@@ -14,7 +14,7 @@ func main() {
 	routeDelimiter := "/"
 	mux := Artifex.NewMux(routeDelimiter)
 
-	mux.ErrorHandler(Artifex.UsePrintResult())
+	mux.ErrorHandler(Artifex.UsePrintResult(nil))
 
 	// Note:
 	// Before registering handler, middleware must be defined;
