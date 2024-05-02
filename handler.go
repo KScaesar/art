@@ -164,6 +164,7 @@ func UseLogger(withMsgId bool, safeConcurrency SafeConcurrencyKind) Middleware {
 
 			case safeConcurrency == SafeConcurrency_Copy:
 				message = message.Copy()
+				defer PutMessage(message)
 			}
 
 			if withMsgId {

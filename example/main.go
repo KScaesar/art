@@ -14,7 +14,7 @@ func main() {
 	routeDelimiter := "/"
 	mux := Artifex.NewMux(routeDelimiter)
 
-	mux.ErrorHandler(Artifex.UsePrintResult(nil))
+	mux.ErrorHandler(Artifex.UsePrintResult(false, nil))
 
 	// Note:
 	// Before registering handler, middleware must be defined;
@@ -24,7 +24,7 @@ func main() {
 		Artifex.UsePrintDetail().
 			Link(Artifex.UseExclude([]string{"RegisterUser"})).
 			PostMiddleware(),
-		Artifex.UseLogger(false, Artifex.SafeConcurrency_Skip),
+		Artifex.UseLogger(true, Artifex.SafeConcurrency_Skip),
 		Artifex.UseHowMuchTime(),
 		Artifex.UseAdHocFunc(func(message *Artifex.Message, dep any) error {
 			logger := Artifex.CtxGetLogger(message.Ctx, dep)

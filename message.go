@@ -75,12 +75,8 @@ func (msg *Message) SetMsgId(msgId string) {
 
 func (msg *Message) reset() {
 	msg.Subject = ""
-
-	if msg.Bytes != nil {
-		msg.Bytes = msg.Bytes[:0]
-	}
+	msg.Bytes = nil
 	msg.Body = nil
-
 	msg.identifier = ""
 
 	for key := range msg.RouteParam {
