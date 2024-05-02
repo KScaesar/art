@@ -186,11 +186,10 @@ func UseHowMuchTime() Middleware {
 		return func(message *Message, dep any) error {
 			startTime := time.Now()
 			defer func() {
-				subject := message.Subject
 				logger := CtxGetLogger(message.Ctx, dep)
 
 				finishTime := time.Now()
-				logger.Info("%q spend %v", subject, finishTime.Sub(startTime))
+				logger.Info("spend %v", finishTime.Sub(startTime))
 			}()
 			return next(message, dep)
 		}
@@ -205,12 +204,13 @@ func UsePrintResult(excludeSubjects []string) Middleware {
 
 	return func(next HandleFunc) HandleFunc {
 		return func(message *Message, dep any) error {
+			err := next(message, dep)
+
 			subject := message.Subject
 			logger := CtxGetLogger(message.Ctx, dep)
 
-			err := next(message, dep)
 			if err != nil {
-				logger.Error("handle %q: %v", subject, err)
+				logger.Error("handle %q fail: %v", subject, err)
 				return err
 			}
 
@@ -225,15 +225,14 @@ func UsePrintResult(excludeSubjects []string) Middleware {
 
 func UsePrintDetail() HandleFunc {
 	return func(message *Message, dep any) error {
-		subject := message.Subject
 		logger := CtxGetLogger(message.Ctx, dep)
 
 		if message.Body != nil {
-			logger.Debug("print detail %q: %T %v", subject, message.Body, AnyToString(message.Body))
+			logger.Debug("print detail: %T %v", message.Body, AnyToString(message.Body))
 			return nil
 		}
 		if len(message.Bytes) != 0 {
-			logger.Debug("print detail %q: %v", subject, AnyToString(message.Bytes))
+			logger.Debug("print detail: %v", AnyToString(message.Bytes))
 			return nil
 		}
 		return nil

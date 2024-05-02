@@ -78,12 +78,6 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter {{.FileName}}Adapter, er
 	opt.AdapterSend(func(logger Artifex.Logger, message *Artifex.Message) (err error) {
 		mu.Lock()
 		defer mu.Unlock()
-
-		if err != nil {
-			logger.Error("send %q: %v", message.Subject, err)
-			return
-		}
-		logger.Info("send %q", message.Subject)
 		return 
 	})
 

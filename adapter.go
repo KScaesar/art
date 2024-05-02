@@ -11,14 +11,14 @@ type AdapterHub interface {
 }
 
 type Prosumer interface {
-	IAdapter
-	Send(messages ...*Message) error
-	Listen() (err error)
+	Producer
+	Consumer
 }
 
 type Producer interface {
 	IAdapter
 	Send(messages ...*Message) error
+	RawSend(messages ...*Message) error
 }
 
 type Consumer interface {
@@ -173,35 +173,33 @@ func (adp *Adapter) Send(messages ...*Message) error {
 	}
 
 	for _, egress := range messages {
-		var err error
-		switch {
-		case adp.egressMux != nil && adp.adapterSend != nil:
-			err = adp.egressMux.HandleMessage(egress, adp.application)
-			if err != nil {
-				return err
-			}
-			err = adp.adapterSend(adp.logger, egress)
-			if err != nil {
-				return err
-			}
+		if adp.egressMux == nil {
+			return nil
+		}
 
-		case adp.egressMux != nil && adp.adapterSend == nil:
-			err = adp.egressMux.HandleMessage(egress, adp.application)
-			if err != nil {
-				return err
-			}
-
-		case adp.egressMux == nil && adp.adapterSend != nil:
-			err = adp.adapterSend(adp.logger, egress)
-			if err != nil {
-				return err
-			}
-
-		default:
-
+		err := adp.egressMux.HandleMessage(egress, adp.application)
+		if err != nil {
+			return err
 		}
 	}
+	return nil
+}
 
+func (adp *Adapter) RawSend(messages ...*Message) error {
+	if adp.isStopped.Load() {
+		return ErrorWrapWithMessage(ErrClosed, "Artifex Adapter RawSend")
+	}
+
+	for _, egress := range messages {
+		if adp.adapterSend == nil {
+			return nil
+		}
+
+		err := adp.adapterSend(adp.logger, egress)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
