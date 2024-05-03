@@ -35,7 +35,7 @@ Unfortunately, I often encounter code that is difficult to maintain, written usi
 
 In Go, these foundational open-source packages typically don't offer a built-in method to achieve HandleFunc design patterns.
 
-Therefore, I create the message mux (multiplexer) based on generics, aiming to establish a message handling pattern similar to gin's HandleFunc.
+Therefore, I create the message mux (multiplexer), aiming to establish a message handling pattern similar to gin's HandleFunc.
 
 ## Usage example
 
@@ -44,12 +44,10 @@ One example like the following:
 [Example](./example/main.go)
 
 [Go Playground
-](https://go.dev/play/p/sfKJiA970Qe)
+](https://go.dev/play/p/_E5wrg609Q0)
 
 ```go
 package main
-
-var useLogger = art.UseLogger(false, false)
 
 func main() {
 	art.SetDefaultLogger(art.NewLogger(false, art.LogLevelDebug))
@@ -57,24 +55,27 @@ func main() {
 	routeDelimiter := "/"
 	mux := art.NewMux(routeDelimiter)
 
-	use := art.Use{Logger: useLogger}
-	mux.ErrorHandler(use.PrintResult(nil))
-
-	mux.Middleware(func(next art.HandleFunc) art.HandleFunc {
-		return func(message *art.Message, dep any) error {
-			logger := useLogger(message, dep)
-			logger.Info(">>>>>> recv %q <<<<<<", message.Subject)
-			return next(message, dep)
-		}
-	})
+	mux.ErrorHandler(art.UsePrintResult{}.PrintIngress().PostMiddleware())
 
 	// Note:
 	// Before registering handler, middleware must be defined;
 	// otherwise, the handler won't be able to use middleware.
-	mux.Middleware(use.Recover())
+	mux.Middleware(
+		art.UseRecover(),
+		art.UsePrintDetail().
+			Link(art.UseExclude([]string{"RegisterUser"})).
+			PostMiddleware(),
+		art.UseLogger(true, art.SafeConcurrency_Skip),
+		art.UseHowMuchTime(),
+		art.UseAdHocFunc(func(message *art.Message, dep any) error {
+			logger := art.CtxGetLogger(message.Ctx, dep)
+			logger.Info("    >> recv %q <<", message.Subject)
+			return nil
+		}).PreMiddleware(),
+	)
 
 	// When a subject cannot be found, execute the 'Default'
-	mux.DefaultHandler(use.PrintDetail())
+	mux.DefaultHandler(art.UseSkipMessage())
 
 	v1 := mux.Group("v1/").Middleware(HandleAuth().PreMiddleware())
 
@@ -84,9 +85,9 @@ func main() {
 	v1.Handler("UpdatedProductPrice/{brand}", UpdatedProductPrice(db))
 
 	// Endpoints:
-	// [art] subject=".*"                                f="main.DefaultHandler"
+	// [art] subject=".*"                                f="main.main.UseSkipMessage.func11"
 	// [art] subject="v1/Hello/{user}"                   f="main.Hello"
-	// [art] subject="v1/UpdatedProductPrice/{brand}"    f="main.main.UpdatedProductPrice.func5"
+	// [art] subject="v1/UpdatedProductPrice/{brand}"    f="main.main.UpdatedProductPrice.func14"
 	mux.Endpoints(func(subject, fn string) { fmt.Printf("[art] subject=%-35q f=%q\n", subject, fn) })
 
 	intervalSecond := 2
@@ -101,9 +102,9 @@ Generate code cli is used to generate template code for `message.go` and `adapte
 Modify the template content according to the requirements,  
 select PubSub, Publisher, or Subscriber as needed, and delete unused code.
 
-- [art-Adapter](https://github.com/KScaesar/art-Adapter?tab=readme-ov-file#art-adapter)
-    - [SSE: Publisher Example](https://github.com/KScaesar/art-Adapter?tab=readme-ov-file#sse)
-    - [Rabbitmq: Publisher Subscriber Example](https://github.com/KScaesar/art-Adapter?tab=readme-ov-file#rabbitmq)
+- [artisan](https://github.com/KScaesar/artisan?tab=readme-ov-file#art-adapter)
+    - [SSE: Producer Example](https://github.com/KScaesar/artisan?tab=readme-ov-file#sse)
+    - [Rabbitmq: Producer Consumer Example](https://github.com/KScaesar/artisan?tab=readme-ov-file#rabbitmq)
 
 ```shell
 go install github.com/KScaesar/art/cmd/art@latest
@@ -114,18 +115,17 @@ art gen
 
 or
 
-art gen -dir {Path} -pkg {Package} -f {File} -s {Subject}
+art gen -dir {Path} -pkg {Package} -f {File}
 ```
 
 ```
 art -h
 
 help: 
-    art gen -dir  ./    -pkg  infra    -f  kafka -s  Topic
-    art gen -dir {Path} -pkg {Package} -f {File} -s {Subject}
+    art gen -dir  ./    -pkg  infra    -f  kafka 
+    art gen -dir {Path} -pkg {Package} -f {File} 
 
 -dir  Generate code to dir
 -f    File prefix name
 -pkg  Package name
--s    Subject name
 ```
