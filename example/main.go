@@ -14,7 +14,7 @@ func main() {
 	routeDelimiter := "/"
 	mux := art.NewMux(routeDelimiter)
 
-	mux.ErrorHandler(art.UsePrintResult{}.PrintIngress().PostMiddleware)
+	mux.ErrorHandler(art.UsePrintResult{}.PrintIngress().PostMiddleware())
 
 	// Note:
 	// Before registering handler, middleware must be defined;

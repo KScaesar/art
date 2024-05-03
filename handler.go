@@ -253,7 +253,7 @@ func (use UsePrintResult) PrintEgress() UsePrintResult {
 	return use
 }
 
-func (use UsePrintResult) PostMiddleware(next HandleFunc) HandleFunc {
+func (use UsePrintResult) PostMiddleware() Middleware {
 	if use.ignoreErrSubjects == nil {
 		use.ignoreErrSubjects = make(map[string]bool)
 	}
@@ -261,51 +261,53 @@ func (use UsePrintResult) PostMiddleware(next HandleFunc) HandleFunc {
 		use.ignoreOkSubjects = make(map[string]bool)
 	}
 
-	return func(message *Message, dep any) error {
-		err := next(message, dep)
+	return func(next HandleFunc) HandleFunc {
+		return func(message *Message, dep any) error {
+			err := next(message, dep)
 
-		subject := message.Subject
-		logger := CtxGetLogger(message.Ctx, dep)
+			subject := message.Subject
+			logger := CtxGetLogger(message.Ctx, dep)
 
-		if err != nil {
-			for i := range use.ignoreErrors {
-				if errors.Is(err, use.ignoreErrors[i]) {
+			if err != nil {
+				for i := range use.ignoreErrors {
+					if errors.Is(err, use.ignoreErrors[i]) {
+						return err
+					}
+				}
+
+				if use.ignoreErrSubjects[subject] {
 					return err
 				}
+
+				if use.printIngress {
+					logger.Error("handle %q fail: %v", subject, err)
+					return err
+				}
+
+				if use.printEgress {
+					logger.Error("send %q fail: %v", subject, err)
+					return err
+				}
+
+				return err
 			}
 
-			if use.ignoreErrSubjects[subject] {
-				return err
+			if use.ignoreOkSubjects[subject] {
+				return nil
 			}
 
 			if use.printIngress {
-				logger.Error("handle %q fail: %v", subject, err)
-				return err
+				logger.Info("handle %q ok", subject)
+				return nil
 			}
 
 			if use.printEgress {
-				logger.Error("send %q fail: %v", subject, err)
-				return err
+				logger.Info("send %q ok", subject)
+				return nil
 			}
 
-			return err
-		}
-
-		if use.ignoreOkSubjects[subject] {
 			return nil
 		}
-
-		if use.printIngress {
-			logger.Info("handle %q ok", subject)
-			return nil
-		}
-
-		if use.printEgress {
-			logger.Info("send %q ok", subject)
-			return nil
-		}
-
-		return nil
 	}
 }
 
