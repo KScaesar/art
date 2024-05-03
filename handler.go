@@ -54,7 +54,14 @@ func Link(handler HandleFunc, middlewares ...Middleware) HandleFunc {
 
 //
 
-func UseAdHocFunc(AdHoc func(message *Message, dep any) error) HandleFunc {
+func UseGenericFunc[Dep any, H func(*Message, *Dep) error](handler H) HandleFunc {
+	return func(message *Message, dependency any) error {
+		dep := dependency.(*Dep)
+		return handler(message, dep)
+	}
+}
+
+func UseAdHocFunc(AdHoc HandleFunc) HandleFunc {
 	return AdHoc
 }
 
