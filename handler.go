@@ -316,7 +316,7 @@ func UsePrintDetail() HandleFunc {
 		logger := CtxGetLogger(message.Ctx, dep)
 
 		if message.Body != nil {
-			logger.Debug("print detail: %T %v", message.Body, AnyToString(message.Body))
+			logger.Debug("print detail: T=%T: %v", message.Body, AnyToString(message.Body))
 			return nil
 		}
 		if len(message.Bytes) != 0 {
