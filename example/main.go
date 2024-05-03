@@ -14,7 +14,7 @@ func main() {
 	routeDelimiter := "/"
 	mux := art.NewMux(routeDelimiter)
 
-	mux.ErrorHandler(art.UsePrintResult(false, nil))
+	mux.ErrorHandler(art.UsePrintResult{}.PrintIngress().PostMiddleware)
 
 	// Note:
 	// Before registering handler, middleware must be defined;
@@ -162,7 +162,7 @@ func createMessages() (messages []*art.Message) {
 func HandleAuth() art.HandleFunc {
 	return func(message *art.Message, dep any) error {
 		art.CtxGetLogger(message.Ctx, dep).
-			Info("Middleware: Auth ok")
+			Info("PostMiddleware: Auth ok")
 		return nil
 	}
 }

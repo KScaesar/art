@@ -2,6 +2,7 @@ package art
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"runtime/debug"
 	"time"
@@ -207,39 +208,104 @@ func UseHowMuchTime() Middleware {
 	}
 }
 
-func UsePrintResult(isEgress bool, ignoreOkSubjects []string) Middleware {
-	ignore := make(map[string]bool, len(ignoreOkSubjects))
-	for i := 0; i < len(ignoreOkSubjects); i++ {
-		ignore[ignoreOkSubjects[i]] = true
+type UsePrintResult struct {
+	ignoreErrors      []error
+	ignoreErrSubjects map[string]bool
+	ignoreOkSubjects  map[string]bool
+	printIngress      bool
+	printEgress       bool
+}
+
+func (use UsePrintResult) IgnoreErrors(errs ...error) UsePrintResult {
+	use.ignoreErrors = append(use.ignoreErrors, errs...)
+	return use
+}
+
+func (use UsePrintResult) IgnoreErrSubjects(subjects ...string) UsePrintResult {
+	if use.ignoreErrSubjects == nil {
+		use.ignoreErrSubjects = make(map[string]bool)
 	}
 
-	return func(next HandleFunc) HandleFunc {
-		return func(message *Message, dep any) error {
-			err := next(message, dep)
+	for _, subject := range subjects {
+		use.ignoreErrSubjects[subject] = true
+	}
+	return use
+}
 
-			subject := message.Subject
-			logger := CtxGetLogger(message.Ctx, dep)
+func (use UsePrintResult) IgnoreOkSubjects(subjects ...string) UsePrintResult {
+	if use.ignoreOkSubjects == nil {
+		use.ignoreOkSubjects = make(map[string]bool)
+	}
 
-			if err != nil {
-				if isEgress {
-					logger.Error("send %q fail: %v", subject, err)
-				} else {
-					logger.Error("handle %q fail: %v", subject, err)
+	for _, subject := range subjects {
+		use.ignoreOkSubjects[subject] = true
+	}
+	return use
+}
+
+func (use UsePrintResult) PrintIngress() UsePrintResult {
+	use.printIngress = true
+	return use
+}
+
+func (use UsePrintResult) PrintEgress() UsePrintResult {
+	use.printEgress = true
+	return use
+}
+
+func (use UsePrintResult) PostMiddleware(next HandleFunc) HandleFunc {
+	if use.ignoreErrSubjects == nil {
+		use.ignoreErrSubjects = make(map[string]bool)
+	}
+	if use.ignoreOkSubjects == nil {
+		use.ignoreOkSubjects = make(map[string]bool)
+	}
+
+	return func(message *Message, dep any) error {
+		err := next(message, dep)
+
+		subject := message.Subject
+		logger := CtxGetLogger(message.Ctx, dep)
+
+		if err != nil {
+			for i := range use.ignoreErrors {
+				if errors.Is(err, use.ignoreErrors[i]) {
+					return err
 				}
+			}
+
+			if use.ignoreErrSubjects[subject] {
 				return err
 			}
 
-			if ignore[subject] {
-				return nil
+			if use.printIngress {
+				logger.Error("handle %q fail: %v", subject, err)
+				return err
 			}
 
-			if isEgress {
-				logger.Info("send %q ok", subject)
-			} else {
-				logger.Info("handle %q ok", subject)
+			if use.printEgress {
+				logger.Error("send %q fail: %v", subject, err)
+				return err
 			}
+
+			return err
+		}
+
+		if use.ignoreOkSubjects[subject] {
 			return nil
 		}
+
+		if use.printIngress {
+			logger.Info("handle %q ok", subject)
+			return nil
+		}
+
+		if use.printEgress {
+			logger.Info("send %q ok", subject)
+			return nil
+		}
+
+		return nil
 	}
 }
 
