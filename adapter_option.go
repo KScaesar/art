@@ -86,9 +86,9 @@ func (opt *AdapterOption) IngressMux(mux *Mux) *AdapterOption {
 	return opt
 }
 
-func (opt *AdapterOption) AdapterRecv(adapterRecv func(logger Logger) (message *Message, err error)) *AdapterOption {
+func (opt *AdapterOption) RawRecv(recv func(logger Logger) (message *Message, err error)) *AdapterOption {
 	sub := opt.adapter
-	sub.adapterRecv = adapterRecv
+	sub.rawRecv = recv
 	return opt
 }
 
@@ -98,19 +98,19 @@ func (opt *AdapterOption) EgressMux(mux *Mux) *AdapterOption {
 	return opt
 }
 
-func (opt *AdapterOption) AdapterSend(adapterSend func(logger Logger, message *Message) error) *AdapterOption {
+func (opt *AdapterOption) RawSend(send func(logger Logger, message *Message) error) *AdapterOption {
 	pub := opt.adapter
-	pub.adapterSend = adapterSend
+	pub.rawSend = send
 	return opt
 }
 
-func (opt *AdapterOption) AdapterStop(adapterStop func(logger Logger) error) *AdapterOption {
+func (opt *AdapterOption) RawStop(stop func(logger Logger) error) *AdapterOption {
 	pubsub := opt.adapter
-	pubsub.adapterStop = adapterStop
+	pubsub.rawStop = stop
 	return opt
 }
 
-func (opt *AdapterOption) AdapterFixup(maxRetrySecond int, adapterFixup func(IAdapter) error) *AdapterOption {
+func (opt *AdapterOption) RawFixup(maxRetrySecond int, fixup func(IAdapter) error) *AdapterOption {
 	if maxRetrySecond < 0 {
 		return opt
 	}
@@ -121,7 +121,7 @@ func (opt *AdapterOption) AdapterFixup(maxRetrySecond int, adapterFixup func(IAd
 
 	pubsub := opt.adapter
 	pubsub.fixupMaxRetrySecond = maxRetrySecond
-	pubsub.adapterFixup = adapterFixup
+	pubsub.rawFixup = fixup
 	return opt
 }
 

@@ -43,15 +43,18 @@ func (life *Lifecycle) initialize(adp IAdapter) error {
 }
 
 func (life *Lifecycle) syncTerminate(adp IAdapter) {
-	for _, terminate := range life.terminateHandlers {
+	n := len(life.terminateHandlers)
+	for i := n - 1; i >= 0; i-- {
+		terminate := life.terminateHandlers[i]
 		terminate(adp)
 	}
 	return
 }
 
 func (life *Lifecycle) asyncTerminate(adp IAdapter) {
-	for _, h := range life.terminateHandlers {
-		terminate := h
+	n := len(life.terminateHandlers)
+	for i := n - 1; i >= 0; i-- {
+		terminate := life.terminateHandlers[i]
 		life.wg.Add(1)
 		go func() {
 			defer life.wg.Done()

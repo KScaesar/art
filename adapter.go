@@ -38,29 +38,29 @@ type IAdapter interface {
 }
 
 type Adapter struct {
-	ingressMux  *Mux
-	adapterRecv func(Logger) (*Message, error)
-	egressMux   *Mux
-	adapterSend func(Logger, *Message) error
-	adapterStop func(Logger) error
+	ingressMux *Mux
+	rawRecv    func(Logger) (*Message, error)
 
-	rawInfra any
+	egressMux *Mux
+	rawSend   func(Logger, *Message) error
 
-	// WaitPingSendPong or SendPingWaitPong
-	pp         func() error
-	recvResult chan error
+	rawStop func(Logger) error
 
 	fixupMaxRetrySecond int
-	adapterFixup        func(IAdapter) error
+	rawFixup            func(IAdapter) error
+
+	// WaitPingSendPong or SendPingWaitPong
+	pp func() error
 
 	identifier  string
 	logger      Logger
 	application IAdapter
+	lifecycle   *Lifecycle
+	rawInfra    any
 	hub         AdapterHub
-
-	lifecycle *Lifecycle
-	isStopped atomic.Bool
-	waitStop  chan struct{}
+	recvResult  chan error
+	isStopped   atomic.Bool
+	waitStop    chan struct{}
 }
 
 func (adp *Adapter) Log() Logger {
@@ -83,12 +83,12 @@ func (adp *Adapter) pingpong() {
 				adp.Stop()
 			}
 			if Err != nil {
-				adp.logger.Error("art Adapter pingpong: %v", Err)
+				adp.logger.Error("art.Adapter pingpong: %v", Err)
 			}
 			adp.recvResult <- Err
 		}()
 
-		if adp.adapterFixup == nil {
+		if adp.rawFixup == nil {
 			Err = adp.pp()
 			return
 		}
@@ -96,7 +96,7 @@ func (adp *Adapter) pingpong() {
 			adp.pp,
 			adp.IsStopped,
 			adp.fixupMaxRetrySecond,
-			func() error { return adp.adapterFixup(adp.application) },
+			func() error { return adp.rawFixup(adp.application) },
 		)
 	}()
 }
@@ -108,12 +108,12 @@ func (adp *Adapter) OnDisconnect(terminates ...func(adp IAdapter)) {
 }
 
 func (adp *Adapter) Listen() (err error) {
-	if adp.adapterRecv == nil {
+	if adp.rawRecv == nil {
 		return nil
 	}
 
 	if adp.isStopped.Load() {
-		return ErrorWrapWithMessage(ErrClosed, "art Adapter Listen")
+		return ErrorWrapWithMessage(ErrClosed, "art.Adapter Listen")
 	}
 
 	go func() {
@@ -123,12 +123,12 @@ func (adp *Adapter) Listen() (err error) {
 				adp.Stop()
 			}
 			if Err != nil {
-				adp.logger.Error("art Adapter Listen: %v", Err)
+				adp.logger.Error("art.Adapter Listen: %v", Err)
 			}
 			adp.recvResult <- Err
 		}()
 
-		if adp.adapterFixup == nil {
+		if adp.rawFixup == nil {
 			Err = adp.listen()
 			return
 		}
@@ -136,7 +136,7 @@ func (adp *Adapter) Listen() (err error) {
 			adp.listen,
 			adp.IsStopped,
 			adp.fixupMaxRetrySecond,
-			func() error { return adp.adapterFixup(adp.application) },
+			func() error { return adp.rawFixup(adp.application) },
 		)
 	}()
 
@@ -145,7 +145,7 @@ func (adp *Adapter) Listen() (err error) {
 
 func (adp *Adapter) listen() error {
 	for !adp.isStopped.Load() {
-		ingress, err := adp.adapterRecv(adp.logger)
+		ingress, err := adp.rawRecv(adp.logger)
 
 		if adp.isStopped.Load() {
 			return nil
@@ -165,7 +165,7 @@ func (adp *Adapter) listen() error {
 
 func (adp *Adapter) Send(messages ...*Message) error {
 	if adp.isStopped.Load() {
-		return ErrorWrapWithMessage(ErrClosed, "art Adapter Send")
+		return ErrorWrapWithMessage(ErrClosed, "art.Adapter Send")
 	}
 
 	for _, egress := range messages {
@@ -183,15 +183,15 @@ func (adp *Adapter) Send(messages ...*Message) error {
 
 func (adp *Adapter) RawSend(messages ...*Message) error {
 	if adp.isStopped.Load() {
-		return ErrorWrapWithMessage(ErrClosed, "art Adapter RawSend")
+		return ErrorWrapWithMessage(ErrClosed, "art.Adapter RawSend")
 	}
 
 	for _, egress := range messages {
-		if adp.adapterSend == nil {
+		if adp.rawSend == nil {
 			return nil
 		}
 
-		err := adp.adapterSend(adp.logger, egress)
+		err := adp.rawSend(adp.logger, egress)
 		if err != nil {
 			return err
 		}
@@ -204,7 +204,7 @@ func (adp *Adapter) Stop() error {
 		return ErrorWrapWithMessage(ErrClosed, "repeated execute stop")
 	}
 
-	err := adp.adapterStop(adp.logger)
+	err := adp.rawStop(adp.logger)
 
 	if !reflect.ValueOf(adp.hub).IsZero() {
 		adp.hub.RemoveOne(func(adapter IAdapter) bool { return adapter == adp.application })

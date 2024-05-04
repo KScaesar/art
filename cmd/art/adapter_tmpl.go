@@ -65,7 +65,7 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter {{.FileName}}Adapter, er
 	}
 	opt.WaitPing(f.WaitPingSeconds, waitPing, sendPong)
 
-	opt.AdapterRecv(func(logger art.Logger) (*art.Message, error) {
+	opt.RawRecv(func(logger art.Logger) (*art.Message, error) {
 
 		var err error
 		if err != nil {
@@ -75,13 +75,13 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter {{.FileName}}Adapter, er
 		return New{{.FileName}}Ingress(nil, nil, nil), nil
 	})
 
-	opt.AdapterSend(func(logger art.Logger, message *art.Message) (err error) {
+	opt.RawSend(func(logger art.Logger, message *art.Message) (err error) {
 		mu.Lock()
 		defer mu.Unlock()
 		return 
 	})
 
-	opt.AdapterStop(func(logger art.Logger) (err error) {
+	opt.RawStop(func(logger art.Logger) (err error) {
 		mu.Lock()
 		defer mu.Unlock()
 
@@ -93,7 +93,7 @@ func (f *{{.FileName}}Factory) CreateAdapter() (adapter {{.FileName}}Adapter, er
 	})
 
 	retry := 0
-	opt.AdapterFixup(f.MaxRetrySeconds, func(adp art.IAdapter) (err error) {
+	opt.RawFixup(f.MaxRetrySeconds, func(adp art.IAdapter) (err error) {
 		mu.Lock()
 		defer mu.Unlock()
 
