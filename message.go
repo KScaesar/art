@@ -105,7 +105,7 @@ func (msg *Message) Copy() *Message {
 		message.Metadata.Set(key, v)
 	}
 
-	message.RawInfra = message.RawInfra
-	message.Ctx = message.Ctx
+	message.RawInfra = msg.RawInfra
+	message.Ctx = msg.Ctx
 	return message
 }
