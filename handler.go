@@ -142,6 +142,16 @@ func UseAsync() Middleware {
 	}
 }
 
+func UseCopyMessage() Middleware {
+	return func(next HandleFunc) HandleFunc {
+		return func(message *Message, dep any) error {
+			message = message.Copy()
+			defer PutMessage(message)
+			return next(message, dep)
+		}
+	}
+}
+
 type SafeConcurrencyKind int
 
 const (
