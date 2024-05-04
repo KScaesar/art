@@ -206,7 +206,7 @@ func (adp *Adapter) Stop() error {
 
 	err := adp.rawStop(adp.logger)
 
-	if !reflect.ValueOf(adp.hub).IsZero() {
+	if !reflect.ValueOf(adp.hub).IsNil() {
 		adp.hub.RemoveOne(func(adapter IAdapter) bool { return adapter == adp.application })
 	}
 

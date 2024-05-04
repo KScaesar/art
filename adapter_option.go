@@ -33,7 +33,7 @@ func (opt *AdapterOption) Build() (adp IAdapter, err error) {
 		pubsub.application = pubsub
 	}
 
-	if !reflect.ValueOf(pubsub.hub).IsZero() {
+	if !reflect.ValueOf(pubsub.hub).IsNil() {
 		err = pubsub.hub.Join(pubsub.identifier, pubsub.application)
 		if err != nil {
 			return nil, err
