@@ -5,6 +5,7 @@
 - [Why Create This Package](#why-create-this-package)
 - [Usage example](#usage-example)
 - [Advanced usage](#advanced-usage)
+- [Class Diagram](#Class-Diagram)
 
 ## Features
 
@@ -128,4 +129,97 @@ help:
 -dir  Generate code to dir
 -f    File prefix name
 -pkg  Package name
+```
+
+## Class Diagram
+
+```mermaid
+classDiagram
+direction RL
+
+namespace HandleMessage {
+    class Message {
+        <<datatype>>
+        + Subject: string
+    }
+    class Ingress
+    class Egress
+
+    class Mux {
+        + HandleMessage(Message,Dependency)
+        + Register(Subject,Handler)
+    }
+
+    class Handler {
+        <<interface>>
+        + HandleMessage(Message,Dependency)
+    }
+}
+
+namespace AdapterLayer {
+    class IAdapter {
+        <<interface>>
+        + Identifier() string
+        + Stop() 
+    }
+
+    class Consumer {
+        <<interface>>
+    }
+
+    class Producer {
+        <<interface>>
+    }
+
+    class Hub {
+        + Join(ID,IAdapter) error
+        + RemoveByKey(ID)
+        + DoSync(action func(IAdapter)bool)
+        + DoAsync(action func(IAdapter))
+    }
+
+    class Adapter {
+        - IngressMux: Mux
+        - EgressMux: Mux
+        - hub: Hub
+
+        + Identifier() string
+        + Stop() 
+        + Send(Message) error
+        + RawSend(Message) error
+        + Listen() error
+    }
+
+    class AdapterOption {
+        + Buidl() IAdapter
+    }
+}
+
+namespace artisan_pubsub {
+    class KafkaProducer
+    class RabbitMqConsumer
+    class Websocket
+}
+
+    Message <|-- Ingress
+    Message <|-- Egress
+
+    Mux --o Adapter: aggregation
+    Handler <|.. Mux: implement
+    Handler <.. Mux: register
+    Message <.. Mux: handle message
+    IAdapter .. Mux: dependency is IAdapter
+
+    IAdapter "n" --* "1" Hub: composition
+    Adapter <.. AdapterOption: build
+
+    IAdapter <|.. Adapter: implement
+    Consumer <|.. Adapter: implement
+    Producer <|.. Adapter: implement
+    IAdapter <|.. Consumer
+    IAdapter <|.. Producer
+
+    AdapterOption <.. KafkaProducer: use
+    AdapterOption <.. RabbitMqConsumer: use
+    AdapterOption <.. Websocket: use
 ```
