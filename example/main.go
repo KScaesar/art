@@ -27,7 +27,7 @@ func main() {
 		art.UseLogger(true, art.SafeConcurrency_Skip),
 		art.UseHowMuchTime(),
 		art.UseAdHocFunc(func(message *art.Message, dep any) error {
-			logger := art.CtxGetLogger(message.Ctx, dep)
+			logger := art.CtxGetLogger(message.Ctx)
 			logger.Info("    >> recv %q <<", message.Subject)
 			return nil
 		}).PreMiddleware(),
@@ -161,14 +161,14 @@ func createMessages() (messages []*art.Message) {
 
 func HandleAuth() art.HandleFunc {
 	return func(message *art.Message, dep any) error {
-		art.CtxGetLogger(message.Ctx, dep).
+		art.CtxGetLogger(message.Ctx).
 			Info("PostMiddleware: Auth ok")
 		return nil
 	}
 }
 
 func Hello(message *art.Message, dep any) error {
-	art.CtxGetLogger(message.Ctx, dep).
+	art.CtxGetLogger(message.Ctx).
 		Info("Hello: body=%v user=%v\n", string(message.Bytes), message.RouteParam.Get("user"))
 	return nil
 }
@@ -178,7 +178,7 @@ func UpdatedProductPrice(db map[string]any) art.HandleFunc {
 		brand := message.RouteParam.Str("brand")
 		db[brand] = message.Bytes
 
-		art.CtxGetLogger(message.Ctx, dep).
+		art.CtxGetLogger(message.Ctx).
 			Info("UpdatedProductPrice: saved db: brand=%v\n", brand)
 		return nil
 	}

@@ -55,13 +55,6 @@ func Link(handler HandleFunc, middlewares ...Middleware) HandleFunc {
 
 //
 
-func UseGenericFunc[Dep any, H func(*Message, *Dep) error](handler H) HandleFunc {
-	return func(message *Message, dependency any) error {
-		dep := dependency.(*Dep)
-		return handler(message, dep)
-	}
-}
-
 func UseAdHocFunc(AdHoc HandleFunc) HandleFunc {
 	return AdHoc
 }
@@ -190,7 +183,7 @@ func UseLogger(withMsgId bool, safeConcurrency SafeConcurrencyKind) Middleware {
 
 			message.UpdateContext(
 				func(ctx context.Context) context.Context {
-					return CtxWithLogger(ctx, dep, logger)
+					return CtxWithLogger(ctx, logger)
 				},
 			)
 
@@ -208,7 +201,7 @@ func UseHowMuchTime() Middleware {
 		return func(message *Message, dep any) error {
 			startTime := time.Now()
 			defer func() {
-				logger := CtxGetLogger(message.Ctx, dep)
+				logger := CtxGetLogger(message.Ctx)
 
 				finishTime := time.Now()
 				logger.Info("spend %v", finishTime.Sub(startTime))
@@ -276,7 +269,7 @@ func (use UsePrintResult) PostMiddleware() Middleware {
 			err := next(message, dep)
 
 			subject := message.Subject
-			logger := CtxGetLogger(message.Ctx, dep)
+			logger := CtxGetLogger(message.Ctx)
 
 			if err != nil {
 				for i := range use.ignoreErrors {
@@ -323,7 +316,7 @@ func (use UsePrintResult) PostMiddleware() Middleware {
 
 func UsePrintDetail() HandleFunc {
 	return func(message *Message, dep any) error {
-		logger := CtxGetLogger(message.Ctx, dep)
+		logger := CtxGetLogger(message.Ctx)
 
 		if message.Body != nil {
 			logger.Debug("print detail: T=%T: %v", message.Body, AnyToString(message.Body))
