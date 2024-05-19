@@ -4,7 +4,7 @@ const MetadataTmpl = `
 package {{.Package}}
 
 import (
-	"github.com/gookit/goutil/maputil"
+	"github.com/KScaesar/art"
 )
 
 var {{.FileName}}Metadata = new{{.FileName}}MetadataKey()
@@ -19,11 +19,13 @@ type {{.FileName}}MetadataKey struct {
 	corId string
 }
 
-func (key *{{.FileName}}MetadataKey) GetCorrelationId(md maputil.Data) string {
+func (key *{{.FileName}}MetadataKey) GetCorrelationId(message *art.Message) string {
+	md := message.Metadata
 	return md.Get(key.corId).(string)
 }
 
-func (key *{{.FileName}}MetadataKey) SetCorrelationId(md maputil.Data, value string) {
+func (key *{{.FileName}}MetadataKey) SetCorrelationId(message *art.Message, value string) {
+	md := message.Metadata
 	md.Set(key.corId, value)
 }
 `

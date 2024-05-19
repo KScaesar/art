@@ -21,7 +21,6 @@ func NewMux(routeDelimiter string) *Mux {
 }
 
 // Mux refers to a router or multiplexer, which can be used to handle different message.
-// Itself is also a HandleFunc, but with added routing capabilities.
 //
 // Message represents a high-level abstraction data structure containing metadata (e.g. header) + body
 type Mux struct {
@@ -31,9 +30,7 @@ type Mux struct {
 	enableMessagePool bool
 }
 
-// HandleMessage to handle various messages
-//
-// - route parameter can nil
+// HandleMessage is also a HandleFunc, but with added routing capabilities.
 func (mux *Mux) HandleMessage(message *Message, dependency any) (err error) {
 	if mux.enableMessagePool {
 		defer PutMessage(message)
