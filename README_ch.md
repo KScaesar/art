@@ -20,10 +20,8 @@
 
 無論是構建事件驅動系統還是任何需要訊息傳遞的應用程式，`ART` 都提供了出色的支援。
 
-該專案分為幾個部分：
-
+Project 分為幾個部分：
 - **Mux：** 構成訊息處理的核心，提供路由定義、路由群組、訊息處理和 Middleware 支援等功能。
-
 - **Adapter：** 與第三方 pub/sub 套件整合，用於產生訊息、消費訊息和連線生命週期管理。
 
 ## Setup
@@ -52,7 +50,7 @@
     - 提供 `DefaultHandler` 和 `NotFoundHandler`，確保即使找不到匹配的路由，仍能優雅地處理和回應。
     - 提供 `Transform` 功能，在路由匹配過程中進行路由轉換，例如在 Websockets 進行 decode 以獲取 Topic ，或從其他通訊協定的 payload 中得到 secondary topic。
 
-2. ** Middleware 支援**：
+2. **Middleware 支援**：
     - `PreMiddleware` 和 `PostMiddleware`：支援在處理函式之前和之後添加 Middleware ，實現彈性的處理邏輯。
     - `Link` 可以將多個 Middleware 和處理函式鏈在一起，實現複雜的處理流程。
     - 提供常見的實用程式，如 UseRetry、UseRecover、UseLogger、UseExclude、UsePrintResult，方便訊息處理和監控。
@@ -62,7 +60,7 @@
 
 4. **Adapter：**
     - 與第三方 pub/sub 套件整合，允許發送和接收訊息，並保留第三方套件提供的核心功能。
-    - `Hub` 提供了根據特定篩選條件添加和移除或是對 Adapter 進行特定行動，使管理更加靈活。例如，指定使用者 ID 的 Websocket 推送訊息。
+    - `Hub` 提供了根據特定篩選條件添加和移除或是對 Adapter 進行特定行動，使管理更加靈活。例如，指定 user_id 進行 Websocket 推送訊息。
     - 支援訊息 Ping-Pong 機制和自動重新連線，以提高可靠性，但這取決於每個第三方套件的實現。
     - `Shutdown` 和 `Stop` 提供了統一的方法來關閉 Adapter，特別是當應用程式需要在接收 OS signals 時優雅地關閉。
     - 當開發人員需要與第三方 pub/sub 套件整合時，可以使用 CLI 生成程式碼 template，加快開發過程。
@@ -75,7 +73,7 @@
 [ref](./example/main.go)
 
 [Go Playground
-](https://go.dev/play/p/_E5wrg609Q0)
+](https://go.dev/play/p/PToPsy82RHf)
 
 ```go
 package main

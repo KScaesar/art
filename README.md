@@ -74,7 +74,7 @@ The project is divided into several parts:
 [ref](./example/main.go)
 
 [Go Playground
-](https://go.dev/play/p/_E5wrg609Q0)
+](https://go.dev/play/p/PToPsy82RHf)
 
 ```go
 package main
