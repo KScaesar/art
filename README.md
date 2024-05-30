@@ -80,48 +80,48 @@ The project is divided into several parts:
 package main
 
 func main() {
-  art.SetDefaultLogger(art.NewLogger(false, art.LogLevelDebug))
+	art.SetDefaultLogger(art.NewLogger(false, art.LogLevelDebug))
 
-  routeDelimiter := "/"
-  mux := art.NewMux(routeDelimiter)
+	routeDelimiter := "/"
+	mux := art.NewMux(routeDelimiter)
 
-  mux.ErrorHandler(art.UsePrintResult{}.PrintIngress().PostMiddleware())
+	mux.ErrorHandler(art.UsePrintResult{}.PrintIngress().PostMiddleware())
 
-  // Note:
-  // Before registering handler, middleware must be defined;
-  // otherwise, the handler won't be able to use middleware.
-  mux.Middleware(
-    art.UseRecover(),
-    art.UsePrintDetail().
-      Link(art.UseExclude([]string{"RegisterUser"})).
-      PostMiddleware(),
-    art.UseLogger(true, art.SafeConcurrency_Skip),
-    art.UseHowMuchTime(),
-    art.UseAdHocFunc(func(message *art.Message, dep any) error {
-      logger := art.CtxGetLogger(message.Ctx, dep)
-      logger.Info("    >> recv %q <<", message.Subject)
-      return nil
-    }).PreMiddleware(),
-  )
+	// Note:
+	// Before registering handler, middleware must be defined;
+	// otherwise, the handler won't be able to use middleware.
+	mux.Middleware(
+		art.UseRecover(),
+		art.UsePrintDetail().
+			Link(art.UseExclude([]string{"RegisterUser"})).
+			PostMiddleware(),
+		art.UseLogger(true, art.SafeConcurrency_Skip),
+		art.UseHowMuchTime(),
+		art.UseAdHocFunc(func(message *art.Message, dep any) error {
+			logger := art.CtxGetLogger(message.Ctx)
+			logger.Info("    >> recv %q <<", message.Subject)
+			return nil
+		}).PreMiddleware(),
+	)
 
-  // When a subject cannot be found, execute the 'Default'
-  mux.DefaultHandler(art.UseSkipMessage())
+	// When a subject cannot be found, execute the 'Default'
+	mux.DefaultHandler(art.UseSkipMessage())
 
-  v1 := mux.Group("v1/").Middleware(HandleAuth().PreMiddleware())
+	v1 := mux.Group("v1/").Middleware(HandleAuth().PreMiddleware())
 
-  v1.Handler("Hello/{user}", Hello)
+	v1.Handler("Hello/{user}", Hello)
 
-  db := make(map[string]any)
-  v1.Handler("UpdatedProductPrice/{brand}", UpdatedProductPrice(db))
+	db := make(map[string]any)
+	v1.Handler("UpdatedProductPrice/{brand}", UpdatedProductPrice(db))
 
-  // Endpoints:
-  // [art] subject=".*"                                f="main.main.UseSkipMessage.func11"
-  // [art] subject="v1/Hello/{user}"                   f="main.Hello"
-  // [art] subject="v1/UpdatedProductPrice/{brand}"    f="main.main.UpdatedProductPrice.func14"
-  mux.Endpoints(func(subject, fn string) { fmt.Printf("[art] subject=%-35q f=%q\n", subject, fn) })
+	// Endpoints:
+	// [art] subject=".*"                                f="main.main.UseSkipMessage.func11"
+	// [art] subject="v1/Hello/{user}"                   f="main.Hello"
+	// [art] subject="v1/UpdatedProductPrice/{brand}"    f="main.main.UpdatedProductPrice.func14"
+	mux.Endpoints(func(subject, fn string) { fmt.Printf("[art] subject=%-35q f=%q\n", subject, fn) })
 
-  intervalSecond := 2
-  Listen(mux, intervalSecond)
+	intervalSecond := 2
+	Listen(mux, intervalSecond)
 }
 ```
 
