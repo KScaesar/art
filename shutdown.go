@@ -7,24 +7,33 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 )
 
-func NewShutdown() *Shutdown {
-	notify := make(chan os.Signal, 2)
-	signal.Notify(notify, syscall.SIGINT, syscall.SIGTERM)
+func NewShutdownWithoutTimeout() *Shutdown {
+	return NewShutdown(0)
+}
+
+func NewShutdown(waitSeconds int) *Shutdown {
+	osSig := make(chan os.Signal, 2)
+	signal.Notify(osSig, syscall.SIGINT, syscall.SIGTERM)
 	return &Shutdown{
-		done:   make(chan struct{}),
-		osSig:  notify,
-		Logger: DefaultLogger(),
+		waitSeconds: waitSeconds,
+		done:        make(chan struct{}),
+		osSig:       osSig,
+		Logger:      DefaultLogger(),
+		names:       make([]string, 0, 4),
+		stopActions: make([]func() error, 0, 4),
 	}
 }
 
 type Shutdown struct {
-	done   chan struct{}
-	cancel context.CancelCauseFunc
-	osSig  chan os.Signal
-	Logger Logger
-	mu     sync.Mutex
+	waitSeconds int
+	done        chan struct{}
+	notify      context.CancelCauseFunc
+	osSig       chan os.Signal
+	Logger      Logger
+	mu          sync.Mutex
 
 	stopQty     int
 	names       []string
@@ -41,6 +50,24 @@ func (s *Shutdown) StopService(name string, action func() error) *Shutdown {
 	default:
 	}
 
+	if s.waitSeconds > 0 {
+		action = func() error {
+			result := make(chan error, 1)
+			timeout := time.NewTimer(time.Duration(s.waitSeconds) * time.Second)
+
+			go func() {
+				result <- action()
+			}()
+
+			select {
+			case <-timeout.C:
+				return errors.New("timeout")
+			case err := <-result:
+				return err
+			}
+		}
+	}
+
 	s.stopQty++
 	s.names = append(s.names, name)
 	s.stopActions = append(s.stopActions, action)
@@ -52,21 +79,30 @@ func (s *Shutdown) Notify(cause error) {
 	case <-s.done:
 		return
 	default:
-		s.cancel(cause)
+		s.notify(cause)
 	}
 }
 
-func (s *Shutdown) WaitFinish() chan struct{} {
+func (s *Shutdown) WaitChannel() <-chan struct{} {
 	return s.done
 }
 
 func (s *Shutdown) Serve(ctx context.Context) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	select {
+	case <-s.done:
+		return
+	default:
+	}
+
 	defer close(s.done)
 
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	ctx, s.cancel = context.WithCancelCause(ctx)
+	ctx, s.notify = context.WithCancelCause(ctx)
 
 	select {
 	case sig := <-s.osSig:
@@ -81,9 +117,6 @@ func (s *Shutdown) Serve(ctx context.Context) {
 		}
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	s.Logger.Info("shutdown total service qty=%v", s.stopQty)
 	wg := sync.WaitGroup{}
 
@@ -95,7 +128,8 @@ func (s *Shutdown) Serve(ctx context.Context) {
 			s.Logger.Info("number %v service %q shutdown start", number, s.names[number-1])
 			err := s.stopActions[number-1]()
 			if err != nil {
-				s.Logger.Error("number %v service %q shutdown: %v", number, s.names[number-1], err)
+				s.Logger.Error("number %v service %q shutdown fail: %v", number, s.names[number-1], err)
+				return
 			}
 			s.Logger.Info("number %v service %q shutdown finish", number, s.names[number-1])
 		}()
